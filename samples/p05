@@ -1,0 +1,10 @@
+func f(i int) int {
+	if i < 2 {
+		if i == 1 {
+			return
+		} }
+	println("i", i)
+}
+
+f(1)
+println("bye")

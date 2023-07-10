@@ -1,0 +1,4 @@
+func f() int { println(a) }
+
+a := 4
+f()
