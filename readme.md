@@ -20,3 +20,9 @@ Note: this is highly experimental and unstable.
 ## Usage
 
 `go run ./cmd/gint < ./samples/fib`
+
+To debug visually the AST, you can set the `DOT` env to a command able
+to a display a graphviz dot input, such as `dot -Txlib` or `dotty -`
+(for old graphviz versions like mine):
+
+`DOT="dot -Txlib" go run ./cmd/gint < ./samples/fib`
