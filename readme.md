@@ -15,3 +15,8 @@ Further steps is to get closer to full Go spec and / or introduce new
 languages definitions and new VM implementations.
 
 Note: this is highly experimental and unstable.
+
+
+## Usage
+
+`go run ./cmd/gint < ./samples/fib`
