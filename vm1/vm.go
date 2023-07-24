@@ -21,10 +21,12 @@ const (
 	Jump            // -- ; ip += $1
 	JumpTrue        // cond -- ; if cond { ip += $1 }
 	Lower           // n1 n2 -- cond ; cond = n1 < n2
+	Loweri          // n1 -- cond ; cond = n1 < $1
 	Pop             // v --
 	Push            // -- v
 	Return          // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
 	Sub             // n1 n2 -- diff ; diff = n1 - n2
+	Subi            // n1 -- diff ; diff = n1 - $1
 )
 
 var strop = [...]string{ // for VM tracing.
@@ -40,10 +42,12 @@ var strop = [...]string{ // for VM tracing.
 	Jump:     "Jump",
 	JumpTrue: "JumpTrue",
 	Lower:    "Lower",
+	Loweri:   "Loweri",
 	Pop:      "Pop",
 	Push:     "Push",
 	Return:   "Return",
 	Sub:      "Sub",
+	Subi:     "Subi",
 }
 
 // Machine represents a virtual machine.
@@ -61,18 +65,18 @@ func (m *Machine) Run() {
 	defer func() { m.mem, m.ip, m.fp = mem, ip, fp }()
 
 	trace := func() {
-		var op1 string
-		if len(code[ip]) > 1 {
-			op1 = strconv.Itoa(int(code[ip][1]))
+		var op2 string
+		if len(code[ip]) > 2 {
+			op2 = strconv.Itoa(int(code[ip][2]))
 		}
-		fmt.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-8s %-4s] mem:%v\n", ip, sp, fp, strop[code[ip][0]], op1, mem)
+		fmt.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-8s %-4s] mem:%v\n", ip, sp, fp, strop[code[ip][1]], op2, mem)
 	}
 	_ = trace
 
 	for {
 		sp = len(mem) // stack pointer
 		trace()
-		switch op := code[ip]; op[0] { // TODO: op[0] will contain file pos ?
+		switch op := code[ip]; op[1] {
 		case Add:
 			mem[sp-2] = mem[sp-2].(int) + mem[sp-1].(int)
 			mem = mem[:sp-1]
@@ -81,53 +85,58 @@ func (m *Machine) Run() {
 			mem = mem[:sp-1]
 		case Call:
 			mem = append(mem, ip+1)
-			ip += int(op[1])
+			ip += int(op[2])
 			continue
 		case CallX: // Should be made optional.
-			in := make([]reflect.Value, int(op[1]))
+			l := int(op[2])
+			in := make([]reflect.Value, l)
 			for i := range in {
-				in[i] = reflect.ValueOf(mem[sp-1-i])
+				in[l-1-i] = reflect.ValueOf(mem[sp-1-i])
 			}
-			f := reflect.ValueOf(mem[sp-len(in)-1])
-			mem = mem[:sp-len(in)-1]
+			f := reflect.ValueOf(mem[sp-l-1])
+			mem = mem[:sp-l-1]
 			for _, v := range f.Call(in) {
 				mem = append(mem, v.Interface())
 			}
 		case Dup:
-			mem = append(mem, mem[int(op[1])])
+			mem = append(mem, mem[int(op[2])])
 		case Enter:
 			mem = append(mem, fp)
 			fp = sp + 1
 		case Exit:
 			return
 		case Fdup:
-			mem = append(mem, mem[int(op[1])+fp-1])
+			mem = append(mem, mem[int(op[2])+fp-1])
 		case Jump:
-			ip += int(op[1])
+			ip += int(op[2])
 			continue
 		case JumpTrue:
 			cond := mem[sp-1].(bool)
 			mem = mem[:sp-1]
 			if cond {
-				ip += int(op[1])
+				ip += int(op[2])
 				continue
 			}
 		case Lower:
 			mem[sp-2] = mem[sp-2].(int) < mem[sp-1].(int)
 			mem = mem[:sp-1]
+		case Loweri:
+			mem[sp-1] = mem[sp-1].(int) < int(op[2])
 		case Pop:
 			mem = mem[:sp-1]
 		case Push:
-			mem = append(mem, int(op[1]))
+			mem = append(mem, int(op[2]))
 		case Return:
 			ip = mem[fp-2].(int)
 			ofp := fp
 			fp = mem[fp-1].(int)
-			mem = append(mem[:ofp-int(op[1])-2], mem[sp-int(op[1]):]...)
+			mem = append(mem[:ofp-int(op[2])-2], mem[sp-int(op[2]):]...)
 			continue
 		case Sub:
 			mem[sp-2] = mem[sp-2].(int) - mem[sp-1].(int)
 			mem = mem[:sp-1]
+		case Subi:
+			mem[sp-1] = mem[sp-1].(int) - int(op[2])
 		}
 		ip++
 	}
@@ -141,3 +150,15 @@ func (m *Machine) PushCode(code [][]int64) (p int) {
 func (m *Machine) SetIP(ip int)       { m.ip = ip }
 func (m *Machine) Push(v any) (l int) { l = len(m.mem); m.mem = append(m.mem, v); return }
 func (m *Machine) Pop() (v any)       { l := len(m.mem) - 1; v = m.mem[l]; m.mem = m.mem[:l]; return }
+
+// Disas returns the code as a readable string.
+func Disas(code [][]int64) (asm string) {
+	for _, op := range code {
+		if len(op) > 2 {
+			asm += fmt.Sprintf("%s %d\n", strop[op[1]], op[2])
+		} else {
+			asm += strop[op[1]] + "\n"
+		}
+	}
+	return asm
+}
