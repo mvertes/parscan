@@ -2,10 +2,8 @@ package vm0
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
-	"github.com/gnolang/parscan/lang/golang"
 	"github.com/gnolang/parscan/parser"
 )
 
@@ -37,14 +35,14 @@ func (i *Interp) Eval(src string) (r []any, err error) {
 }
 
 // Run implements a stack based virtual machine which directly walks the AST.
-func (i *Interp) Run(node *parser.Node, scope string) ([]any, error) {
+func (i *Interp) Run(node *parser.Node, scope string) (res []any, err error) {
 	stop := false
 
 	node.Walk2(nil, 0, func(n, a *parser.Node, k int) (ok bool) {
 		// Node pre-order processing.
 		switch n.Kind {
-		case golang.StmtBloc:
-			if a != nil && a.Kind == golang.IfStmt {
+		case parser.StmtBloc:
+			if a != nil && a.Kind == parser.IfStmt {
 				// Control-flow in 'if' sub-tree
 				if k == 1 {
 					// 'if' first body branch, evaluated when condition is true.
@@ -56,7 +54,7 @@ func (i *Interp) Run(node *parser.Node, scope string) ([]any, error) {
 				// 'else' body branch, evaluated when condition is false.
 				return !i.pop().(bool)
 			}
-		case golang.FuncDecl:
+		case parser.FuncDecl:
 			i.declareFunc(n, scope)
 			return false
 		}
@@ -68,33 +66,41 @@ func (i *Interp) Run(node *parser.Node, scope string) ([]any, error) {
 		}
 		l := len(i.stack)
 		switch n.Kind {
-		case golang.NumberLit:
-			num, _ := strconv.Atoi(n.Content()) // TODO(marc): compute num value at scanning.
-			i.push(num)
-		case golang.StringLit:
+		case parser.NumberLit:
+			switch v := n.Value().(type) {
+			case int64:
+				i.push(int(v))
+			case error:
+				err = v
+				return false
+			default:
+				err = fmt.Errorf("type not supported: %T\n", v)
+				return false
+			}
+		case parser.StringLit:
 			i.push(n.Block())
-		case golang.InfOp:
+		case parser.InfOp:
 			i.stack[l-2] = i.stack[l-2].(int) < i.stack[l-1].(int)
 			i.stack = i.stack[:l-1]
-		case golang.AddOp:
+		case parser.AddOp:
 			i.stack[l-2] = i.stack[l-2].(int) + i.stack[l-1].(int)
 			i.stack = i.stack[:l-1]
-		case golang.SubOp:
+		case parser.SubOp:
 			i.stack[l-2] = i.stack[l-2].(int) - i.stack[l-1].(int)
 			i.stack = i.stack[:l-1]
-		case golang.MulOp:
+		case parser.MulOp:
 			i.stack[l-2] = i.stack[l-2].(int) * i.stack[l-1].(int)
 			i.stack = i.stack[:l-1]
-		case golang.AssignOp, golang.DefOp:
+		case parser.AssignOp, parser.DefOp:
 			i.stack[i.stack[l-2].(int)] = i.stack[l-1]
 			i.stack = i.stack[:l-2]
-		case golang.ReturnStmt:
+		case parser.ReturnStmt:
 			stop = true
 			return false
-		case golang.CallExpr:
+		case parser.CallExpr:
 			i.push(len(n.Child[1].Child)) // number of arguments to call
 			i.callFunc(n)
-		case golang.Ident:
+		case parser.Ident:
 			name := n.Content()
 			v, sc, ok := i.getSym(name, scope)
 			fp := i.fp

@@ -47,23 +47,6 @@ var GoScanner = &scanner.Scanner{
 	},
 }
 
-const (
-	Undefined = Kind(iota)
-	FuncDecl
-	CallExpr
-	IfStmt
-	StmtBloc
-	ReturnStmt
-	ParBloc
-	MulOp
-	AddOp
-	SubOp
-	DotOp
-	AssignOp
-	DefOp
-	InfOp
-)
-
 var GoParser = &Parser{
 	Scanner: GoScanner,
 	Spec: map[string]NodeSpec{

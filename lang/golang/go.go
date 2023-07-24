@@ -45,46 +45,26 @@ var GoScanner = &scanner.Scanner{
 	},
 }
 
-const (
-	Undefined = parser.Kind(iota)
-	FuncDecl
-	CallExpr
-	IfStmt
-	StmtBloc
-	ReturnStmt
-	Ident
-	StringLit
-	NumberLit
-	ParBloc
-	DotOp
-	MulOp
-	AddOp
-	SubOp
-	AssignOp
-	DefOp
-	InfOp
-)
-
 var GoParser = &parser.Parser{
 	Scanner: GoScanner,
 	Spec: map[string]parser.NodeSpec{
-		".":      {DotOp, parser.Call, 3},
-		"*":      {MulOp, 0, 4},
-		"+":      {AddOp, 0, 5},
-		"-":      {SubOp, 0, 5},
-		"<":      {InfOp, 0, 6},
-		":=":     {DefOp, 0, 7},
-		"=":      {AssignOp, 0, 7},
-		"#call":  {CallExpr, 0, 0},
-		"#id":    {Ident, 0, 0},
-		"#num":   {NumberLit, 0, 0},
-		"if":     {IfStmt, parser.Stmt | parser.ExprSep, 0},
-		"func":   {FuncDecl, parser.Decl | parser.Call, 0},
-		"return": {ReturnStmt, parser.Stmt, 0},
-		"{..}":   {StmtBloc, parser.ExprSep, 0},
-		"{":      {StmtBloc, parser.ExprSep, 0}, // FIXME: redundant with above
-		"(..)":   {ParBloc, parser.Call, 0},
-		"(":      {ParBloc, parser.Call, 0}, // FIXME: redundant with above
-		`".."`:   {StringLit, 0, 0},
+		".":      {parser.DotOp, parser.Call, 3},
+		"*":      {parser.MulOp, 0, 4},
+		"+":      {parser.AddOp, 0, 5},
+		"-":      {parser.SubOp, 0, 5},
+		"<":      {parser.InfOp, 0, 6},
+		":=":     {parser.DefOp, 0, 7},
+		"=":      {parser.AssignOp, 0, 7},
+		"#call":  {parser.CallExpr, 0, 0},
+		"#id":    {parser.Ident, 0, 0},
+		"#num":   {parser.NumberLit, 0, 0},
+		"if":     {parser.IfStmt, parser.Stmt | parser.ExprSep, 0},
+		"func":   {parser.FuncDecl, parser.Decl | parser.Call, 0},
+		"return": {parser.ReturnStmt, parser.Stmt, 0},
+		"{..}":   {parser.StmtBloc, parser.ExprSep, 0},
+		"{":      {parser.StmtBloc, parser.ExprSep, 0}, // FIXME: redundant with above
+		"(..)":   {parser.ParBloc, parser.Call, 0},
+		"(":      {parser.ParBloc, parser.Call, 0}, // FIXME: redundant with above
+		`".."`:   {parser.StringLit, 0, 0},
 	},
 }

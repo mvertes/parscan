@@ -2,8 +2,6 @@ package parser
 
 import "github.com/gnolang/parscan/scanner"
 
-type Kind int
-
 type Node struct {
 	Child         []*Node // sub-tree nodes
 	scanner.Token         // token at origin of the node
