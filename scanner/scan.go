@@ -3,6 +3,7 @@ package scanner
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -42,6 +43,7 @@ type Token struct {
 	content string
 	start   int
 	end     int
+	value   any
 }
 
 func (t *Token) Kind() Kind      { return t.kind }
@@ -51,6 +53,7 @@ func (t *Token) End() int        { return t.end }
 func (t *Token) Pos() int        { return t.pos }
 func (t *Token) Block() string   { return t.content[t.start : len(t.content)-t.end] }
 func (t *Token) Prefix() string  { return t.content[:t.start] }
+func (t *Token) Value() any      { return t.value }
 
 func (t *Token) Name() string {
 	name := t.content
@@ -61,7 +64,7 @@ func (t *Token) Name() string {
 }
 
 func NewToken(content string, pos int) Token {
-	return Token{pos, Custom, content, 0, 0}
+	return Token{pos, Custom, content, 0, 0, nil}
 }
 
 const ASCIILen = 1 << 7 // 128
@@ -163,7 +166,8 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 		case sc.IsOp(r):
 			return Token{kind: Operator, pos: p + i, content: sc.GetOp(src[i:])}, nil
 		case IsNum(r):
-			return Token{kind: Number, pos: p + i, content: sc.GetNum(src[i:])}, nil
+			c, v := sc.GetNum(src[i:])
+			return Token{kind: Number, pos: p + i, content: c, value: v}, nil
 		default:
 			return Token{kind: Identifier, pos: p + i, content: sc.GetId(src[i:])}, nil
 		}
@@ -191,7 +195,7 @@ func (sc *Scanner) GetOp(src string) (s string) {
 	return s
 }
 
-func (sc *Scanner) GetNum(src string) (s string) {
+func (sc *Scanner) GetNum(src string) (s string, v any) {
 	// TODO: handle hexa, binary, octal, float and eng notations.
 	for _, r := range src {
 		if !IsNum(r) {
@@ -199,7 +203,16 @@ func (sc *Scanner) GetNum(src string) (s string) {
 		}
 		s += string(r)
 	}
-	return s
+	var err error
+	if strings.ContainsRune(s, '.') {
+		v, err = strconv.ParseFloat(s, 64)
+	} else {
+		v, err = strconv.ParseInt(s, 0, 64)
+	}
+	if err != nil {
+		v = err
+	}
+	return s, v
 }
 
 func (sc *Scanner) GetGroupSep(src string) (s string) {
