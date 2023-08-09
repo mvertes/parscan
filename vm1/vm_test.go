@@ -25,6 +25,7 @@ func TestVM(t *testing.T) {
 
 func BenchmarkVM(b *testing.B) {
 	for _, test := range tests {
+		test := test
 		b.Run("", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()

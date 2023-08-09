@@ -76,6 +76,7 @@ def"`, "[]", "1:1: block not terminated"},
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run("", func(t *testing.T) {
 			errStr := ""
 			token, err := GoScanner.Scan(test.src)

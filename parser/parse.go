@@ -1,8 +1,6 @@
 package parser
 
-import (
-	"github.com/gnolang/parscan/scanner"
-)
+import "github.com/gnolang/parscan/scanner"
 
 const (
 	Stmt = 1 << iota
@@ -31,25 +29,29 @@ func (p *Parser) Parse(src string) (n []*Node, err error) {
 	return p.ParseTokens(tokens)
 }
 
-func (p *Parser) ParseTokens(token []scanner.Token) (roots []*Node, err error) {
+func (p *Parser) ParseTokens(tokens []scanner.Token) (roots []*Node, err error) {
 	// TODO: error handling.
-	var root *Node // current root node
-	var expr *Node // current expression root node
-	var prev, c *Node
-	var lce *Node
-	for i, t := range token {
+	var root *Node              // current root node
+	var expr *Node              // current expression root node
+	var prev, c *Node           // previous and current nodes
+	var lce *Node               // last complete expression node
+	unaryOp := map[*Node]bool{} // unaryOp indicates if a node is an unary operator.
+
+	for i, t := range tokens {
 		prev = c
 		c = &Node{
 			Token: t,
 			Kind:  p.Spec[t.Name()].Kind,
-			unary: t.Kind() == scanner.Operator && (i == 0 || token[i-1].Kind() == scanner.Operator),
 		}
-		if c.Kind == 0 {
+		if t.IsOperator() && (i == 0 || tokens[i-1].IsOperator()) {
+			unaryOp[c] = true
+		}
+		if c.Kind == Undefined {
 			switch t.Kind() {
 			case scanner.Number:
-				c.Kind = p.Spec["#num"].Kind
+				c.Kind = NumberLit
 			case scanner.Identifier:
-				c.Kind = p.Spec["#id"].Kind
+				c.Kind = Ident
 			}
 		}
 
@@ -65,20 +67,20 @@ func (p *Parser) ParseTokens(token []scanner.Token) (roots []*Node, err error) {
 			continue
 		}
 
-		if t.Kind() == scanner.Block {
+		if t.IsBlock() {
 			if expr != nil {
-				if p.hasBlockProp(c, ExprSep) && p.isExprSep(root) {
+				if p.hasProp(c, ExprSep) && p.isExprSep(root) {
 					// A bracket block may end a previous expression.
 					root.Child = append(root.Child, expr)
 					expr = nil
-				} else if p.hasBlockProp(c, Call) && !p.hasProp(root, Decl) && p.canCallToken(token[i-1]) {
+				} else if p.hasProp(c, Call) && !p.hasProp(root, Decl) && p.canCallToken(tokens[i-1]) {
 					// Handle (possibly nested) call expressions.
 					if lce == nil || lce != expr { // TODO(marc): not general, fix it.
 						lce = prev
 					}
 					lce.Child = []*Node{{Token: lce.Token, Child: lce.Child, Kind: lce.Kind}}
 					lce.Token = scanner.NewToken("Call", c.Pos())
-					lce.Kind = p.Spec["#call"].Kind
+					lce.Kind = CallExpr
 				}
 			}
 			tcont := t.Content()
@@ -91,10 +93,10 @@ func (p *Parser) ParseTokens(token []scanner.Token) (roots []*Node, err error) {
 		}
 
 		// Process the end of an expression or a statement.
-		if t.Kind() == scanner.Separator {
+		if t.IsSeparator() {
 			if expr != nil && p.hasProp(root, Stmt) {
 				root.Child = append(root.Child, expr)
-				if p.hasBlockProp(expr, ExprSep) {
+				if p.hasProp(expr, ExprSep) {
 					roots = append(roots, root)
 					root = nil
 				}
@@ -129,7 +131,7 @@ func (p *Parser) ParseTokens(token []scanner.Token) (roots []*Node, err error) {
 		ep := p.Spec[expr.Content()].Order
 		cp := p.Spec[c.Content()].Order
 		a := expr
-		if c.unary {
+		if unaryOp[c] {
 			cp = 0
 		}
 		if cp != 0 {
@@ -143,7 +145,7 @@ func (p *Parser) ParseTokens(token []scanner.Token) (roots []*Node, err error) {
 				c1 := expr
 				for {
 					a = c1
-					if c1.unary {
+					if unaryOp[c1] {
 						c1, c = c, c1
 						a = c1
 						if c == expr {
@@ -155,7 +157,7 @@ func (p *Parser) ParseTokens(token []scanner.Token) (roots []*Node, err error) {
 						break
 					}
 					c1 = c1.Child[1]
-					if c1.Token.Kind() != scanner.Operator || c1.unary || cp > p.Spec[c1.Content()].Order {
+					if !c1.IsOperator() || unaryOp[c1] || cp > p.Spec[c1.Content()].Order {
 						break
 					}
 				}
@@ -194,9 +196,7 @@ func (p *Parser) isExprSep(n *Node) bool          { return p.Spec[n.Content()].F
 func (p *Parser) isExpr(n *Node) bool             { return !p.isStatement(n) && !p.isExprSep(n) }
 func (p *Parser) isSep(n *Node) bool              { return n.Token.Kind() == scanner.Separator }
 func (p *Parser) IsBlock(n *Node) bool            { return n.Token.Kind() == scanner.Block }
-func (p *Parser) hasBlockProp(n *Node, prop uint) bool {
-	return p.Spec[n.Content()[:n.Start()]].Flags&prop != 0
-}
+
 func (p *Parser) precedenceToken(t scanner.Token) int {
 	s := t.Content()
 	if l := t.Start(); l > 0 {

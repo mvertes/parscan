@@ -57,19 +57,17 @@ var GoParser = &Parser{
 		"<":      {InfOp, 0, 6},
 		":=":     {DefOp, 0, 7},
 		"=":      {AssignOp, 0, 7},
-		"#Call":  {CallExpr, 0, 0},
 		"if":     {IfStmt, Stmt | ExprSep, 0},
 		"func":   {FuncDecl, Decl | Call, 0},
 		"return": {ReturnStmt, Stmt, 0},
 		"{..}":   {StmtBloc, ExprSep, 0},
-		"{":      {StmtBloc, ExprSep, 0},
-		"(":      {ParBloc, Call, 0},
 		"(..)":   {ParBloc, Call, 0},
 	},
 }
 
 func TestParse(t *testing.T) {
 	for _, test := range goTests {
+		test := test
 		t.Run("", func(t *testing.T) {
 			var err error
 			errStr := ""

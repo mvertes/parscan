@@ -6,8 +6,6 @@ type Node struct {
 	Child         []*Node // sub-tree nodes
 	scanner.Token         // token at origin of the node
 	Kind                  // Node kind, depends on the language spec
-
-	unary bool // TODO(marc): get rid of it.
 }
 
 // TODO: remove it in favor of Walk2

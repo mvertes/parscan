@@ -18,14 +18,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	run := run0
 	if len(os.Args) > 1 {
-		if err := run1(string(buf)); err != nil {
-			log.Fatal(err)
+		v := "vm" + os.Args[1]
+		switch v {
+		case "vm0":
+		case "vm1":
+			run = run1
+		default:
+			log.Fatal("invalid argument", os.Args[1])
 		}
-	} else {
-		if err := run0(string(buf)); err != nil {
-			log.Fatal(err)
-		}
+	}
+	if err := run(string(buf)); err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -46,8 +51,8 @@ func run0(src string) error {
 
 func run1(src string) (err error) {
 	m := &vm1.Machine{}
-	c := &codegen.Compiler{Symbols: map[string]int{}}
-	c.AddSym(fmt.Println, "println")
+	c := codegen.New()
+	c.AddSym(fmt.Println, "println", false)
 	n := &parser.Node{}
 	if n.Child, err = golang.GoParser.Parse(src); err != nil {
 		return err
@@ -58,11 +63,12 @@ func run1(src string) (err error) {
 	}
 	c.Emit(n, vm1.Exit)
 	log.Println("data:", c.Data)
-	log.Println("code:", vm1.Disas(c.Code))
+	log.Println("code:", vm1.Disassemble(c.Code))
 	for _, v := range c.Data {
 		m.Push(v)
 	}
 	m.PushCode(c.Code)
+	m.SetIP(c.Entry)
 	m.Run()
 	return
 }

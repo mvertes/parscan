@@ -55,16 +55,11 @@ var GoParser = &parser.Parser{
 		"<":      {parser.InfOp, 0, 6},
 		":=":     {parser.DefOp, 0, 7},
 		"=":      {parser.AssignOp, 0, 7},
-		"#call":  {parser.CallExpr, 0, 0},
-		"#id":    {parser.Ident, 0, 0},
-		"#num":   {parser.NumberLit, 0, 0},
 		"if":     {parser.IfStmt, parser.Stmt | parser.ExprSep, 0},
 		"func":   {parser.FuncDecl, parser.Decl | parser.Call, 0},
 		"return": {parser.ReturnStmt, parser.Stmt, 0},
 		"{..}":   {parser.StmtBloc, parser.ExprSep, 0},
-		"{":      {parser.StmtBloc, parser.ExprSep, 0}, // FIXME: redundant with above
 		"(..)":   {parser.ParBloc, parser.Call, 0},
-		"(":      {parser.ParBloc, parser.Call, 0}, // FIXME: redundant with above
 		`".."`:   {parser.StringLit, 0, 0},
 	},
 }

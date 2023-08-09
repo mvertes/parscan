@@ -9,45 +9,47 @@ import (
 // Byte-code instruction set.
 const (
 	// instruction effect on stack: values consumed -- values produced
-	Nop      = iota // --
-	Add             // n1 n2 -- sum ; sum = n1+n2
-	Assign          // addr val -- ; mem[addr] = val
-	Call            // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
-	CallX           // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
-	Dup             // addr -- value ; value = mem[addr]
-	Fdup            // addr -- value ; value = mem[addr]
-	Enter           // -- ; enter frame: push(fp), fp = sp
-	Exit            // -- ;
-	Jump            // -- ; ip += $1
-	JumpTrue        // cond -- ; if cond { ip += $1 }
-	Lower           // n1 n2 -- cond ; cond = n1 < n2
-	Loweri          // n1 -- cond ; cond = n1 < $1
-	Pop             // v --
-	Push            // -- v
-	Return          // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
-	Sub             // n1 n2 -- diff ; diff = n1 - n2
-	Subi            // n1 -- diff ; diff = n1 - $1
+	Nop       = iota // --
+	Add              // n1 n2 -- sum ; sum = n1+n2
+	Assign           // val -- ; mem[$1] = val
+	Call             // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
+	CallX            // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
+	Dup              // addr -- value ; value = mem[addr]
+	Fdup             // addr -- value ; value = mem[addr]
+	Enter            // -- ; enter frame: push(fp), fp = sp
+	Exit             // -- ;
+	Jump             // -- ; ip += $1
+	JumpTrue         // cond -- ; if cond { ip += $1 }
+	JumpFalse        // cond -- ; if cond { ip += $1 }
+	Lower            // n1 n2 -- cond ; cond = n1 < n2
+	Loweri           // n1 -- cond ; cond = n1 < $1
+	Pop              // v --
+	Push             // -- v
+	Return           // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
+	Sub              // n1 n2 -- diff ; diff = n1 - n2
+	Subi             // n1 -- diff ; diff = n1 - $1
 )
 
 var strop = [...]string{ // for VM tracing.
-	Nop:      "Nop",
-	Add:      "Add",
-	Assign:   "Assign",
-	Call:     "Call",
-	CallX:    "CallX",
-	Dup:      "Dup",
-	Fdup:     "Fdup",
-	Enter:    "Enter",
-	Exit:     "Exit",
-	Jump:     "Jump",
-	JumpTrue: "JumpTrue",
-	Lower:    "Lower",
-	Loweri:   "Loweri",
-	Pop:      "Pop",
-	Push:     "Push",
-	Return:   "Return",
-	Sub:      "Sub",
-	Subi:     "Subi",
+	Nop:       "Nop",
+	Add:       "Add",
+	Assign:    "Assign",
+	Call:      "Call",
+	CallX:     "CallX",
+	Dup:       "Dup",
+	Fdup:      "Fdup",
+	Enter:     "Enter",
+	Exit:      "Exit",
+	Jump:      "Jump",
+	JumpTrue:  "JumpTrue",
+	JumpFalse: "JumpFalse",
+	Lower:     "Lower",
+	Loweri:    "Loweri",
+	Pop:       "Pop",
+	Push:      "Push",
+	Return:    "Return",
+	Sub:       "Sub",
+	Subi:      "Subi",
 }
 
 // Machine represents a virtual machine.
@@ -69,7 +71,7 @@ func (m *Machine) Run() {
 		if len(code[ip]) > 2 {
 			op2 = strconv.Itoa(int(code[ip][2]))
 		}
-		fmt.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-8s %-4s] mem:%v\n", ip, sp, fp, strop[code[ip][1]], op2, mem)
+		fmt.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-9s %-4s] mem:%v\n", ip, sp, fp, strop[code[ip][1]], op2, mem)
 	}
 	_ = trace
 
@@ -81,7 +83,7 @@ func (m *Machine) Run() {
 			mem[sp-2] = mem[sp-2].(int) + mem[sp-1].(int)
 			mem = mem[:sp-1]
 		case Assign:
-			mem[mem[sp-2].(int)] = mem[sp-1]
+			mem[op[2]] = mem[sp-1]
 			mem = mem[:sp-1]
 		case Call:
 			mem = append(mem, ip+1)
@@ -117,6 +119,13 @@ func (m *Machine) Run() {
 				ip += int(op[2])
 				continue
 			}
+		case JumpFalse:
+			cond := mem[sp-1].(bool)
+			mem = mem[:sp-1]
+			if !cond {
+				ip += int(op[2])
+				continue
+			}
 		case Lower:
 			mem[sp-2] = mem[sp-2].(int) < mem[sp-1].(int)
 			mem = mem[:sp-1]
@@ -147,12 +156,13 @@ func (m *Machine) PushCode(code [][]int64) (p int) {
 	m.code = append(m.code, code...)
 	return
 }
+
 func (m *Machine) SetIP(ip int)       { m.ip = ip }
 func (m *Machine) Push(v any) (l int) { l = len(m.mem); m.mem = append(m.mem, v); return }
 func (m *Machine) Pop() (v any)       { l := len(m.mem) - 1; v = m.mem[l]; m.mem = m.mem[:l]; return }
 
-// Disas returns the code as a readable string.
-func Disas(code [][]int64) (asm string) {
+// Disassemble returns the code as a readable string.
+func Disassemble(code [][]int64) (asm string) {
 	for _, op := range code {
 		if len(op) > 2 {
 			asm += fmt.Sprintf("%s %d\n", strop[op[1]], op[2])

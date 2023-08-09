@@ -46,14 +46,17 @@ type Token struct {
 	value   any
 }
 
-func (t *Token) Kind() Kind      { return t.kind }
-func (t *Token) Content() string { return t.content }
-func (t *Token) Start() int      { return t.start }
-func (t *Token) End() int        { return t.end }
-func (t *Token) Pos() int        { return t.pos }
-func (t *Token) Block() string   { return t.content[t.start : len(t.content)-t.end] }
-func (t *Token) Prefix() string  { return t.content[:t.start] }
-func (t *Token) Value() any      { return t.value }
+func (t *Token) Kind() Kind        { return t.kind }
+func (t *Token) Content() string   { return t.content }
+func (t *Token) Start() int        { return t.start }
+func (t *Token) End() int          { return t.end }
+func (t *Token) Pos() int          { return t.pos }
+func (t *Token) Block() string     { return t.content[t.start : len(t.content)-t.end] }
+func (t *Token) Prefix() string    { return t.content[:t.start] }
+func (t *Token) Value() any        { return t.value }
+func (t *Token) IsBlock() bool     { return t.kind == Block }
+func (t *Token) IsOperator() bool  { return t.kind == Operator }
+func (t *Token) IsSeparator() bool { return t.kind == Separator }
 
 func (t *Token) Name() string {
 	name := t.content
