@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"fmt"
+	"log"
 	"testing"
 )
 
@@ -44,37 +45,21 @@ var GoScanner = &Scanner{
 		"`":  "`",
 		"//": "\n",
 	},
+	BlockProp: map[string]uint{
+		"(":  CharBlock,
+		"{":  CharBlock,
+		"[":  CharBlock,
+		`"`:  CharStr | StrEsc | StrNonl,
+		"`":  CharStr,
+		"'":  CharStr | StrEsc,
+		"/*": CharStr,
+		"//": CharStr | ExcludeEnd | EosValidEnd,
+	},
 }
 
 func TestScan(t *testing.T) {
-	tests := []struct{ src, result, errStr string }{
-		// Simple tokens: separators, identifiers, numbers, operators.
-		{"", "[]", ""},
-		{"   abc + 5", "[{3 1 abc 0 0 <nil>} {7 3 + 0 0 <nil>} {9 2 5 0 0 5}]", ""},
-		{"abc0+5 ", "[{0 1 abc0 0 0 <nil>} {4 3 + 0 0 <nil>} {5 2 5 0 0 5}]", ""},
-		{"a+5\na=x-4", "[{0 1 a 0 0 <nil>} {1 3 + 0 0 <nil>} {2 2 5 0 0 5} {3 4   0 0 <nil>} {4 1 a 0 0 <nil>} {5 3 = 0 0 <nil>} {6 1 x 0 0 <nil>} {7 3 - 0 0 <nil>} {8 2 4 0 0 4}]", ""},
-
-		// Strings.
-		{`return "hello world" + 4`, `[{0 1 return 0 0 <nil>} {7 5 "hello world" 1 1 <nil>} {21 3 + 0 0 <nil>} {23 2 4 0 0 4}]`, ""},
-		{`print(4 * (3+7))`, "[{0 1 print 0 0 <nil>} {5 6 (4 * (3+7)) 1 1 <nil>}]", ""},
-		{`"foo`, "[]", "1:1: block not terminated"},
-		{`abc
-def "foo truc`, "[]", "2:6: block not terminated"},
-		{`"ab\"`, "[]", "1:1: block not terminated"},
-		{`"ab\\"`, `[{0 5 "ab\\" 1 1 <nil>}]`, ""},
-		{`"ab\\\"`, "[]", "1:1: block not terminated"},
-		{`"ab\\\\"`, `[{0 5 "ab\\\\" 1 1 <nil>}]`, ""},
-		{`"abc
-def"`, "[]", "1:1: block not terminated"},
-		{"`hello\nworld`", "[{0 5 `hello\nworld` 1 1 <nil>}]", ""},
-
-		// Nested blocks.
-		// {`f("a)bc")+1, 3)`, "[{0 1 f } {1 6 (\"a)bc\", 3) (}]", ""},
-		{"2* (3+4", "[]", "1:4: block not terminated"},
-		{`("fo)o")+1`, "[{0 6 (\"fo)o\") 1 1 <nil>} {8 3 + 0 0 <nil>} {9 2 1 0 0 1}]", ""},
-		{`"foo""bar"`, "[{0 5 \"foo\" 1 1 <nil>} {5 5 \"bar\" 1 1 <nil>}]", ""},
-	}
-
+	log.SetFlags(log.Lshortfile)
+	GoScanner.Init()
 	for _, test := range tests {
 		test := test
 		t.Run("", func(t *testing.T) {
@@ -83,14 +68,85 @@ def"`, "[]", "1:1: block not terminated"},
 			if err != nil {
 				errStr = err.Error()
 			}
-			if errStr != test.errStr {
-				t.Errorf("got error %#v, want error %#v", errStr, test.errStr)
+			if errStr != test.err {
+				t.Errorf("got error %#v, want error %#v", errStr, test.err)
 			}
-			result := fmt.Sprintf("%v", token)
-			t.Logf("%#v\n%v %v\n", test.src, result, errStr)
-			if result != test.result {
-				t.Errorf("got %#v, want %#v", result, test.result)
+			t.Logf("%#v\n%v %v\n", test.src, token, errStr)
+			if result := tokStr(token); result != test.tok {
+				t.Errorf("got %v, want %v", result, test.tok)
 			}
 		})
 	}
 }
+
+func tokStr(tokens []Token) (s string) {
+	for _, t := range tokens {
+		s += fmt.Sprintf("%#v ", t.content)
+	}
+	return s
+}
+
+var tests = []struct {
+	src, tok, err string
+}{{ // #00
+	src: "",
+}, { // #01
+	src: "   abc + 5",
+	tok: `"abc" "+" "5" `,
+}, { // #02
+	src: "abc0+5 ",
+	tok: `"abc0" "+" "5" `,
+}, { // #03
+	src: "a+5\na=x-4",
+	tok: `"a" "+" "5" " " "a" "=" "x" "-" "4" `,
+}, { // #04
+	src: `return "hello world" + 4`,
+	tok: `"return" "\"hello world\"" "+" "4" `,
+}, { // #05
+	src: `print(4 * (3+7))`,
+	tok: `"print" "(4 * (3+7))" `,
+}, { // #06
+	src: `"foo`,
+	err: "1:1: block not terminated",
+}, { // #07
+	src: `abc
+def "foo truc`,
+	err: "2:6: block not terminated",
+}, { // #08
+	src: `"ab\"`,
+	err: "1:1: block not terminated",
+}, { // #09
+	src: `"ab\\"`,
+	tok: `"\"ab\\\\\"" `,
+}, { // #10
+	src: `"ab\\\"`,
+	err: "1:1: block not terminated",
+}, { // #11
+	src: `"ab\\\\"`,
+	tok: `"\"ab\\\\\\\\\"" `,
+}, { // #12
+	src: `"abc
+def"`,
+	err: "1:1: block not terminated",
+}, { // #13
+	src: "`hello\nworld`",
+	tok: "\"`hello\\nworld`\" ",
+}, { // #14
+	src: "2* (3+4",
+	err: "1:4: block not terminated",
+}, { // #15
+	src: `("fo)o")+1`,
+	tok: `"(\"fo)o\")" "+" "1" `,
+}, { // #16
+	src: `"foo""bar"`,
+	tok: `"\"foo\"" "\"bar\"" `,
+}, { // #17
+	src: "/* a comment */ a = 2",
+	tok: `"/* a comment */" "a" "=" "2" `,
+}, { // #18
+	src: "return // quit\nbegin",
+	tok: `"return" "// quit" " " "begin" `,
+}, { // #19
+	src: "println(3 /* argh ) */)",
+	tok: `"println" "(3 /* argh ) */)" `,
+}}

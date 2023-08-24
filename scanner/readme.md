@@ -31,12 +31,13 @@ A successful test must be provided to check the status.
 - [x] unescaped strings (including multiline)
 - [x] escaped string (including multiline)
 - [x] separators (in UTF-8 range)
-- [ ] single line string (\n not allowed)
+- [x] single line string (\n not allowed)
 - [x] identifiers (in UTF-8 range)
 - [x] operators, concatenated or not
 - [x] single character block/string delimiters
 - [x] arbitrarly nested blocks and strings
-- [ ] multiple characters block/string delimiters
-- [ ] blocks delimited by identifiers/operators/separators
-- [ ] blocks with delimiter inclusion/exclusion rules
-- [ ] blocks delimited by indentation level
+- [x] multiple characters block/string delimiters
+- [x] blocks delimited by operator characters
+- [ ] blocks delimited by identifiers
+- [x] blocks with delimiter inclusion/exclusion rules
+- [ ] blocks delimited by indentation level (python, yaml, ...)

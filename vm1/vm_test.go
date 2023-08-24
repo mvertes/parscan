@@ -7,6 +7,7 @@ import (
 
 func TestVM(t *testing.T) {
 	for _, test := range tests {
+		test := test
 		t.Run("", func(t *testing.T) {
 			m := &Machine{}
 			for _, v := range test.sym {

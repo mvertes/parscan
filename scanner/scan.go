@@ -3,6 +3,7 @@ package scanner
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -32,6 +33,8 @@ const (
 	CharBlock
 	StrEsc
 	StrNonl
+	ExcludeEnd  // exclude end delimiter from content
+	EosValidEnd // end of input string terminates block or string token
 )
 
 var ErrBlock = errors.New("block not terminated")
@@ -74,11 +77,14 @@ const ASCIILen = 1 << 7 // 128
 
 // Scanner contains the scanner rules for a language.
 type Scanner struct {
-	CharProp [ASCIILen]uint    // Special Character properties.
-	End      map[string]string // End delimiters.
-	DotNum   bool              // True if a number can start with '.'.
-	IdAscii  bool              // True if an identifier can be in ASCII only.
-	Num_     bool              // True if a number can contain _ character.
+	CharProp  [ASCIILen]uint    // special Character properties
+	End       map[string]string // end delimiters, indexed by start
+	BlockProp map[string]uint   // block properties
+	DotNum    bool              // true if a number can start with '.'
+	IdAscii   bool              // true if an identifier can be in ASCII only
+	Num_      bool              // true if a number can contain _ character
+
+	sdre *regexp.Regexp // string delimiters regular expression
 }
 
 func (sc *Scanner) HasProp(r rune, p uint) bool {
@@ -98,6 +104,23 @@ func (sc *Scanner) IsId(r rune) bool {
 	return !sc.HasProp(r, CharOp|CharSep|CharLineSep|CharGroupSep|CharStr|CharBlock)
 }
 
+func (sc *Scanner) Init() {
+	// Build a regular expression to match all string delimiters.
+	re := "("
+	for s, p := range sc.BlockProp {
+		if p&CharStr == 0 {
+			continue
+		}
+		// TODO: sort keys in decreasing length order.
+		for _, b := range []byte(s) {
+			re += fmt.Sprintf("\\x%02x", b)
+		}
+		re += "|"
+	}
+	re = strings.TrimSuffix(re, "|") + ")$"
+	sc.sdre = regexp.MustCompile(re)
+}
+
 func IsNum(r rune) bool { return '0' <= r && r <= '9' }
 
 func (sc *Scanner) Scan(src string) (tokens []Token, err error) {
@@ -106,7 +129,6 @@ func (sc *Scanner) Scan(src string) (tokens []Token, err error) {
 	for len(s) > 0 {
 		t, err := sc.Next(s)
 		if err != nil {
-			//return nil, fmt.Errorf("%s: %w '%s'", loc(src, offset+t.pos), err, t.delim)
 			return nil, fmt.Errorf("%s: %w", loc(src, offset+t.pos), err)
 		}
 		if t.kind == Undefined {
@@ -155,56 +177,89 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 		case sc.IsLineSep(r):
 			return Token{kind: Separator, pos: p + i, content: " "}, nil
 		case sc.IsStr(r):
-			s, ok := sc.GetStr(src[i:])
+			s, ok := sc.getStr(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
 			return Token{kind: String, pos: p + i, content: s, start: 1, end: 1}, err
 		case sc.IsBlock(r):
-			b, ok := sc.GetBlock(src[i:])
+			b, ok := sc.getBlock(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
 			return Token{kind: Block, pos: p + i, content: b, start: 1, end: 1}, err
 		case sc.IsOp(r):
-			return Token{kind: Operator, pos: p + i, content: sc.GetOp(src[i:])}, nil
+			op, isOp := sc.getOp(src[i:])
+			if isOp {
+				return Token{kind: Operator, pos: p + i, content: op}, nil
+			}
+			flag := sc.BlockProp[op]
+			if flag&CharStr != 0 {
+				s, ok := sc.getStr(src[i:], len(op))
+				if !ok {
+					err = ErrBlock
+				}
+				return Token{kind: String, pos: p + i, content: s, start: len(op), end: len(op)}, err
+			}
 		case IsNum(r):
-			c, v := sc.GetNum(src[i:])
+			c, v := sc.getNum(src[i:])
 			return Token{kind: Number, pos: p + i, content: c, value: v}, nil
 		default:
-			return Token{kind: Identifier, pos: p + i, content: sc.GetId(src[i:])}, nil
+			id, isId := sc.getId(src[i:])
+			if isId {
+				return Token{kind: Identifier, pos: p + i, content: id}, nil
+			}
+			flag := sc.BlockProp[id]
+			if flag&CharBlock != 0 {
+				s, ok := sc.getBlock(src[i:], len(id))
+				if !ok {
+					err = ErrBlock
+				}
+				return Token{kind: Block, pos: p + i, content: s, start: len(id), end: len(id)}, err
+			}
 		}
 	}
 	return Token{}, nil
 }
 
-func (sc *Scanner) GetId(src string) (s string) {
-	for _, r := range src {
+func (sc *Scanner) getId(src string) (s string, isId bool) {
+	s = sc.nextId(src)
+	if _, match := sc.BlockProp[s]; match {
+		return s, false
+	}
+	return s, true
+}
+
+func (sc *Scanner) nextId(src string) (s string) {
+	for i, r := range src {
 		if !sc.IsId(r) {
 			break
 		}
-		s += string(r)
+		s = src[:i+1]
 	}
 	return s
 }
 
-func (sc *Scanner) GetOp(src string) (s string) {
-	for _, r := range src {
+func (sc *Scanner) getOp(src string) (s string, isOp bool) {
+	for i, r := range src {
 		if !sc.IsOp(r) {
 			break
 		}
-		s += string(r)
+		s = src[:i+1]
+		if _, match := sc.BlockProp[s]; match {
+			return s, false
+		}
 	}
-	return s
+	return s, true
 }
 
-func (sc *Scanner) GetNum(src string) (s string, v any) {
+func (sc *Scanner) getNum(src string) (s string, v any) {
 	// TODO: handle hexa, binary, octal, float and eng notations.
-	for _, r := range src {
+	for i, r := range src {
 		if !IsNum(r) {
 			break
 		}
-		s += string(r)
+		s = src[:i+1]
 	}
 	var err error
 	if strings.ContainsRune(s, '.') {
@@ -218,64 +273,69 @@ func (sc *Scanner) GetNum(src string) (s string, v any) {
 	return s, v
 }
 
-func (sc *Scanner) GetGroupSep(src string) (s string) {
+func (sc *Scanner) getGroupSep(src string) (s string) {
 	for _, r := range src {
 		return string(r)
 	}
 	return s
 }
 
-func (sc *Scanner) GetStr(src string) (s string, ok bool) {
-	// TODO: handle long delimiters.
-	var delim rune
-	var esc, canEscape, nonl bool
-	for i, r := range src {
-		s += string(r)
-		if i == 0 {
-			delim = r
-			canEscape = sc.HasProp(r, StrEsc)
-			nonl = sc.HasProp(r, StrNonl)
-			continue
-		}
+func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
+	start := src[:nstart]
+	end := sc.End[start]
+	prop := sc.BlockProp[start]
+	canEscape := prop&StrEsc != 0
+	nonl := prop&StrNonl != 0
+	excludeEnd := prop&ExcludeEnd != 0
+	var esc bool
+
+	for i, r := range src[nstart:] {
+		s = src[:nstart+i+1]
 		if r == '\n' && nonl {
 			return
 		}
-		if r == delim && !(esc && canEscape) {
+		if strings.HasSuffix(s, end) && !esc {
+			if excludeEnd {
+				s = s[:len(s)-len(end)]
+			}
 			return s, true
 		}
-		esc = r == '\\' && !esc
+		esc = canEscape && r == '\\' && !esc
 	}
 	return
 }
 
-func (sc *Scanner) GetBlock(src string) (s string, ok bool) {
-	// TODO: handle long and word delimiters.
-	var start, end rune
+func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {
+	start := src[:nstart]
+	end := sc.End[start]
+	prop := sc.BlockProp[start]
+
 	skip := 0
 	n := 1
-	for i, r := range src {
-		s += string(r)
-		if i == 0 {
-			start = r
-			end = rune(sc.End[string(r)][0]) // FIXME: not robust.
-			continue
-		}
+
+	for i := range src[nstart:] {
+		s = src[:nstart+i+1]
 		if i < skip {
 			continue
-		} else if r == start {
-			n++
-		} else if r == end {
+		}
+		if strings.HasSuffix(s, end) {
 			n--
-		} else if sc.IsStr(r) {
-			str, ok := sc.GetStr(src[i:])
+		} else if strings.HasSuffix(s, start) {
+			n++
+		} else if m := sc.sdre.FindStringSubmatch(s); len(m) > 1 {
+			str, ok := sc.getStr(src[i:], len(m[1]))
 			if !ok {
 				return s, false
 			}
-			skip = i + len(str)
+			skip = i + len(str) - 1
 		}
 		if n == 0 {
-			break
+			if prop&ExcludeEnd != 0 {
+				s = s[:len(s)-len(end)]
+			}
+			return s, true
 		}
 	}
-	return s, n == 0
+	ok = prop&EosValidEnd != 0
+	return s, ok
 }
