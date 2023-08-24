@@ -65,6 +65,8 @@ var GoParser = &Parser{
 	},
 }
 
+func init() { GoParser.Init() }
+
 func TestParse(t *testing.T) {
 	for _, test := range goTests {
 		test := test

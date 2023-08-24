@@ -63,3 +63,5 @@ var GoParser = &parser.Parser{
 		`".."`:   {parser.StringLit, 0, 0},
 	},
 }
+
+func init() { GoParser.Init() }
