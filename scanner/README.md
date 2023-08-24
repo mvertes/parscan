@@ -2,6 +2,18 @@
 
 A scanner takes a string in input and returns an array of tokens.
 
+```mermaid
+graph LR
+s[ ] --> |source| a(scanner)
+--> |tokens| b(parser)
+--> |AST| c[ ]
+subgraph scanner
+    a
+end
+style s height:0px;
+style c height:0px;
+```
+
 Tokens can be of the following kinds:
 - identifier
 - number

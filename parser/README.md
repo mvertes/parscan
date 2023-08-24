@@ -5,6 +5,18 @@ returns a node representing a syntax tree. A node is an object
 containing a kind, the corresponding token and the ordered references to
 descendent nodes.
 
+```mermaid
+graph LR
+s[ ] --> |source| a(scanner)
+--> |tokens| b(parser)
+--> |AST| c[ ]
+subgraph parser
+    b
+end
+style s height:0px;
+style c height:0px;
+```
+
 A goal is to make the parser generic enough so it can generate syntax
 trees for most of existing programming languages (no claim of generality
 yet), provided a small set of generating rules per language, and a small
