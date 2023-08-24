@@ -16,7 +16,7 @@ func TestCodeGen(t *testing.T) {
 		test := test
 		t.Run("", func(t *testing.T) {
 			c := New()
-			c.AddSym(fmt.Println, "println")
+			c.AddSym(fmt.Println, "println", false)
 			n := &parser.Node{}
 			var err error
 			if n.Child, err = golang.GoParser.Parse(test.src); err != nil {
@@ -31,6 +31,9 @@ func TestCodeGen(t *testing.T) {
 			}
 			t.Log("data:", c.Data)
 			t.Log("code:", vm1.Disassemble(c.Code))
+			if s := vm1.Disassemble(c.Code); s != test.asm {
+				t.Errorf("got error %#v, want error %#v", s, test.asm)
+			}
 		})
 	}
 }
@@ -45,7 +48,11 @@ var tests = []struct {
 	asm: "Dup 0\nDup 1\nCallX 1\n",
 }, { // #02
 	src: `a := 2; println(a)`,
-	asm: "Push 2\nAssign 1\nDup 0\nDup 1\nCallX 1",
+	asm: "Push 2\nAssign 1\nDup 0\nDup 1\nCallX 1\n",
 }, { // #03
 	src: `a := 2; if a < 3 {println(a)}; println("bye")`,
-}}
+	asm: "Push 2\nAssign 1\nDup 1\nPush 3\nLower\nJumpFalse 4\nDup 0\nDup 1\nCallX 1\nDup 0\nDup 2\nCallX 1\n",
+}, { // #04
+	src: "func add(a int, b int) int { return a + b }",
+	asm: "Fdup -2\nFdup -3\nAdd\nReturn 1 2\n",
+}, {}}

@@ -41,8 +41,7 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 		switch n.Kind {
 		case parser.FuncDecl:
 			fname := n.Child[0].Content()
-			i := c.Emit(n, vm1.Enter)
-			c.AddSym(i, scope+fname, false)
+			c.AddSym(len(c.Code), scope+fname, false)
 			scope = pushScope(scope, fname)
 			frameNode = append(frameNode, n)
 			fnote = notes[n]
@@ -124,7 +123,8 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 			}
 
 		case parser.ReturnStmt:
-			c.Emit(n, vm1.Return, int64(len(n.Child)))
+			fun := frameNode[len(frameNode)-1]
+			c.Emit(n, vm1.Return, int64(len(n.Child)), int64(len(fun.Child[1].Child)))
 
 		case parser.StmtBloc:
 			nd.ipend = len(c.Code)
@@ -144,7 +144,7 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 		// TODO: Fix this temporary hack to compute an entry point
 		if c.Entry < 0 && len(scope) == 0 && n.Kind != parser.FuncDecl {
 			c.Entry = len(c.Code) - 1
-			if c.Code[c.Entry][1] == vm1.Return {
+			if c.Entry >= 0 && len(c.Code) > c.Entry && c.Code[c.Entry][1] == vm1.Return {
 				c.Entry++
 			}
 		}

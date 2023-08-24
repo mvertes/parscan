@@ -16,7 +16,6 @@ const (
 	CallX            // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
 	Dup              // addr -- value ; value = mem[addr]
 	Fdup             // addr -- value ; value = mem[addr]
-	Enter            // -- ; enter frame: push(fp), fp = sp
 	Exit             // -- ;
 	Jump             // -- ; ip += $1
 	JumpTrue         // cond -- ; if cond { ip += $1 }
@@ -38,7 +37,6 @@ var strop = [...]string{ // for VM tracing.
 	CallX:     "CallX",
 	Dup:       "Dup",
 	Fdup:      "Fdup",
-	Enter:     "Enter",
 	Exit:      "Exit",
 	Jump:      "Jump",
 	JumpTrue:  "JumpTrue",
@@ -67,11 +65,15 @@ func (m *Machine) Run() {
 	defer func() { m.mem, m.ip, m.fp = mem, ip, fp }()
 
 	trace := func() {
-		var op2 string
-		if len(code[ip]) > 2 {
-			op2 = strconv.Itoa(int(code[ip][2]))
+		var op2, op3 string
+		c := code[ip]
+		if l := len(c); l > 2 {
+			op2 = strconv.Itoa(int(c[2]))
+			if l > 3 {
+				op3 = strconv.Itoa(int(c[3]))
+			}
 		}
-		fmt.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-9s %-4s] mem:%v\n", ip, sp, fp, strop[code[ip][1]], op2, mem)
+		fmt.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-9s %-4s %-4s] mem:%v\n", ip, sp, fp, strop[c[1]], op2, op3, mem)
 	}
 	_ = trace
 
@@ -86,7 +88,8 @@ func (m *Machine) Run() {
 			mem[op[2]] = mem[sp-1]
 			mem = mem[:sp-1]
 		case Call:
-			mem = append(mem, ip+1)
+			mem = append(mem, ip+1, fp)
+			fp = sp + 2
 			ip += int(op[2])
 			continue
 		case CallX: // Should be made optional.
@@ -102,9 +105,6 @@ func (m *Machine) Run() {
 			}
 		case Dup:
 			mem = append(mem, mem[int(op[2])])
-		case Enter:
-			mem = append(mem, fp)
-			fp = sp + 1
 		case Exit:
 			return
 		case Fdup:
@@ -139,7 +139,7 @@ func (m *Machine) Run() {
 			ip = mem[fp-2].(int)
 			ofp := fp
 			fp = mem[fp-1].(int)
-			mem = append(mem[:ofp-int(op[2])-2], mem[sp-int(op[2]):]...)
+			mem = append(mem[:ofp-int(op[2])-int(op[3])-1], mem[sp-int(op[2]):]...)
 			continue
 		case Sub:
 			mem[sp-2] = mem[sp-2].(int) - mem[sp-1].(int)
@@ -164,10 +164,13 @@ func (m *Machine) Pop() (v any)       { l := len(m.mem) - 1; v = m.mem[l]; m.mem
 // Disassemble returns the code as a readable string.
 func Disassemble(code [][]int64) (asm string) {
 	for _, op := range code {
-		if len(op) > 2 {
-			asm += fmt.Sprintf("%s %d\n", strop[op[1]], op[2])
-		} else {
+		switch len(op) {
+		case 2:
 			asm += strop[op[1]] + "\n"
+		case 3:
+			asm += fmt.Sprintf("%s %d\n", strop[op[1]], op[2])
+		case 4:
+			asm += fmt.Sprintf("%s %d %d\n", strop[op[1]], op[2], op[3])
 		}
 	}
 	return asm
