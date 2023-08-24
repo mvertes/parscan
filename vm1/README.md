@@ -7,13 +7,14 @@ portable Go execution environment.
 
 ```mermaid
 graph LR
-s:::hidden --> |source| a(scanner)
+s[ ] --> |source| a(scanner)
 --> |tokens| b(parser)
 --> |AST| c(codegen)
 --> |bytecode| d[vm]
 subgraph vm1
     d
 end
+style s height:0px;
 ```
 
 The bytecode consists of a dozen of instructions, each taking 0 or 1
