@@ -21,7 +21,7 @@ type Compiler struct {
 	symbols map[string]symbol
 }
 
-func New() *Compiler { return &Compiler{symbols: map[string]symbol{}, Entry: -1} }
+func NewCompiler() *Compiler { return &Compiler{symbols: map[string]symbol{}, Entry: -1} }
 
 type nodedata struct {
 	ipstart, ipend, symind, fsp int // CFG and symbol node annotations

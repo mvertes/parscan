@@ -15,7 +15,7 @@ func TestCodeGen(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run("", func(t *testing.T) {
-			c := New()
+			c := NewCompiler()
 			c.AddSym(fmt.Println, "println", false)
 			n := &parser.Node{}
 			var err error

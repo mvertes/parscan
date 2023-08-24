@@ -1,6 +1,6 @@
 # vm1
 
-`vm1` is bytecode based stack machine.
+`vm1` is a bytecode based stack machine.
 
 The purpose of `vm1` is to provide a simple, fast, embeddable and
 portable Go execution environment.

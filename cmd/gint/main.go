@@ -7,9 +7,7 @@ import (
 
 	"github.com/gnolang/parscan/codegen"
 	"github.com/gnolang/parscan/lang/golang"
-	"github.com/gnolang/parscan/parser"
 	"github.com/gnolang/parscan/vm0"
-	"github.com/gnolang/parscan/vm1"
 )
 
 func main() {
@@ -50,25 +48,7 @@ func run0(src string) error {
 }
 
 func run1(src string) (err error) {
-	m := &vm1.Machine{}
-	c := codegen.New()
-	c.AddSym(fmt.Println, "println", false)
-	n := &parser.Node{}
-	if n.Child, err = golang.GoParser.Parse(src); err != nil {
-		return err
-	}
-	n.Dot(os.Getenv("DOT"), "")
-	if err = c.CodeGen(n); err != nil {
-		return err
-	}
-	c.Emit(n, vm1.Exit)
-	log.Println("data:", c.Data)
-	log.Println("code:", vm1.Disassemble(c.Code))
-	for _, v := range c.Data {
-		m.Push(v)
-	}
-	m.PushCode(c.Code)
-	m.SetIP(c.Entry)
-	m.Run()
-	return
+	i := codegen.NewInterpreter(golang.GoParser)
+	i.AddSym(fmt.Println, "println", false)
+	return i.Eval(src)
 }

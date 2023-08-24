@@ -6,6 +6,8 @@ import (
 	"strconv" // for tracing only
 )
 
+const debug = false
+
 // Byte-code instruction set.
 const (
 	// instruction effect on stack: values consumed -- values produced
@@ -55,16 +57,19 @@ type Machine struct {
 	code   [][]int64 // code to execute
 	mem    []any     // memory, as a stack
 	ip, fp int       // instruction and frame pointer
-	// flags  uint      // to set debug mode, restrict CallX, etc...
+	// flags  uint      // to set options such as restrict CallX, etc...
 }
 
 // Run runs a program.
-func (m *Machine) Run() {
+func (m *Machine) Run() (err error) {
 	code, mem, ip, fp, sp := m.code, m.mem, m.ip, m.fp, 0
 
 	defer func() { m.mem, m.ip, m.fp = mem, ip, fp }()
 
 	trace := func() {
+		if !debug {
+			return
+		}
 		var op2, op3 string
 		c := code[ip]
 		if l := len(c); l > 2 {
@@ -75,7 +80,6 @@ func (m *Machine) Run() {
 		}
 		fmt.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-9s %-4s %-4s] mem:%v\n", ip, sp, fp, strop[c[1]], op2, op3, mem)
 	}
-	_ = trace
 
 	for {
 		sp = len(mem) // stack pointer
@@ -149,17 +153,18 @@ func (m *Machine) Run() {
 		}
 		ip++
 	}
+	return
 }
 
 func (m *Machine) PushCode(code [][]int64) (p int) {
 	p = len(m.code)
 	m.code = append(m.code, code...)
-	return
+	return p
 }
 
-func (m *Machine) SetIP(ip int)       { m.ip = ip }
-func (m *Machine) Push(v any) (l int) { l = len(m.mem); m.mem = append(m.mem, v); return }
-func (m *Machine) Pop() (v any)       { l := len(m.mem) - 1; v = m.mem[l]; m.mem = m.mem[:l]; return }
+func (m *Machine) SetIP(ip int)          { m.ip = ip }
+func (m *Machine) Push(v ...any) (l int) { l = len(m.mem); m.mem = append(m.mem, v...); return }
+func (m *Machine) Pop() (v any)          { l := len(m.mem) - 1; v = m.mem[l]; m.mem = m.mem[:l]; return }
 
 // Disassemble returns the code as a readable string.
 func Disassemble(code [][]int64) (asm string) {
