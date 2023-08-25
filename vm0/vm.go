@@ -2,10 +2,13 @@ package vm0
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/gnolang/parscan/parser"
 )
+
+const debug = true
 
 type Interp struct {
 	*parser.Parser
@@ -20,14 +23,16 @@ func New(p *parser.Parser) (i *Interp) {
 	return i
 }
 
-func (i *Interp) Eval(src string) (r []any, err error) {
-	n, err := i.Parse(src)
-	if err != nil {
-		return nil, err
+func (i *Interp) Eval(src string) (err error) {
+	n := &parser.Node{}
+	if n.Child, err = i.Parse(src); err != nil {
+		return
 	}
-	for _, nod := range n {
-		r, err = i.Run(nod, "")
-		if err != nil {
+	if debug {
+		n.Dot(os.Getenv("DOT"), "")
+	}
+	for _, nod := range n.Child {
+		if _, err = i.Run(nod, ""); err != nil {
 			break
 		}
 	}
