@@ -24,7 +24,7 @@ type Compiler struct {
 func NewCompiler() *Compiler { return &Compiler{symbols: map[string]symbol{}, Entry: -1} }
 
 type nodedata struct {
-	ipstart, ipend, symind, fsp int // CFG and symbol node annotations
+	ipstart, ipend, fsp int // CFG and symbol node annotations
 }
 
 func (c *Compiler) CodeGen(node *parser.Node) (err error) {

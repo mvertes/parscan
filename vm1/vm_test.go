@@ -14,7 +14,9 @@ func TestVM(t *testing.T) {
 				m.Push(v)
 			}
 			m.PushCode(test.code)
-			m.Run()
+			if err := m.Run(); err != nil {
+				t.Errorf("run error: %v", err)
+			}
 			t.Log(m.mem)
 			r := fmt.Sprintf("%v", m.mem[test.start:test.end])
 			if r != test.mem {
@@ -34,7 +36,9 @@ func BenchmarkVM(b *testing.B) {
 				m.PushCode(test.code)
 				b.StartTimer()
 
-				m.Run()
+				if err := m.Run(); err != nil {
+					b.Errorf("run error: %v", err)
+				}
 			}
 		})
 	}

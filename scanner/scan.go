@@ -273,13 +273,6 @@ func (sc *Scanner) getNum(src string) (s string, v any) {
 	return s, v
 }
 
-func (sc *Scanner) getGroupSep(src string) (s string) {
-	for _, r := range src {
-		return string(r)
-	}
-	return s
-}
-
 func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 	start := src[:nstart]
 	end := sc.End[start]

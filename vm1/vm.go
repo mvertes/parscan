@@ -153,7 +153,6 @@ func (m *Machine) Run() (err error) {
 		}
 		ip++
 	}
-	return
 }
 
 func (m *Machine) PushCode(code [][]int64) (p int) {

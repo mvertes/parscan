@@ -60,7 +60,9 @@ func (i *Interp) declareFunc(r *parser.Node, scope string) {
 		for _, arg := range args {
 			i.push(arg.Interface())
 		}
-		i.Run(r.Child[len(r.Child)-1], fscope)
+		if _, err := i.Run(r.Child[len(r.Child)-1], fscope); err != nil {
+			panic(err)
+		}
 		b := len(i.stack) - len(out)
 		for j := range out {
 			res = append(res, reflect.ValueOf(i.stack[b+j]))
