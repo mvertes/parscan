@@ -13,7 +13,7 @@ func TestVM(t *testing.T) {
 			for _, v := range test.sym {
 				m.Push(v)
 			}
-			m.PushCode(test.code)
+			m.PushCode(test.code...)
 			if err := m.Run(); err != nil {
 				t.Errorf("run error: %v", err)
 			}
@@ -33,7 +33,7 @@ func BenchmarkVM(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()
 				m := &Machine{}
-				m.PushCode(test.code)
+				m.PushCode(test.code...)
 				b.StartTimer()
 
 				if err := m.Run(); err != nil {

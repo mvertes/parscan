@@ -27,12 +27,21 @@ func (i *Interpreter) Eval(src string) (err error) {
 	if debug {
 		n.Dot(os.Getenv("DOT"), "")
 	}
+	offset := len(i.Code)
+	i.PopExit() // Remove last exit from previous run.
 	if err = i.CodeGen(n); err != nil {
 		return err
 	}
-	i.Emit(n, vm1.Exit)
 	i.Push(i.Data...)
-	i.PushCode(i.Code)
-	i.SetIP(i.Entry)
+	i.PushCode(i.Code[offset:]...)
+	i.PushCode([]int64{0, vm1.Exit})
+	i.SetIP(max(offset, i.Entry))
 	return i.Run()
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

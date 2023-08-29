@@ -6,7 +6,7 @@ import (
 	"strconv" // for tracing only
 )
 
-const debug = false
+const debug = true
 
 // Byte-code instruction set.
 const (
@@ -155,7 +155,7 @@ func (m *Machine) Run() (err error) {
 	}
 }
 
-func (m *Machine) PushCode(code [][]int64) (p int) {
+func (m *Machine) PushCode(code ...[]int64) (p int) {
 	p = len(m.code)
 	m.code = append(m.code, code...)
 	return p
@@ -164,6 +164,12 @@ func (m *Machine) PushCode(code [][]int64) (p int) {
 func (m *Machine) SetIP(ip int)          { m.ip = ip }
 func (m *Machine) Push(v ...any) (l int) { l = len(m.mem); m.mem = append(m.mem, v...); return }
 func (m *Machine) Pop() (v any)          { l := len(m.mem) - 1; v = m.mem[l]; m.mem = m.mem[:l]; return }
+
+func (m *Machine) PopExit() {
+	if l := len(m.code); l > 0 && m.code[l-1][1] == Exit {
+		m.code = m.code[:l-1]
+	}
+}
 
 // Disassemble returns the code as a readable string.
 func Disassemble(code [][]int64) (asm string) {

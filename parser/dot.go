@@ -17,7 +17,13 @@ func (*Parser) Adot(nodes []*Node, c string) {
 	n.Dot(c, "")
 }
 
-func (n *Node) Dot(c, s string) { n.astDot(dotWriter(c), s) }
+func (n *Node) Dot(c, s string) {
+	dw, cmd := dotWriter(c)
+	n.astDot(dw, s)
+	if cmd != nil {
+		cmd.Wait()
+	}
+}
 
 func (n *Node) Sdot(s string) string {
 	var buf bytes.Buffer
@@ -49,6 +55,9 @@ func (n *Node) astDot(out io.Writer, label string) {
 		return true
 	}, nil)
 	fmt.Fprintf(out, "}")
+	if c, ok := out.(io.Closer); ok {
+		c.Close()
+	}
 }
 
 type nopCloser struct {
@@ -57,9 +66,9 @@ type nopCloser struct {
 
 func (nopCloser) Close() error { return nil }
 
-func dotWriter(dotCmd string) io.WriteCloser {
+func dotWriter(dotCmd string) (io.WriteCloser, *exec.Cmd) {
 	if dotCmd == "" {
-		return nopCloser{io.Discard}
+		return nopCloser{io.Discard}, nil
 	}
 	fields := strings.Fields(dotCmd)
 	cmd := exec.Command(fields[0], fields[1:]...)
@@ -70,5 +79,5 @@ func dotWriter(dotCmd string) io.WriteCloser {
 	if err = cmd.Start(); err != nil {
 		log.Fatal(err)
 	}
-	return dotin
+	return dotin, cmd
 }
