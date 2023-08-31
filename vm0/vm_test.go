@@ -20,7 +20,7 @@ func TestEval(t *testing.T) {
 	}
 	i.Adot(nodes, os.Getenv("DOT"))
 	for _, n := range nodes {
-		v, err := i.Run(n, "")
-		t.Log(v, err)
+		err := i.Run(n, "")
+		t.Log(err)
 	}
 }

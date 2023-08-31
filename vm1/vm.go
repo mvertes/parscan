@@ -57,14 +57,15 @@ type Machine struct {
 	code   [][]int64 // code to execute
 	mem    []any     // memory, as a stack
 	ip, fp int       // instruction and frame pointer
+	ic     uint64    // instruction counter, incremented at each instruction executed
 	// flags  uint      // to set options such as restrict CallX, etc...
 }
 
 // Run runs a program.
 func (m *Machine) Run() (err error) {
-	code, mem, ip, fp, sp := m.code, m.mem, m.ip, m.fp, 0
+	code, mem, ip, fp, sp, ic := m.code, m.mem, m.ip, m.fp, 0, m.ic
 
-	defer func() { m.mem, m.ip, m.fp = mem, ip, fp }()
+	defer func() { m.mem, m.ip, m.fp, m.ic = mem, ip, fp, ic }()
 
 	trace := func() {
 		if !debug {
@@ -84,6 +85,7 @@ func (m *Machine) Run() (err error) {
 	for {
 		sp = len(mem) // stack pointer
 		trace()
+		ic++
 		switch op := code[ip]; op[1] {
 		case Add:
 			mem[sp-2] = mem[sp-2].(int) + mem[sp-1].(int)
@@ -136,7 +138,7 @@ func (m *Machine) Run() (err error) {
 		case Loweri:
 			mem[sp-1] = mem[sp-1].(int) < int(op[2])
 		case Pop:
-			mem = mem[:sp-1]
+			mem = mem[:sp-int(op[2])]
 		case Push:
 			mem = append(mem, int(op[2]))
 		case Return:
@@ -164,6 +166,12 @@ func (m *Machine) PushCode(code ...[]int64) (p int) {
 func (m *Machine) SetIP(ip int)          { m.ip = ip }
 func (m *Machine) Push(v ...any) (l int) { l = len(m.mem); m.mem = append(m.mem, v...); return }
 func (m *Machine) Pop() (v any)          { l := len(m.mem) - 1; v = m.mem[l]; m.mem = m.mem[:l]; return }
+func (m *Machine) Top() (v any) {
+	if l := len(m.mem); l > 0 {
+		v = m.mem[l-1]
+	}
+	return
+}
 
 func (m *Machine) PopExit() {
 	if l := len(m.code); l > 0 && m.code[l-1][1] == Exit {

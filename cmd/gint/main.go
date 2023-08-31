@@ -15,7 +15,7 @@ import (
 )
 
 type Interpreter interface {
-	Eval(string) error
+	Eval(string) (any, error)
 }
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 	var interp Interpreter = vm0.New(golang.GoParser)
 	if len(os.Args) > 1 && os.Args[1] == "1" {
 		interp = codegen.NewInterpreter(golang.GoParser)
-		interp.(*codegen.Interpreter).AddSym(fmt.Println, "println", false)
+		interp.(*codegen.Interpreter).AddSym(fmt.Println, "println")
 	}
 	in := os.Stdin
 
@@ -31,19 +31,22 @@ func main() {
 		// Provide an interactive line oriented Read Eval Print Loop (REPL).
 		liner := bufio.NewScanner(in)
 		text, prompt := "", "> "
-		fmt.Printf(prompt)
+		fmt.Print(prompt)
 		for liner.Scan() {
 			text += liner.Text()
-			err := interp.Eval(text + "\n")
+			res, err := interp.Eval(text + "\n")
 			if err == nil {
+				if res != nil {
+					fmt.Println(": ", res)
+				}
 				text, prompt = "", "> "
 			} else if errors.Is(err, scanner.ErrBlock) {
 				prompt = ">> "
 			} else {
-				text, prompt = "", "> "
 				fmt.Println("Error:", err)
+				text, prompt = "", "> "
 			}
-			fmt.Printf(prompt)
+			fmt.Print(prompt)
 		}
 		return
 	}
@@ -52,7 +55,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := interp.Eval(string(buf)); err != nil {
+	if _, err := interp.Eval(string(buf)); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -23,7 +23,7 @@ func New(p *parser.Parser) (i *Interp) {
 	return i
 }
 
-func (i *Interp) Eval(src string) (err error) {
+func (i *Interp) Eval(src string) (res any, err error) {
 	n := &parser.Node{}
 	if n.Child, err = i.Parse(src); err != nil {
 		return
@@ -32,7 +32,7 @@ func (i *Interp) Eval(src string) (err error) {
 		n.Dot(os.Getenv("DOT"), "")
 	}
 	for _, nod := range n.Child {
-		if _, err = i.Run(nod, ""); err != nil {
+		if err = i.Run(nod, ""); err != nil {
 			break
 		}
 	}
@@ -40,7 +40,7 @@ func (i *Interp) Eval(src string) (err error) {
 }
 
 // Run implements a stack based virtual machine which directly walks the AST.
-func (i *Interp) Run(node *parser.Node, scope string) (res []any, err error) {
+func (i *Interp) Run(node *parser.Node, scope string) (err error) {
 	stop := false
 
 	node.Walk2(nil, 0, func(n, a *parser.Node, k int) (ok bool) {
@@ -129,7 +129,7 @@ func (i *Interp) Run(node *parser.Node, scope string) (res []any, err error) {
 		}
 		return true
 	})
-	return nil, nil
+	return nil
 }
 
 // getSym searches for an existing symbol starting from the deepest scope.

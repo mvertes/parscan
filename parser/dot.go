@@ -20,8 +20,11 @@ func (*Parser) Adot(nodes []*Node, c string) {
 func (n *Node) Dot(c, s string) {
 	dw, cmd := dotWriter(c)
 	n.astDot(dw, s)
-	if cmd != nil {
-		cmd.Wait()
+	if cmd == nil {
+		return
+	}
+	if err := cmd.Wait(); err != nil {
+		log.Fatal(err)
 	}
 }
 
