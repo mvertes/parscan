@@ -63,8 +63,11 @@ func (t *Token) IsSeparator() bool { return t.kind == Separator }
 
 func (t *Token) Name() string {
 	name := t.content
+	if t.start > 1 {
+		return name[:t.start] + ".."
+	}
 	if t.start > 0 {
-		name = name[:t.start] + ".." + name[len(name)-t.end:]
+		return name[:t.start] + ".." + name[len(name)-t.end:]
 	}
 	return name
 }
@@ -295,7 +298,8 @@ func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 		}
 		esc = canEscape && r == '\\' && !esc
 	}
-	return
+	ok = prop&EosValidEnd != 0
+	return s, ok
 }
 
 func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {

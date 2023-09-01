@@ -46,8 +46,8 @@ func (i *Interp) Run(node *parser.Node, scope string) (err error) {
 	node.Walk2(nil, 0, func(n, a *parser.Node, k int) (ok bool) {
 		// Node pre-order processing.
 		switch n.Kind {
-		case parser.StmtBloc:
-			if a != nil && a.Kind == parser.IfStmt {
+		case parser.BlockStmt:
+			if a != nil && a.Kind == parser.StmtIf {
 				// Control-flow in 'if' sub-tree
 				if k == 1 {
 					// 'if' first body branch, evaluated when condition is true.
@@ -59,7 +59,7 @@ func (i *Interp) Run(node *parser.Node, scope string) (err error) {
 				// 'else' body branch, evaluated when condition is false.
 				return !i.pop().(bool)
 			}
-		case parser.FuncDecl:
+		case parser.DeclFunc:
 			i.declareFunc(n, scope)
 			return false
 		}
@@ -71,7 +71,7 @@ func (i *Interp) Run(node *parser.Node, scope string) (err error) {
 		}
 		l := len(i.stack)
 		switch n.Kind {
-		case parser.NumberLit:
+		case parser.LiteralNumber:
 			switch v := n.Value().(type) {
 			case int64:
 				i.push(int(v))
@@ -82,27 +82,27 @@ func (i *Interp) Run(node *parser.Node, scope string) (err error) {
 				err = fmt.Errorf("type not supported: %T\n", v)
 				return false
 			}
-		case parser.StringLit:
+		case parser.LiteralString:
 			i.push(n.Block())
-		case parser.InfOp:
+		case parser.OpInferior:
 			i.stack[l-2] = i.stack[l-2].(int) < i.stack[l-1].(int)
 			i.stack = i.stack[:l-1]
-		case parser.AddOp:
+		case parser.OpAdd:
 			i.stack[l-2] = i.stack[l-2].(int) + i.stack[l-1].(int)
 			i.stack = i.stack[:l-1]
-		case parser.SubOp:
+		case parser.OpSubtract:
 			i.stack[l-2] = i.stack[l-2].(int) - i.stack[l-1].(int)
 			i.stack = i.stack[:l-1]
-		case parser.MulOp:
+		case parser.OpMultiply:
 			i.stack[l-2] = i.stack[l-2].(int) * i.stack[l-1].(int)
 			i.stack = i.stack[:l-1]
-		case parser.AssignOp, parser.DefOp:
+		case parser.OpAssign, parser.OpDefine:
 			i.stack[i.stack[l-2].(int)] = i.stack[l-1]
 			i.stack = i.stack[:l-2]
-		case parser.ReturnStmt:
+		case parser.StmtReturn:
 			stop = true
 			return false
-		case parser.CallExpr:
+		case parser.ExprCall:
 			i.push(len(n.Child[1].Child)) // number of arguments to call
 			i.callFunc(n)
 		case parser.Ident:

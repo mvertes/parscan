@@ -2,46 +2,50 @@ package parser
 
 import "fmt"
 
+// kind defines the AST node kind. Its name is the concatenation
+// of a category (Block, Decl, Expr, Op, Stmt) and an instance name.
 type Kind int
 
 const (
 	Undefined = Kind(iota)
-	FuncDecl
-	CallExpr
-	IfStmt
-	StmtBloc
-	ReturnStmt
+	BlockParen
+	BlockStmt
+	Comment
+	DeclFunc
+	ExprCall
 	Ident
-	StringLit
-	NumberLit
-	ParBloc
-	DotOp
-	MulOp
-	AddOp
-	SubOp
-	AssignOp
-	DefOp
-	InfOp
+	LiteralNumber
+	LiteralString
+	OpAdd
+	OpAssign
+	OpDefine
+	OpDot
+	OpInferior
+	OpMultiply
+	OpSubtract
+	StmtIf
+	StmtReturn
 )
 
 var kindString = [...]string{
-	Undefined:  "Undefined",
-	FuncDecl:   "FuncDecl",
-	CallExpr:   "CallExpr",
-	IfStmt:     "IfStmt",
-	StmtBloc:   "StmtBloc",
-	ReturnStmt: "ReturnStmt",
-	Ident:      "Ident",
-	StringLit:  "StringLit",
-	NumberLit:  "NumberLit",
-	ParBloc:    "ParBloc",
-	DotOp:      "DotOp",
-	MulOp:      "MulOp",
-	AddOp:      "AddOP",
-	SubOp:      "SubOp",
-	AssignOp:   "AssignOp",
-	DefOp:      "DefOp",
-	InfOp:      "InfOp",
+	Undefined:     "Undefined",
+	BlockParen:    "BlockParen",
+	BlockStmt:     "BlockStmt",
+	Comment:       "Comment",
+	DeclFunc:      "DeclFunc",
+	ExprCall:      "ExprCall",
+	Ident:         "Ident",
+	LiteralString: "LiteralString",
+	LiteralNumber: "LiteralNumber",
+	OpAdd:         "OpAdd",
+	OpAssign:      "OpAssign",
+	OpDefine:      "OpDefine",
+	OpDot:         "OpDot",
+	OpInferior:    "OpInferior",
+	OpMultiply:    "OpMultiply",
+	OpSubtract:    "OpSubtract",
+	StmtIf:        "StmtIf",
+	StmtReturn:    "StmtReturn",
 }
 
 func (k Kind) String() string {

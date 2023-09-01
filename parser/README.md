@@ -53,7 +53,7 @@ A successful test must be provided to check the status.
 - [ ] full `if` statement (including `else`, `else if`)
 - [x] init expressions in `if` statements
 - [x] statement blocks
-- [ ] comments
+- [x] comments
 - [ ] for statement
 - [ ] switch statement
 - [ ] select statement

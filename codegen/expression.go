@@ -33,7 +33,7 @@ func postCallExpr(x extNode) error {
 
 func usedRet(n *parser.Node) bool {
 	switch n.Kind {
-	case parser.Undefined, parser.StmtBloc:
+	case parser.Undefined, parser.BlockStmt:
 		return false
 	default:
 		return true

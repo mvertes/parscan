@@ -1,6 +1,8 @@
 package parser
 
-import "github.com/gnolang/parscan/scanner"
+import (
+	"github.com/gnolang/parscan/scanner"
+)
 
 const (
 	Stmt = 1 << iota
@@ -43,13 +45,16 @@ func (p *Parser) ParseTokens(tokens []scanner.Token) (roots []*Node, err error) 
 			Token: t,
 			Kind:  p.Spec[t.Name()].Kind,
 		}
+		if c.Kind == Comment {
+			continue
+		}
 		if t.IsOperator() && (i == 0 || tokens[i-1].IsOperator()) {
 			unaryOp[c] = true
 		}
 		if c.Kind == Undefined {
 			switch t.Kind() {
 			case scanner.Number:
-				c.Kind = NumberLit
+				c.Kind = LiteralNumber
 			case scanner.Identifier:
 				c.Kind = Ident
 			}
@@ -80,7 +85,7 @@ func (p *Parser) ParseTokens(tokens []scanner.Token) (roots []*Node, err error) 
 					}
 					lce.Child = []*Node{{Token: lce.Token, Child: lce.Child, Kind: lce.Kind}}
 					lce.Token = scanner.NewToken("Call", c.Pos())
-					lce.Kind = CallExpr
+					lce.Kind = ExprCall
 				}
 			}
 			tcont := t.Content()

@@ -47,7 +47,7 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 		nd := notes[n]
 
 		switch n.Kind {
-		case parser.FuncDecl:
+		case parser.DeclFunc:
 			fname := n.Child[0].Content()
 			c.addSym(len(c.Code), scope+fname, false, n)
 			scope = pushScope(scope, fname)
@@ -59,9 +59,9 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 				fnote.fsp++
 			}
 
-		case parser.StmtBloc:
+		case parser.BlockStmt:
 			nd.ipstart = len(c.Code)
-			if a != nil && a.Kind == parser.IfStmt && k == 1 {
+			if a != nil && a.Kind == parser.StmtIf && k == 1 {
 				c.Emit(n, vm1.JumpFalse, 0) // location to be updated in post IfStmt
 			}
 		}
@@ -72,43 +72,43 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 		x := extNode{c, n, a, k}
 
 		switch n.Kind {
-		case parser.AddOp:
+		case parser.OpAdd:
 			c.Emit(n, vm1.Add)
 
-		case parser.CallExpr:
+		case parser.ExprCall:
 			err = postCallExpr(x)
 
-		case parser.DefOp:
+		case parser.OpDefine:
 			// Define operation, global vars only. TODO: on local frame too
 			l := c.addSym(nil, n.Child[0].Content(), false, n)
 			c.Emit(n, vm1.Assign, int64(l))
 
-		case parser.FuncDecl:
+		case parser.DeclFunc:
 			scope = popScope(scope)
 			fnote = notes[frameNode[len(frameNode)-1]]
 
 		case parser.Ident:
 			ident := n.Content()
-			if len(n.Child) > 0 || a.Kind == parser.FuncDecl {
+			if len(n.Child) > 0 || a.Kind == parser.DeclFunc {
 				break
 			}
 			if s, _, ok := c.getSym(ident, scope); ok {
 				if s.local {
 					c.Emit(n, vm1.Fdup, int64(s.index))
-				} else if a != nil && a.Kind == parser.AssignOp {
+				} else if a != nil && a.Kind == parser.OpAssign {
 					c.Emit(n, vm1.Push, int64(s.index))
 				} else if _, ok := c.Data[s.index].(int); !ok {
 					c.Emit(n, vm1.Dup, int64(s.index))
 				}
 			}
 
-		case parser.IfStmt:
+		case parser.StmtIf:
 			ifBodyStart := notes[n.Child[1]].ipstart
 			ifBodyEnd := notes[n.Child[1]].ipend
 			c.Code[ifBodyStart][2] = int64(ifBodyEnd - ifBodyStart)
 			// TODO: handle 'else'
 
-		case parser.NumberLit:
+		case parser.LiteralNumber:
 			// A literal number can be a float or an integer, or a big number
 			switch v := n.Value().(type) {
 			case int64:
@@ -119,22 +119,22 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 				err = fmt.Errorf("type not supported: %T\n", v)
 			}
 
-		case parser.ReturnStmt:
+		case parser.StmtReturn:
 			fun := frameNode[len(frameNode)-1]
 			c.Emit(n, vm1.Return, int64(len(n.Child)), int64(len(fun.Child[1].Child)))
 
-		case parser.StmtBloc:
+		case parser.BlockStmt:
 			nd.ipend = len(c.Code)
 
-		case parser.StringLit:
+		case parser.LiteralString:
 			p := len(c.Data)
 			c.Data = append(c.Data, n.Block())
 			c.Emit(n, vm1.Dup, int64(p))
 
-		case parser.InfOp:
+		case parser.OpInferior:
 			c.Emit(n, vm1.Lower)
 
-		case parser.SubOp:
+		case parser.OpSubtract:
 			c.Emit(n, vm1.Sub)
 		}
 
@@ -143,7 +143,7 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 		}
 
 		// TODO: Fix this temporary hack to compute an entry point
-		if c.Entry < 0 && len(scope) == 0 && n.Kind != parser.FuncDecl {
+		if c.Entry < 0 && len(scope) == 0 && n.Kind != parser.DeclFunc {
 			c.Entry = len(c.Code) - 1
 			if c.Entry >= 0 && len(c.Code) > c.Entry && c.Code[c.Entry][1] == vm1.Return {
 				c.Entry++

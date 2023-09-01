@@ -147,6 +147,9 @@ def"`,
 	src: "return // quit\nbegin",
 	tok: `"return" "// quit" " " "begin" `,
 }, { // #19
+	src: "return // quit",
+	tok: `"return" "// quit" `,
+}, { // #20
 	src: "println(3 /* argh ) */)",
 	tok: `"println" "(3 /* argh ) */)" `,
 }}

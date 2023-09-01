@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"log"
 	"os"
 	"testing"
 
@@ -45,27 +46,42 @@ var GoScanner = &scanner.Scanner{
 		"`":  "`",
 		"//": "\n",
 	},
+	BlockProp: map[string]uint{
+		"(":  scanner.CharBlock,
+		"{":  scanner.CharBlock,
+		"[":  scanner.CharBlock,
+		`"`:  scanner.CharStr | scanner.StrEsc | scanner.StrNonl,
+		"`":  scanner.CharStr,
+		"'":  scanner.CharStr | scanner.StrEsc,
+		"/*": scanner.CharStr,
+		"//": scanner.CharStr | scanner.ExcludeEnd | scanner.EosValidEnd,
+	},
 }
 
 var GoParser = &Parser{
 	Scanner: GoScanner,
 	Spec: map[string]NodeSpec{
-		".":      {DotOp, Call, 3},
-		"*":      {MulOp, 0, 4},
-		"+":      {AddOp, 0, 5},
-		"-":      {SubOp, 0, 5},
-		"<":      {InfOp, 0, 6},
-		":=":     {DefOp, 0, 7},
-		"=":      {AssignOp, 0, 7},
-		"if":     {IfStmt, Stmt | ExprSep, 0},
-		"func":   {FuncDecl, Decl | Call, 0},
-		"return": {ReturnStmt, Stmt, 0},
-		"{..}":   {StmtBloc, ExprSep, 0},
-		"(..)":   {ParBloc, Call, 0},
+		".":      {Kind: OpDot, Flags: Call, Order: 3},
+		"*":      {Kind: OpMultiply, Order: 4},
+		"+":      {Kind: OpAdd, Order: 5},
+		"-":      {Kind: OpSubtract, Order: 5},
+		"<":      {Kind: OpInferior, Order: 6},
+		":=":     {Kind: OpDefine, Order: 7},
+		"=":      {Kind: OpAssign, Order: 7},
+		"if":     {Kind: StmtIf, Flags: Stmt | ExprSep},
+		"func":   {Kind: DeclFunc, Flags: Decl | Call},
+		"return": {Kind: StmtReturn, Flags: Stmt},
+		"{..}":   {Kind: BlockStmt, Flags: ExprSep},
+		"(..)":   {Kind: BlockParen, Flags: Call},
+		"//..":   {Kind: Comment},
+		"/*..":   {Kind: Comment},
 	},
 }
 
-func init() { GoParser.Init() }
+func init() {
+	GoParser.Init()
+	log.SetFlags(log.Lshortfile)
+}
 
 func TestParse(t *testing.T) {
 	for _, test := range goTests {
@@ -173,6 +189,9 @@ var goTests = []struct {
 }, { // #25
 	src: "f(i) + f(j)",
 	dot: `digraph ast { 0 [label=""]; 1 [label="+"]; 0 -> 1; 2 [label="Call"]; 1 -> 2; 3 [label="f"]; 2 -> 3; 4 [label="(..)"]; 2 -> 4; 5 [label="i"]; 4 -> 5; 6 [label="Call"]; 1 -> 6; 7 [label="f"]; 6 -> 7; 8 [label="(..)"]; 6 -> 8; 9 [label="j"]; 8 -> 9; }`,
+}, { // #26
+	src: "a := 1 // This is a comment",
+	dot: `digraph ast { 0 [label=""]; 1 [label=":="]; 0 -> 1; 2 [label="a"]; 1 -> 2; 3 [label="1"]; 1 -> 3; }`,
 	//src: "f(i) + f(j)(4)", // not ok
 	/*
 	   }, { // #26
