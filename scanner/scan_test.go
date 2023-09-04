@@ -152,4 +152,7 @@ def"`,
 }, { // #20
 	src: "println(3 /* argh ) */)",
 	tok: `"println" "(3 /* argh ) */)" `,
+}, { // #21
+	src: `println("in f")`,
+	tok: `"println" "(\"in f\")" `,
 }}

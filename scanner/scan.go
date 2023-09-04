@@ -320,11 +320,11 @@ func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {
 		} else if strings.HasSuffix(s, start) {
 			n++
 		} else if m := sc.sdre.FindStringSubmatch(s); len(m) > 1 {
-			str, ok := sc.getStr(src[i:], len(m[1]))
+			str, ok := sc.getStr(src[nstart+i:], len(m[1]))
 			if !ok {
 				return s, false
 			}
-			skip = i + len(str) - 1
+			skip = nstart + i + len(str) - 1
 		}
 		if n == 0 {
 			if prop&ExcludeEnd != 0 {
