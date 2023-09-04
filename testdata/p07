@@ -1,0 +1,5 @@
+func f1() { println("in f1") }
+
+func f2() { println("in f2"); f1() }
+
+f2()

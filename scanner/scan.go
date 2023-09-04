@@ -108,7 +108,7 @@ func (sc *Scanner) IsId(r rune) bool {
 }
 
 func (sc *Scanner) Init() {
-	// Build a regular expression to match all string delimiters.
+	// Build a regular expression to match all string start delimiters at once.
 	re := "("
 	for s, p := range sc.BlockProp {
 		if p&CharStr == 0 {

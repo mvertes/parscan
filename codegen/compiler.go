@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/gnolang/parscan/parser"
@@ -84,8 +85,14 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 			c.Emit(n, vm1.Assign, int64(l))
 
 		case parser.DeclFunc:
+			fun := frameNode[len(frameNode)-1]
+			if len(fun.Child) == 3 { // no return values
+				if c.Code[len(c.Code)-1][1] != vm1.Return {
+					c.Emit(n, vm1.Return, 0, int64(len(fun.Child[1].Child)))
+				}
+			}
 			scope = popScope(scope)
-			fnote = notes[frameNode[len(frameNode)-1]]
+			fnote = notes[fun]
 
 		case parser.Ident:
 			ident := n.Content()
@@ -121,7 +128,15 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 
 		case parser.StmtReturn:
 			fun := frameNode[len(frameNode)-1]
-			c.Emit(n, vm1.Return, int64(len(n.Child)), int64(len(fun.Child[1].Child)))
+			nret := 0
+			if len(fun.Child) > 3 {
+				if ret := fun.Child[2]; ret.Kind == parser.BlockParen {
+					nret = len(ret.Child)
+				} else {
+					nret = 1
+				}
+			}
+			c.Emit(n, vm1.Return, int64(nret), int64(len(fun.Child[1].Child)))
 
 		case parser.BlockStmt:
 			nd.ipend = len(c.Code)
@@ -151,6 +166,17 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 		}
 		return true
 	})
+
+	log.Println("main:", c.symbols["main"])
+	if s, _, ok := c.getSym("main", ""); ok {
+		if i, ok := c.codeIndex(s); ok {
+			// Internal call is always relative to instruction pointer.
+			c.Emit(nil, vm1.Call, int64(i-len(c.Code)))
+			c.Entry = len(c.Code) - 1
+		}
+		log.Println(vm1.Disassemble(c.Code))
+	}
+
 	return
 }
 
@@ -168,7 +194,11 @@ func (c *Compiler) addSym(v any, name string, local bool, n *parser.Node) int {
 }
 
 func (c *Compiler) Emit(n *parser.Node, op ...int64) int {
-	op = append([]int64{int64(n.Pos())}, op...)
+	var pos int64
+	if n != nil {
+		pos = int64(n.Pos())
+	}
+	op = append([]int64{pos}, op...)
 	l := len(c.Code)
 	c.Code = append(c.Code, op)
 	return l

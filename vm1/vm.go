@@ -2,6 +2,7 @@ package vm1
 
 import (
 	"fmt"     // for tracing only
+	"log"     // for tracing only
 	"reflect" // for optional CallX only
 	"strconv" // for tracing only
 )
@@ -79,7 +80,7 @@ func (m *Machine) Run() (err error) {
 				op3 = strconv.Itoa(int(c[3]))
 			}
 		}
-		fmt.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-9s %-4s %-4s] mem:%v\n", ip, sp, fp, strop[c[1]], op2, op3, mem)
+		log.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-9s %-4s %-4s] mem:%v\n", ip, sp, fp, strop[c[1]], op2, op3, mem)
 	}
 
 	for {

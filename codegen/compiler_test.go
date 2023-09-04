@@ -12,7 +12,7 @@ import (
 
 func TestCodeGen(t *testing.T) {
 	log.SetFlags(log.Lshortfile)
-	for _, test := range tests {
+	for _, test := range codeGenTests {
 		test := test
 		t.Run("", func(t *testing.T) {
 			c := NewCompiler()
@@ -32,13 +32,13 @@ func TestCodeGen(t *testing.T) {
 			t.Log("data:", c.Data)
 			t.Log("code:", vm1.Disassemble(c.Code))
 			if s := vm1.Disassemble(c.Code); s != test.asm {
-				t.Errorf("got error %#v, want error %#v", s, test.asm)
+				t.Errorf("got %#v, want %#v", s, test.asm)
 			}
 		})
 	}
 }
 
-var tests = []struct {
+var codeGenTests = []struct {
 	src, asm, sym, err string
 }{{ // #00
 	src: "1+2",
@@ -55,4 +55,4 @@ var tests = []struct {
 }, { // #04
 	src: "func add(a int, b int) int { return a + b }",
 	asm: "Fdup -2\nFdup -3\nAdd\nReturn 1 2\n",
-}, {}}
+}}
