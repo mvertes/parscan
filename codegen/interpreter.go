@@ -21,7 +21,7 @@ func NewInterpreter(p *parser.Parser) *Interpreter {
 
 func (i *Interpreter) Eval(src string) (res any, err error) {
 	n := &parser.Node{}
-	if n.Child, err = i.Parse(src); err != nil {
+	if n.Child, err = i.Parse(src, n); err != nil {
 		return res, err
 	}
 	if debug {

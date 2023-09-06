@@ -3,9 +3,9 @@ package parser
 import "github.com/gnolang/parscan/scanner"
 
 type Node struct {
-	Child         []*Node // sub-tree nodes
-	scanner.Token         // token at origin of the node
-	Kind                  // Node kind, depends on the language spec
+	Child          []*Node // sub-tree nodes
+	*scanner.Token         // token at origin of the node
+	Kind                   // Node kind, depends on the language spec
 }
 
 // TODO: remove it in favor of Walk2
@@ -38,4 +38,13 @@ func (n *Node) Walk2(a *Node, i int, in, out func(*Node, *Node, int) bool) (stop
 		stop = !out(n, a, i)
 	}
 	return
+}
+
+func (n *Node) RemoveChild(i int) {
+	n.Child = append(n.Child[:i], n.Child[i+1:]...)
+}
+
+func (n *Node) InsertChild(node *Node, i int) {
+	n.Child = append(n.Child[:i+1], n.Child[i:]...)
+	n.Child[i] = node
 }

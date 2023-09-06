@@ -66,8 +66,8 @@ var GoParser = &Parser{
 		"+":      {Kind: OpAdd, Order: 5},
 		"-":      {Kind: OpSubtract, Order: 5},
 		"<":      {Kind: OpInferior, Order: 6},
-		":=":     {Kind: OpDefine, Order: 7},
-		"=":      {Kind: OpAssign, Order: 7},
+		":=":     {Kind: OpDefine, Flags: MultiOp, Order: 7},
+		"=":      {Kind: OpAssign, Flags: MultiOp, Order: 7},
 		"if":     {Kind: StmtIf, Flags: Stmt | ExprSep},
 		"func":   {Kind: DeclFunc, Flags: Decl | Call},
 		"return": {Kind: StmtReturn, Flags: Stmt},
@@ -90,7 +90,7 @@ func TestParse(t *testing.T) {
 			var err error
 			errStr := ""
 			n := &Node{}
-			if n.Child, err = GoParser.Parse(test.src); err != nil {
+			if n.Child, err = GoParser.Parse(test.src, n); err != nil {
 				errStr = err.Error()
 			}
 			if errStr != test.err {
@@ -192,39 +192,41 @@ var goTests = []struct {
 }, { // #26
 	src: "a := 1 // This is a comment",
 	dot: `digraph ast { 0 [label=""]; 1 [label=":="]; 0 -> 1; 2 [label="a"]; 1 -> 2; 3 [label="1"]; 1 -> 3; }`,
-	//src: "f(i) + f(j)(4)", // not ok
 	/*
-	   }, { // #26
-	   	src: "if i < 2 {return i}; return f(i-2) + f(i-1)",
-	   }, { // #27
-	   	src: "for i < 2 { println(i) }",
-	   }, { // #28
-	   	src: "func f(i int) (int) { if i < 2 { return i}; return f(i-2) + f(i-1) }",
-	   }, { // #29
-	   	src: "a := []int{3, 4}",
-	   }, { // #30
-	   	//src: "a := struct{int}",
-	   	src: "a, b = c, d",
-	   }, { // #31
-	   	//src: "a := [2]int{3, 4}",
-	   	src: `fmt.Println("Hello")`,
-	   	//src: "(1 + 2) * (3 - 4)",
-	   	//src: "1 + (1 + 2)",
-	   }, { // #32
-	   	//src: `a(3)(4)`,
-	   	//src: `3 + 2 * a(3) + 5`,
-	   	//src: `3 + 2 * a(3)(4) + (5)`,
-	   	//src: `(a(3))(4)`,
-	   	src: `a(3)(4)`,
-	   	dot: `digraph ast { 0 [label=""]; 1 [label="Call"]; 0 -> 1; 2 [label="Call"]; 1 -> 2; 3 [label="a"]; 2 -> 3; 4 [label="(..)"]; 2 -> 4; 5 [label="3"]; 4 -> 5; 6 [label="(..)"]; 1 -> 6; 7 [label="4"]; 6 -> 7; }`,
-	   	//src: `println("Hello")`,
-	   	//src: `a.b.c + 3`,
-	   }, { // #33
-	   	src: `func f(a int, b int) {return a + b}; f(1+2)`,
-	   }, { // #34
-	   	src: `if a == 1 {
-	   		println(2)
-	   	}
-	   	println("bye")`,
+		}, { // #27
+			src: "a, b, c = 1, f(2), 3",
+			//src: "f(i) + f(j)(4)", // not ok
+			   }, { // #26
+				src: "if i < 2 {return i}; return f(i-2) + f(i-1)",
+			   }, { // #27
+				src: "for i < 2 { println(i) }",
+			   }, { // #28
+				src: "func f(i int) (int) { if i < 2 { return i}; return f(i-2) + f(i-1) }",
+			   }, { // #29
+				src: "a := []int{3, 4}",
+			   }, { // #30
+				//src: "a := struct{int}",
+				src: "a, b = c, d",
+			   }, { // #31
+				//src: "a := [2]int{3, 4}",
+				src: `fmt.Println("Hello")`,
+				//src: "(1 + 2) * (3 - 4)",
+				//src: "1 + (1 + 2)",
+			   }, { // #32
+				//src: `a(3)(4)`,
+				//src: `3 + 2 * a(3) + 5`,
+				//src: `3 + 2 * a(3)(4) + (5)`,
+				//src: `(a(3))(4)`,
+				src: `a(3)(4)`,
+				dot: `digraph ast { 0 [label=""]; 1 [label="Call"]; 0 -> 1; 2 [label="Call"]; 1 -> 2; 3 [label="a"]; 2 -> 3; 4 [label="(..)"]; 2 -> 4; 5 [label="3"]; 4 -> 5; 6 [label="(..)"]; 1 -> 6; 7 [label="4"]; 6 -> 7; }`,
+				//src: `println("Hello")`,
+				//src: `a.b.c + 3`,
+			   }, { // #33
+				src: `func f(a int, b int) {return a + b}; f(1+2)`,
+			   }, { // #34
+				src: `if a == 1 {
+					println(2)
+				}
+				println("bye")`,
 	*/
 }}

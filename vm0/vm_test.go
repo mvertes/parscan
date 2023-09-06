@@ -14,7 +14,7 @@ func TestEval(t *testing.T) {
 	//n, _ := i.Parse("println(2*5)")
 	//n, _ := i.Parse(`a := 2 + 5`)
 	src := `a := 2`
-	nodes, err := i.Parse(src)
+	nodes, err := i.Parse(src, nil)
 	if err != nil {
 		t.Errorf("error %v", err)
 	}

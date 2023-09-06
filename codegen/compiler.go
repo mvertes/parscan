@@ -167,7 +167,6 @@ func (c *Compiler) CodeGen(node *parser.Node) (err error) {
 		return true
 	})
 
-	log.Println("main:", c.symbols["main"])
 	if s, _, ok := c.getSym("main", ""); ok {
 		if i, ok := c.codeIndex(s); ok {
 			// Internal call is always relative to instruction pointer.

@@ -72,8 +72,8 @@ func (t *Token) Name() string {
 	return name
 }
 
-func NewToken(content string, pos int) Token {
-	return Token{pos, Custom, content, 0, 0, nil}
+func NewToken(content string, pos int) *Token {
+	return &Token{pos, Custom, content, 0, 0, nil}
 }
 
 const ASCIILen = 1 << 7 // 128
@@ -126,7 +126,7 @@ func (sc *Scanner) Init() {
 
 func IsNum(r rune) bool { return '0' <= r && r <= '9' }
 
-func (sc *Scanner) Scan(src string) (tokens []Token, err error) {
+func (sc *Scanner) Scan(src string) (tokens []*Token, err error) {
 	offset := 0
 	s := src
 	for len(s) > 0 {
@@ -157,7 +157,7 @@ func loc(s string, p int) string {
 }
 
 // Next returns the next token in string.
-func (sc *Scanner) Next(src string) (tok Token, err error) {
+func (sc *Scanner) Next(src string) (tok *Token, err error) {
 	p := 0
 
 	// Skip initial separators.
@@ -173,28 +173,28 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 	for i, r := range src {
 		switch {
 		case sc.IsSep(r):
-			return Token{}, nil
+			return &Token{}, nil
 		case sc.IsGroupSep(r):
 			// TODO: handle group separators.
-			return Token{kind: Separator, pos: p + i, content: string(r)}, nil
+			return &Token{kind: Separator, pos: p + i, content: string(r)}, nil
 		case sc.IsLineSep(r):
-			return Token{kind: Separator, pos: p + i, content: " "}, nil
+			return &Token{kind: Separator, pos: p + i, content: " "}, nil
 		case sc.IsStr(r):
 			s, ok := sc.getStr(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
-			return Token{kind: String, pos: p + i, content: s, start: 1, end: 1}, err
+			return &Token{kind: String, pos: p + i, content: s, start: 1, end: 1}, err
 		case sc.IsBlock(r):
 			b, ok := sc.getBlock(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
-			return Token{kind: Block, pos: p + i, content: b, start: 1, end: 1}, err
+			return &Token{kind: Block, pos: p + i, content: b, start: 1, end: 1}, err
 		case sc.IsOp(r):
 			op, isOp := sc.getOp(src[i:])
 			if isOp {
-				return Token{kind: Operator, pos: p + i, content: op}, nil
+				return &Token{kind: Operator, pos: p + i, content: op}, nil
 			}
 			flag := sc.BlockProp[op]
 			if flag&CharStr != 0 {
@@ -202,15 +202,15 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 				if !ok {
 					err = ErrBlock
 				}
-				return Token{kind: String, pos: p + i, content: s, start: len(op), end: len(op)}, err
+				return &Token{kind: String, pos: p + i, content: s, start: len(op), end: len(op)}, err
 			}
 		case IsNum(r):
 			c, v := sc.getNum(src[i:])
-			return Token{kind: Number, pos: p + i, content: c, value: v}, nil
+			return &Token{kind: Number, pos: p + i, content: c, value: v}, nil
 		default:
 			id, isId := sc.getId(src[i:])
 			if isId {
-				return Token{kind: Identifier, pos: p + i, content: id}, nil
+				return &Token{kind: Identifier, pos: p + i, content: id}, nil
 			}
 			flag := sc.BlockProp[id]
 			if flag&CharBlock != 0 {
@@ -218,11 +218,11 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 				if !ok {
 					err = ErrBlock
 				}
-				return Token{kind: Block, pos: p + i, content: s, start: len(id), end: len(id)}, err
+				return &Token{kind: Block, pos: p + i, content: s, start: len(id), end: len(id)}, err
 			}
 		}
 	}
-	return Token{}, nil
+	return &Token{}, nil
 }
 
 func (sc *Scanner) getId(src string) (s string, isId bool) {
@@ -320,11 +320,12 @@ func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {
 		} else if strings.HasSuffix(s, start) {
 			n++
 		} else if m := sc.sdre.FindStringSubmatch(s); len(m) > 1 {
-			str, ok := sc.getStr(src[nstart+i:], len(m[1]))
+			l1 := len(m[1])
+			str, ok := sc.getStr(src[nstart+i+1-l1:], l1)
 			if !ok {
 				return s, false
 			}
-			skip = nstart + i + len(str) - 1
+			skip = nstart + i + len(str) - l1
 		}
 		if n == 0 {
 			if prop&ExcludeEnd != 0 {

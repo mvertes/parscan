@@ -19,7 +19,7 @@ func TestCodeGen(t *testing.T) {
 			c.AddSym(fmt.Println, "println")
 			n := &parser.Node{}
 			var err error
-			if n.Child, err = golang.GoParser.Parse(test.src); err != nil {
+			if n.Child, err = golang.GoParser.Parse(test.src, n); err != nil {
 				t.Error(err)
 			}
 			errStr := ""

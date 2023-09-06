@@ -25,7 +25,7 @@ func New(p *parser.Parser) (i *Interp) {
 
 func (i *Interp) Eval(src string) (res any, err error) {
 	n := &parser.Node{}
-	if n.Child, err = i.Parse(src); err != nil {
+	if n.Child, err = i.Parse(src, n); err != nil {
 		return
 	}
 	if debug {

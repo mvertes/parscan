@@ -50,7 +50,10 @@ func (n *Node) astDot(out io.Writer, label string) {
 		for _, c := range nod.Child {
 			anc[c] = nod
 		}
-		name := strings.ReplaceAll(nod.Name(), `"`, `\"`)
+		name := ""
+		if nod.Token != nil {
+			name = strings.ReplaceAll(nod.Name(), `"`, `\"`)
+		}
 		fmt.Fprintf(out, "%d [label=\"%s\"]; ", index[nod], name)
 		if anc[nod] != nil {
 			fmt.Fprintf(out, "%d -> %d; ", index[anc[nod]], index[nod])

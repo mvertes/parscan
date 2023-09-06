@@ -10,6 +10,7 @@ const (
 	Call
 	Index
 	Decl
+	MultiOp
 )
 
 type NodeSpec struct {
@@ -23,27 +24,31 @@ type Parser struct {
 	Spec map[string]NodeSpec
 }
 
-func (p *Parser) Parse(src string) (n []*Node, err error) {
+func (p *Parser) Parse(src string, ctx *Node) (nodes []*Node, err error) {
 	tokens, err := p.Scan(src)
 	if err != nil {
 		return
 	}
-	return p.ParseTokens(tokens)
+	return p.ParseTokens(tokens, ctx)
 }
 
-func (p *Parser) ParseTokens(tokens []scanner.Token) (roots []*Node, err error) {
+func (p *Parser) ParseTokens(tokens []*scanner.Token, ctx *Node) (nodes []*Node, err error) {
 	// TODO: error handling.
 	var root *Node              // current root node
 	var expr *Node              // current expression root node
 	var prev, c *Node           // previous and current nodes
 	var lce *Node               // last complete expression node
 	unaryOp := map[*Node]bool{} // unaryOp indicates if a node is an unary operator.
+	prevToken := map[*Node]*scanner.Token{}
 
 	for i, t := range tokens {
 		prev = c
 		c = &Node{
 			Token: t,
 			Kind:  p.Spec[t.Name()].Kind,
+		}
+		if i > 0 {
+			prevToken[c] = tokens[i-1]
 		}
 		if c.Kind == Comment {
 			continue
@@ -90,7 +95,7 @@ func (p *Parser) ParseTokens(tokens []scanner.Token) (roots []*Node, err error) 
 			}
 			tcont := t.Content()
 			s := tcont[t.Start() : len(tcont)-t.End()]
-			n2, err := p.Parse(s)
+			n2, err := p.Parse(s, c)
 			if err != nil {
 				return nil, err
 			}
@@ -99,10 +104,12 @@ func (p *Parser) ParseTokens(tokens []scanner.Token) (roots []*Node, err error) 
 
 		// Process the end of an expression or a statement.
 		if t.IsSeparator() {
-			if expr != nil && p.hasProp(root, Stmt) {
+			if t.Content() == "," && ctx.Kind != BlockParen {
+				// ignore comma separator in field lists
+			} else if expr != nil && p.hasProp(root, Stmt) {
 				root.Child = append(root.Child, expr)
 				if p.hasProp(expr, ExprSep) {
-					roots = append(roots, root)
+					nodes = append(nodes, root)
 					root = nil
 				}
 				expr = nil
@@ -110,7 +117,7 @@ func (p *Parser) ParseTokens(tokens []scanner.Token) (roots []*Node, err error) 
 				if expr != nil {
 					root = expr
 				}
-				roots = append(roots, root)
+				nodes = append(nodes, root)
 				expr = nil
 				root = nil
 			}
@@ -190,9 +197,31 @@ func (p *Parser) ParseTokens(tokens []scanner.Token) (roots []*Node, err error) 
 		root = expr
 	}
 	if root != nil {
-		roots = append(roots, root)
+		// /*
+		if p.hasProp(root, MultiOp) {
+			for {
+				if !p.fixMultiOp(root, prevToken) {
+					break
+				}
+			}
+		}
+		// */
+		nodes = append(nodes, root)
 	}
-	return roots, err
+	return nodes, err
+}
+
+func (p *Parser) fixMultiOp(root *Node, prevToken map[*Node]*scanner.Token) bool {
+	for i, c := range root.Child {
+		for j, cc := range c.Child {
+			if pt := prevToken[cc]; pt != nil && pt.Content() == "," {
+				c.RemoveChild(j)
+				root.InsertChild(cc, i)
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (p *Parser) hasProp(n *Node, prop uint) bool { return p.Spec[n.Name()].Flags&prop != 0 }
@@ -202,7 +231,7 @@ func (p *Parser) isExpr(n *Node) bool             { return !p.isStatement(n) && 
 func (p *Parser) isSep(n *Node) bool              { return n.Token.Kind() == scanner.Separator }
 func (p *Parser) IsBlock(n *Node) bool            { return n.Token.Kind() == scanner.Block }
 
-func (p *Parser) precedenceToken(t scanner.Token) int {
+func (p *Parser) precedenceToken(t *scanner.Token) int {
 	s := t.Content()
 	if l := t.Start(); l > 0 {
 		s = s[:l]
@@ -210,6 +239,6 @@ func (p *Parser) precedenceToken(t scanner.Token) int {
 	return p.Spec[s].Order
 }
 
-func (p *Parser) canCallToken(t scanner.Token) bool {
+func (p *Parser) canCallToken(t *scanner.Token) bool {
 	return p.precedenceToken(t) == 0 || p.Spec[t.Name()].Flags&Call != 0
 }

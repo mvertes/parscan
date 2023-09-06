@@ -79,7 +79,7 @@ func TestScan(t *testing.T) {
 	}
 }
 
-func tokStr(tokens []Token) (s string) {
+func tokStr(tokens []*Token) (s string) {
 	for _, t := range tokens {
 		s += fmt.Sprintf("%#v ", t.content)
 	}
@@ -155,4 +155,7 @@ def"`,
 }, { // #21
 	src: `println("in f")`,
 	tok: `"println" "(\"in f\")" `,
+}, { // #22
+	src: "a, b = 1, 2",
+	tok: `"a" "," "b" "=" "1" "," "2" `,
 }}
