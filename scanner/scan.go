@@ -83,6 +83,7 @@ type Scanner struct {
 	CharProp  [ASCIILen]uint    // special Character properties
 	End       map[string]string // end delimiters, indexed by start
 	BlockProp map[string]uint   // block properties
+	SkipSemi  map[string]bool   // words skipping automatic semicolon insertion after newline
 	DotNum    bool              // true if a number can start with '.'
 	IdAscii   bool              // true if an identifier can be in ASCII only
 	Num_      bool              // true if a number can contain _ character
@@ -97,13 +98,13 @@ func (sc *Scanner) HasProp(r rune, p uint) bool {
 	return sc.CharProp[r]&p != 0
 }
 
-func (sc *Scanner) IsOp(r rune) bool       { return sc.HasProp(r, CharOp) }
-func (sc *Scanner) IsSep(r rune) bool      { return sc.HasProp(r, CharSep) }
-func (sc *Scanner) IsLineSep(r rune) bool  { return sc.HasProp(r, CharLineSep) }
-func (sc *Scanner) IsGroupSep(r rune) bool { return sc.HasProp(r, CharGroupSep) }
-func (sc *Scanner) IsStr(r rune) bool      { return sc.HasProp(r, CharStr) }
-func (sc *Scanner) IsBlock(r rune) bool    { return sc.HasProp(r, CharBlock) }
-func (sc *Scanner) IsId(r rune) bool {
+func (sc *Scanner) isOp(r rune) bool       { return sc.HasProp(r, CharOp) }
+func (sc *Scanner) isSep(r rune) bool      { return sc.HasProp(r, CharSep) }
+func (sc *Scanner) isLineSep(r rune) bool  { return sc.HasProp(r, CharLineSep) }
+func (sc *Scanner) isGroupSep(r rune) bool { return sc.HasProp(r, CharGroupSep) }
+func (sc *Scanner) isStr(r rune) bool      { return sc.HasProp(r, CharStr) }
+func (sc *Scanner) isBlock(r rune) bool    { return sc.HasProp(r, CharBlock) }
+func (sc *Scanner) isDir(r rune) bool {
 	return !sc.HasProp(r, CharOp|CharSep|CharLineSep|CharGroupSep|CharStr|CharBlock)
 }
 
@@ -124,7 +125,7 @@ func (sc *Scanner) Init() {
 	sc.sdre = regexp.MustCompile(re)
 }
 
-func IsNum(r rune) bool { return '0' <= r && r <= '9' }
+func isNum(r rune) bool { return '0' <= r && r <= '9' }
 
 func (sc *Scanner) Scan(src string) (tokens []*Token, err error) {
 	offset := 0
@@ -137,11 +138,24 @@ func (sc *Scanner) Scan(src string) (tokens []*Token, err error) {
 		if t.kind == Undefined {
 			break
 		}
+		skip := false
+		if t.kind == Separator && t.content == " " && len(sc.SkipSemi) > 0 {
+			// Check for automatic semi-colon insertion after newline.
+			last := tokens[len(tokens)-1]
+			if last.kind == Identifier && sc.SkipSemi[last.content] ||
+				last.kind == Operator && !sc.SkipSemi[last.content] {
+				skip = true
+			} else {
+				t.content = ";"
+			}
+		}
 		nr := t.pos + len(t.content)
 		s = s[nr:]
 		t.pos += offset
 		offset += nr
-		tokens = append(tokens, t)
+		if !skip {
+			tokens = append(tokens, t)
+		}
 	}
 	return tokens, nil
 }
@@ -163,7 +177,7 @@ func (sc *Scanner) Next(src string) (tok *Token, err error) {
 	// Skip initial separators.
 	for i, r := range src {
 		p = i
-		if !sc.IsSep(r) {
+		if !sc.isSep(r) {
 			break
 		}
 	}
@@ -172,26 +186,26 @@ func (sc *Scanner) Next(src string) (tok *Token, err error) {
 	// Get token according to its first characters.
 	for i, r := range src {
 		switch {
-		case sc.IsSep(r):
+		case sc.isSep(r):
 			return &Token{}, nil
-		case sc.IsGroupSep(r):
+		case sc.isGroupSep(r):
 			// TODO: handle group separators.
 			return &Token{kind: Separator, pos: p + i, content: string(r)}, nil
-		case sc.IsLineSep(r):
+		case sc.isLineSep(r):
 			return &Token{kind: Separator, pos: p + i, content: " "}, nil
-		case sc.IsStr(r):
+		case sc.isStr(r):
 			s, ok := sc.getStr(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
 			return &Token{kind: String, pos: p + i, content: s, start: 1, end: 1}, err
-		case sc.IsBlock(r):
+		case sc.isBlock(r):
 			b, ok := sc.getBlock(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
 			return &Token{kind: Block, pos: p + i, content: b, start: 1, end: 1}, err
-		case sc.IsOp(r):
+		case sc.isOp(r):
 			op, isOp := sc.getOp(src[i:])
 			if isOp {
 				return &Token{kind: Operator, pos: p + i, content: op}, nil
@@ -204,7 +218,7 @@ func (sc *Scanner) Next(src string) (tok *Token, err error) {
 				}
 				return &Token{kind: String, pos: p + i, content: s, start: len(op), end: len(op)}, err
 			}
-		case IsNum(r):
+		case isNum(r):
 			c, v := sc.getNum(src[i:])
 			return &Token{kind: Number, pos: p + i, content: c, value: v}, nil
 		default:
@@ -235,7 +249,7 @@ func (sc *Scanner) getId(src string) (s string, isId bool) {
 
 func (sc *Scanner) nextId(src string) (s string) {
 	for i, r := range src {
-		if !sc.IsId(r) {
+		if !sc.isDir(r) {
 			break
 		}
 		s = src[:i+1]
@@ -245,7 +259,7 @@ func (sc *Scanner) nextId(src string) (s string) {
 
 func (sc *Scanner) getOp(src string) (s string, isOp bool) {
 	for i, r := range src {
-		if !sc.IsOp(r) {
+		if !sc.isOp(r) {
 			break
 		}
 		s = src[:i+1]
@@ -259,7 +273,7 @@ func (sc *Scanner) getOp(src string) (s string, isOp bool) {
 func (sc *Scanner) getNum(src string) (s string, v any) {
 	// TODO: handle hexa, binary, octal, float and eng notations.
 	for i, r := range src {
-		if !IsNum(r) {
+		if !isNum(r) {
 			break
 		}
 		s = src[:i+1]

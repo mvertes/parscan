@@ -49,6 +49,7 @@ A successful test must be provided to check the status.
 - [x] single character block/string delimiters
 - [x] arbitrarly nested blocks and strings
 - [x] multiple characters block/string delimiters
+- [x] semi-colon automatic insertion after newline
 - [x] blocks delimited by operator characters
 - [ ] blocks delimited by identifiers
 - [x] blocks with delimiter inclusion/exclusion rules

@@ -43,7 +43,6 @@ A successful test must be provided to check the status.
 - [ ] unary operator (suffix) expressions
 - [x] operator precedence rules
 - [x] parenthesis in expressions
-- [ ] semi-colon automatic insertion rules
 - [x] call expressions
 - [ ] nested calls
 - [x] index expressions

@@ -55,6 +55,31 @@ var GoScanner = &Scanner{
 		"/*": CharStr,
 		"//": CharStr | ExcludeEnd | EosValidEnd,
 	},
+	SkipSemi: map[string]bool{
+		"++":        true,
+		"--":        true,
+		"case":      true,
+		"chan":      true,
+		"const":     true,
+		"default":   true,
+		"defer":     true,
+		"else":      true,
+		"for":       true,
+		"func":      true,
+		"go":        true,
+		"goto":      true,
+		"if":        true,
+		"import":    true,
+		"interface": true,
+		"map":       true,
+		"package":   true,
+		"range":     true,
+		"select":    true,
+		"struct":    true,
+		"switch":    true,
+		"type":      true,
+		"var":       true,
+	},
 }
 
 func TestScan(t *testing.T) {
@@ -69,9 +94,8 @@ func TestScan(t *testing.T) {
 				errStr = err.Error()
 			}
 			if errStr != test.err {
-				t.Errorf("got error %#v, want error %#v", errStr, test.err)
+				t.Errorf("got error %v, want error %#v", errStr, test.err)
 			}
-			t.Logf("%#v\n%v %v\n", test.src, token, errStr)
 			if result := tokStr(token); result != test.tok {
 				t.Errorf("got %v, want %v", result, test.tok)
 			}
@@ -98,7 +122,7 @@ var tests = []struct {
 	tok: `"abc0" "+" "5" `,
 }, { // #03
 	src: "a+5\na=x-4",
-	tok: `"a" "+" "5" " " "a" "=" "x" "-" "4" `,
+	tok: `"a" "+" "5" ";" "a" "=" "x" "-" "4" `,
 }, { // #04
 	src: `return "hello world" + 4`,
 	tok: `"return" "\"hello world\"" "+" "4" `,
@@ -145,7 +169,7 @@ def"`,
 	tok: `"/* a comment */" "a" "=" "2" `,
 }, { // #18
 	src: "return // quit\nbegin",
-	tok: `"return" "// quit" " " "begin" `,
+	tok: `"return" "// quit" ";" "begin" `,
 }, { // #19
 	src: "return // quit",
 	tok: `"return" "// quit" `,
@@ -158,4 +182,22 @@ def"`,
 }, { // #22
 	src: "a, b = 1, 2",
 	tok: `"a" "," "b" "=" "1" "," "2" `,
+}, { // #23
+	src: "1 + \n2 + 3",
+	tok: `"1" "+" "2" "+" "3" `,
+}, { // #24
+	src: "i++\n2 + 3",
+	tok: `"i" "++" ";" "2" "+" "3" `,
+}, { // #25
+	src: "return\na = 1",
+	tok: `"return" ";" "a" "=" "1" `,
+}, { // #26
+	src: "if\na == 2 { return }",
+	tok: `"if" "a" "==" "2" "{ return }" `,
+}, { // #27
+	src: "f(4)\nreturn",
+	tok: `"f" "(4)" ";" "return" `,
+}, { // #28
+	src: "f(3).\nfield",
+	tok: `"f" "(3)" "." "field" `,
 }}
