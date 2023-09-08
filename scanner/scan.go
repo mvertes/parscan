@@ -49,6 +49,15 @@ type Token struct {
 	value   any
 }
 
+type Tokens []*Token
+
+func (tks Tokens) String() (s string) {
+	for _, t := range tks {
+		s += fmt.Sprintf("%#v ", t.content)
+	}
+	return
+}
+
 func (t *Token) Kind() Kind        { return t.kind }
 func (t *Token) Content() string   { return t.content }
 func (t *Token) Start() int        { return t.start }
@@ -127,7 +136,7 @@ func (sc *Scanner) Init() {
 
 func isNum(r rune) bool { return '0' <= r && r <= '9' }
 
-func (sc *Scanner) Scan(src string) (tokens []*Token, err error) {
+func (sc *Scanner) Scan(src string) (tokens Tokens, err error) {
 	offset := 0
 	s := src
 	for len(s) > 0 {
@@ -139,7 +148,7 @@ func (sc *Scanner) Scan(src string) (tokens []*Token, err error) {
 			break
 		}
 		skip := false
-		if t.kind == Separator && t.content == " " && len(sc.SkipSemi) > 0 {
+		if len(tokens) > 0 && len(sc.SkipSemi) > 0 && t.kind == Separator && t.content == " " {
 			// Check for automatic semi-colon insertion after newline.
 			last := tokens[len(tokens)-1]
 			if last.kind == Identifier && sc.SkipSemi[last.content] ||
@@ -155,6 +164,14 @@ func (sc *Scanner) Scan(src string) (tokens []*Token, err error) {
 		offset += nr
 		if !skip {
 			tokens = append(tokens, t)
+		}
+	}
+	// Insertion of semi-colon at the end of the token stream.
+	if len(tokens) > 0 && len(sc.SkipSemi) > 0 {
+		last := tokens[len(tokens)-1]
+		if !(last.kind == Identifier && sc.SkipSemi[last.content] ||
+			last.kind == Operator && !sc.SkipSemi[last.content]) {
+			tokens = append(tokens, &Token{kind: Separator, content: ";"})
 		}
 	}
 	return tokens, nil
@@ -350,4 +367,14 @@ func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {
 	}
 	ok = prop&EosValidEnd != 0
 	return s, ok
+}
+
+// Index returns the index of the first instance with content s in tokens, or -1 if not found.
+func Index(tokens []*Token, s string) int {
+	for i, t := range tokens {
+		if t.content == s {
+			return i
+		}
+	}
+	return -1
 }
