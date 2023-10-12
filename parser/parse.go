@@ -102,6 +102,8 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 		return nil, nil
 	}
 	switch t := in[0]; t.Id {
+	case lang.For:
+		return p.ParseFor(in)
 	case lang.Func:
 		return p.ParseFunc(in)
 	case lang.If:
@@ -111,6 +113,53 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 	default:
 		return p.ParseExpr(in)
 	}
+}
+
+func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
+	// TODO: detect invalid code.
+	fc := strconv.Itoa(p.labelCount[p.scope+p.fname])
+	prefix := p.fname + "_for" + fc
+	p.labelCount[p.scope+p.fname]++
+	var init, cond, post, body Tokens
+	pre := in[1 : len(in)-1].Split(lang.Semicolon)
+	switch len(pre) {
+	case 1:
+		cond = pre[0]
+	case 3:
+		init, cond, post = pre[0], pre[1], pre[2]
+	default:
+		return nil, fmt.Errorf("invalild for statement")
+	}
+	p.pushScope("for" + fc)
+	defer p.popScope()
+	if len(init) > 0 {
+		if init, err = p.ParseStmt(init); err != nil {
+			return nil, err
+		}
+		out = init
+	}
+	out = append(out, scanner.Token{Id: lang.Label, Str: prefix + "b"})
+	if len(cond) > 0 {
+		if cond, err = p.ParseExpr(cond); err != nil {
+			return nil, err
+		}
+		out = append(out, cond...)
+		out = append(out, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + prefix + "e"})
+	}
+	if body, err = p.Parse(in[len(in)-1].Block()); err != nil {
+		return nil, err
+	}
+	out = append(out, body...)
+	if len(post) > 0 {
+		if post, err = p.ParseStmt(post); err != nil {
+			return nil, err
+		}
+		out = append(out, post...)
+	}
+	out = append(out,
+		scanner.Token{Id: lang.Goto, Str: "goto " + prefix + "b"},
+		scanner.Token{Id: lang.Label, Str: prefix + "e"})
+	return out, err
 }
 
 func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
@@ -182,13 +231,11 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 		if err != nil {
 			return nil, err
 		}
-		//pre := append(Tokens{{Id: lang.Label, Str: prefix + "_b" + ssc}}, blockout...)
 		if sc > 0 {
 			pre = append(pre, scanner.Token{Id: lang.Goto, Str: "goto " + prefix + "_e0"})
 		}
 		pre = append(pre, scanner.Token{Id: lang.Label, Str: prefix + "_e" + ssc})
 		out = append(pre, out...)
-
 		i--
 		ifp := in[:i].LastIndex(lang.If)
 
@@ -198,7 +245,6 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 			ssc = strconv.Itoa(sc)
 			continue
 		}
-
 		pre = Tokens{}
 		var init, cond Tokens
 		initcond := in[ifp+1 : i+1]
@@ -227,8 +273,6 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 		sc++
 		ssc = strconv.Itoa(sc)
 	}
-	log.Println("prefix:", prefix)
-	log.Println("if tokens:", out)
 	return out, err
 }
 

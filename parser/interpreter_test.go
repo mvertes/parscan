@@ -63,4 +63,5 @@ var goTests = []struct {
 	19: {src: "func f(a int) int {return a+2}; f(3) - 2", res: "3"},
 	20: {src: "func f(a int, b int, c int) int {return a+b-c} ; f(7, 1, 3)", res: "5"},
 	21: {src: "func f(a, b, c int) int {return a+b-c} ; f(7, 1, 3)", res: "5"},
+	22: {src: "a := 0; for i := 0; i < 3; i = i+1 {a = a+i}; a", res: "3"},
 }

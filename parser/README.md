@@ -11,13 +11,13 @@ bytecode.
 
 The input of parser is a list of tokens produced by the scanner.
 Multiple tokens are processed at once. The minimal set to get
-meaningful results (not an error or nil) is a complete statemement.
+meaningful results (not an error or nil) is a complete statement.
 
 The output of parser is also a list of tokens, to be consummed by
 the compiler to produce bytecode. The output tokens set is identical
 to the bytecode instructions set except that:
 
-- code locations may be provided as as labels instead of numerical
+- code locations may be provided as labels instead of numerical
   values,
 - memory locations for constants and variables may be provided as
   symbol names instead of numerical values.
@@ -60,7 +60,7 @@ Go language support:
 - [ ] recover statement
 - [ ] go statement
 - [x] if statement (including else and else if)
-- [ ] for statement
+- [x] for statement
 - [ ] switch statement
 - [ ] break statement
 - [ ] continue statement

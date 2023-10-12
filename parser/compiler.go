@@ -147,6 +147,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				ld := len(c.Data)
 				c.Data = append(c.Data, lc)
 				c.addSym(ld, t.Str, lc, symLabel, nil, false)
+				//c.symbols[t.Str] = &symbol{kind: symLabel, value: lc}
 			}
 
 		case lang.JumpFalse:
@@ -157,7 +158,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = s.value.(int)
+				i = s.value.(int) - len(c.Code)
 			}
 			c.Emit(int64(t.Pos), vm.JumpFalse, int64(i))
 
@@ -168,7 +169,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = s.value.(int)
+				i = s.value.(int) - len(c.Code)
 			}
 			c.Emit(int64(t.Pos), vm.Jump, int64(i))
 
@@ -191,7 +192,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 		}
 		s, _, ok := c.getSym(label, "")
 		if !ok {
-			return fmt.Errorf("label not found: %v", label)
+			return fmt.Errorf("label not found: %q", label)
 		}
 		c.Code[t.Beg][2] = int64(s.value.(int) - t.Beg)
 
