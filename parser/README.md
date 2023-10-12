@@ -1,71 +1,112 @@
 # Parser
 
-A parser takes an array of tokens (produced by the scanner) in input and
-returns a node representing a syntax tree. A node is an object
-containing a kind, the corresponding token and the ordered references to
-descendent nodes.
+See if we can build an almost single pass compiler for Go doing syntax
+directed translation, without any complex data structure (no syntax
+tree), only lists of tokens.
 
-```mermaid
-graph LR
-s[ ] --> |source| a(scanner)
---> |tokens| b(parser)
---> |AST| c[ ]
-subgraph parser
-    b
-end
-style s height:0px;
-style c height:0px;
-```
+The goal is to have the shortest and simplest path from source to
+bytecode.
 
-A goal is to make the parser generic enough so it can generate syntax
-trees for most of existing programming languages (no claim of generality
-yet), provided a small set of generating rules per language, and a small
-set of validating rules (yet to be defined) to detect invalid
-constructs.
+## Design
 
-The input tokens are particular in the sense that they include classical
-lexical items such as words, separators, numbers, but also strings and
-nested blocks, which are resolved at scanning stage rather than parsing
-stage. See the scanner for more details.
+The input of parser is a list of tokens produced by the scanner.
+Multiple tokens are processed at once. The minimal set to get
+meaningful results (not an error or nil) is a complete statemement.
 
-The language specification includes the following:
+The output of parser is also a list of tokens, to be consummed by
+the compiler to produce bytecode. The output tokens set is identical
+to the bytecode instructions set except that:
 
-- a scanner specification, to produce the set of possible tokens.
-- a map of node specification per token name. The node specification
-  defines some parameters influing how the tree is generated.
+- code locations may be provided as as labels instead of numerical
+  values,
+- memory locations for constants and variables may be provided as
+  symbol names instead of numerical values.
 
-## Development status
+## Status
 
-A successful test must be provided to check the status.
+Go language support:
 
-- [x] binary operator expressions
-- [x] unary operator (prefix) expressions
-- [ ] unary operator (suffix) expressions
-- [x] operator precedence rules
-- [x] parenthesis in expressions
-- [x] call expressions
-- [ ] nested calls
-- [x] index expressions
-- [x] single assignments
-- [ ] multi assignments
-- [x] simple `if` statement (no `else`)
-- [ ] full `if` statement (including `else`, `else if`)
-- [x] init expressions in `if` statements
-- [x] statement blocks
-- [x] comments
+- [x] named functions
+- [ ] anonymous functions (closures)
+- [ ] methods
+- [x] internal function calls
+- [x] external function calls (calling runtime symbols in interpreter)
+- [ ] export to runtime
+- [ ] builtin calls (new, make, copy, delete, len, cap, ...)
+- [ ] out of order declarations
+- [ ] arbirtrary precision constants
+- [x] basic types
+- [ ] complete numeric types
+- [x] function types
+- [ ] variadic functions
+- [ ] pointers
+- [ ] structures
+- [ ] embedded structures
+- [ ] recursive structures
+- [ ] interfaces
+- [ ] arrays, slices
+- [ ] maps
+- [ ] deterministic maps
+- [ ] channel types
+- [ ] channel operations
+- [x] var defined by assign :=
+- [x] var assign =
+- [ ] var declaration
+- [ ] type declaration
+- [x] func declaration
+- [ ] const declaration
+- [ ] iota expression
+- [ ] defer statement
+- [ ] recover statement
+- [ ] go statement
+- [x] if statement (including else and else if)
 - [ ] for statement
 - [ ] switch statement
+- [ ] break statement
+- [ ] continue statement
+- [ ] fallthrough statement
+- [ ] goto statement
 - [ ] select statement
-- [x] return statement
-- [x] function declaration
-- [ ] method declaration 
-- [ ] anonymous functions (closures)
-- [ ] type declaration
-- [ ] var, const, type single declaration
-- [ ] var, const, type multi declaration
-- [ ] type parametric expressions
-- [x] literal numbers (see scanner)
-- [x] literal strings 
-- [ ] composite literal
-- [ ] import statements
-- [ ] go.mod syntax
+- [x] binary operators
+- [ ] unary operators
+- [ ] logical operators && and ||
+- [ ] assign operators
+- [ ] operator precedence
+- [x] parenthesis expressions
+- [x] call expressions
+- [ ] index expressions
+- [ ] selector expressions
+- [ ] type conversions
+- [ ] type assertions
+- [ ] parametric types (generic)
+- [ ] type parametric functions (generic)
+- [ ] type constraints (generic)
+- [ ] type checking
+- [ ] comment pragmas
+- [ ] packages import
+- [ ] modules
+
+Other items:
+
+- [x] REPL
+- [x] multiline statements in REPL
+- [ ] completion, history in REPL
+- [x] eval strings
+- [x] eval files (including stdin, ...)
+- [x] debug traces for scanner, parser, compiler, bytecode vm
+- [x] simple interpreter tests to exercise from source to execution
+- [ ] compile time error detection and diagnosis
+- [ ] stack dump
+- [ ] symbol tables, data tables, code binded to source lines
+- [ ] interactive debugger: breaks, continue, instrospection, ...
+- [ ] machine level debugger
+- [ ] source level debugger
+- [ ] replay debugger, backward instruction execution
+- [ ] vm monitor: live memory / code display during run
+- [ ] stdlib wrappers a la yaegi
+- [ ] system and environment sandboxing
+- [ ] build constraints (arch, sys, etc)
+- [ ] test command (running go test / benchmark / example files)
+- [ ] skipping / including test files
+- [ ] test coverage
+- [ ] fuzzy tests for scanner, vm, ...

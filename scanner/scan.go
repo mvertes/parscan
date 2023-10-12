@@ -4,124 +4,55 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
+
+	"github.com/gnolang/parscan/lang"
 )
 
-// Kind is the token type kind.
-type Kind uint
-
-const (
-	Undefined Kind = iota
-	Identifier
-	Number
-	Operator
-	Separator
-	String
-	Block
-	Custom
+var (
+	ErrBlock   = errors.New("block not terminated")
+	ErrIllegal = errors.New("illegal token")
 )
-
-const (
-	CharOp = 1 << iota
-	CharNum
-	CharAlpha
-	CharSep
-	CharLineSep
-	CharGroupSep
-	CharStr
-	CharBlock
-	StrEsc
-	StrNonl
-	ExcludeEnd  // exclude end delimiter from content
-	EosValidEnd // end of input string terminates block or string token
-)
-
-var ErrBlock = errors.New("block not terminated")
 
 // Token defines a scanner token.
 type Token struct {
-	pos     int
-	kind    Kind
-	content string
-	start   int
-	end     int
-	value   any
+	Id  lang.TokenId // token identificator
+	Pos int          // position in source
+	Str string       // string in source
+	Beg int          // length of begin delimiter (block, string)
+	End int          // length of end delimiter (block, string)
 }
 
-type Tokens []*Token
-
-func (tks Tokens) String() (s string) {
-	for _, t := range tks {
-		s += fmt.Sprintf("%#v ", t.content)
-	}
-	return
-}
-
-func (t *Token) Kind() Kind        { return t.kind }
-func (t *Token) Content() string   { return t.content }
-func (t *Token) Start() int        { return t.start }
-func (t *Token) End() int          { return t.end }
-func (t *Token) Pos() int          { return t.pos }
-func (t *Token) Block() string     { return t.content[t.start : len(t.content)-t.end] }
-func (t *Token) Prefix() string    { return t.content[:t.start] }
-func (t *Token) Value() any        { return t.value }
-func (t *Token) IsBlock() bool     { return t.kind == Block }
-func (t *Token) IsOperator() bool  { return t.kind == Operator }
-func (t *Token) IsSeparator() bool { return t.kind == Separator }
+func (t *Token) Block() string  { return t.Str[t.Beg : len(t.Str)-t.End] }
+func (t *Token) Prefix() string { return t.Str[:t.Beg] }
 
 func (t *Token) Name() string {
-	name := t.content
-	if t.start > 1 {
-		return name[:t.start] + ".."
+	name := t.Str
+	if t.Beg > 1 {
+		return name[:t.Beg] + ".."
 	}
-	if t.start > 0 {
-		return name[:t.start] + ".." + name[len(name)-t.end:]
+	if t.Beg > 0 {
+		return name[:t.Beg] + ".." + name[len(name)-t.End:]
 	}
 	return name
 }
 
-func NewToken(content string, pos int) *Token {
-	return &Token{pos, Custom, content, 0, 0, nil}
-}
-
-const ASCIILen = 1 << 7 // 128
-
 // Scanner contains the scanner rules for a language.
 type Scanner struct {
-	CharProp  [ASCIILen]uint    // special Character properties
-	End       map[string]string // end delimiters, indexed by start
-	BlockProp map[string]uint   // block properties
-	SkipSemi  map[string]bool   // words skipping automatic semicolon insertion after newline
-	DotNum    bool              // true if a number can start with '.'
-	IdAscii   bool              // true if an identifier can be in ASCII only
-	Num_      bool              // true if a number can contain _ character
+	*lang.Spec
 
 	sdre *regexp.Regexp // string delimiters regular expression
 }
 
-func (sc *Scanner) HasProp(r rune, p uint) bool {
-	if r >= ASCIILen {
-		return false
-	}
-	return sc.CharProp[r]&p != 0
-}
+func NewScanner(spec *lang.Spec) *Scanner {
+	sc := &Scanner{Spec: spec}
 
-func (sc *Scanner) isOp(r rune) bool       { return sc.HasProp(r, CharOp) }
-func (sc *Scanner) isSep(r rune) bool      { return sc.HasProp(r, CharSep) }
-func (sc *Scanner) isLineSep(r rune) bool  { return sc.HasProp(r, CharLineSep) }
-func (sc *Scanner) isGroupSep(r rune) bool { return sc.HasProp(r, CharGroupSep) }
-func (sc *Scanner) isStr(r rune) bool      { return sc.HasProp(r, CharStr) }
-func (sc *Scanner) isBlock(r rune) bool    { return sc.HasProp(r, CharBlock) }
-func (sc *Scanner) isDir(r rune) bool {
-	return !sc.HasProp(r, CharOp|CharSep|CharLineSep|CharGroupSep|CharStr|CharBlock)
-}
+	// TODO: Mark unset ASCII char other than alphanum illegal
 
-func (sc *Scanner) Init() {
 	// Build a regular expression to match all string start delimiters at once.
 	re := "("
 	for s, p := range sc.BlockProp {
-		if p&CharStr == 0 {
+		if p&lang.CharStr == 0 {
 			continue
 		}
 		// TODO: sort keys in decreasing length order.
@@ -132,46 +63,69 @@ func (sc *Scanner) Init() {
 	}
 	re = strings.TrimSuffix(re, "|") + ")$"
 	sc.sdre = regexp.MustCompile(re)
+
+	return sc
+}
+
+func (sc *Scanner) HasProp(r rune, p uint) bool {
+	if r >= lang.ASCIILen {
+		return false
+	}
+	return sc.CharProp[r]&p != 0
+}
+
+func (sc *Scanner) isOp(r rune) bool       { return sc.HasProp(r, lang.CharOp) }
+func (sc *Scanner) isSep(r rune) bool      { return sc.HasProp(r, lang.CharSep) }
+func (sc *Scanner) isLineSep(r rune) bool  { return sc.HasProp(r, lang.CharLineSep) }
+func (sc *Scanner) isGroupSep(r rune) bool { return sc.HasProp(r, lang.CharGroupSep) }
+func (sc *Scanner) isStr(r rune) bool      { return sc.HasProp(r, lang.CharStr) }
+func (sc *Scanner) isBlock(r rune) bool    { return sc.HasProp(r, lang.CharBlock) }
+func (sc *Scanner) isDir(r rune) bool {
+	return !sc.HasProp(r, lang.CharOp|lang.CharSep|lang.CharLineSep|lang.CharGroupSep|lang.CharStr|lang.CharBlock)
 }
 
 func isNum(r rune) bool { return '0' <= r && r <= '9' }
 
-func (sc *Scanner) Scan(src string) (tokens Tokens, err error) {
+func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 	offset := 0
-	s := src
+	s := strings.TrimSpace(src)
 	for len(s) > 0 {
 		t, err := sc.Next(s)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", loc(src, offset+t.pos), err)
+			return nil, fmt.Errorf("%s: %w", loc(src, offset+t.Pos), err)
 		}
-		if t.kind == Undefined {
+		if t.Id == lang.Illegal && t.Str == "" {
 			break
 		}
 		skip := false
-		if len(tokens) > 0 && len(sc.SkipSemi) > 0 && t.kind == Separator && t.content == " " {
+		if len(tokens) > 0 && t.Str == "\n" {
 			// Check for automatic semi-colon insertion after newline.
 			last := tokens[len(tokens)-1]
-			if last.kind == Identifier && sc.SkipSemi[last.content] ||
-				last.kind == Operator && !sc.SkipSemi[last.content] {
+			if last.Id.IsKeyword() && sc.TokenProps[last.Str].SkipSemi ||
+				last.Id.IsOperator() && !sc.TokenProps[last.Str].SkipSemi {
 				skip = true
 			} else {
-				t.content = ";"
+				t.Id = lang.Semicolon
+				t.Str = ";"
 			}
 		}
-		nr := t.pos + len(t.content)
+		nr := t.Pos + len(t.Str)
 		s = s[nr:]
-		t.pos += offset
+		t.Pos += offset
 		offset += nr
 		if !skip {
 			tokens = append(tokens, t)
 		}
 	}
-	// Insertion of semi-colon at the end of the token stream.
-	if len(tokens) > 0 && len(sc.SkipSemi) > 0 {
+	// Optional insertion of semi-colon at the end of the token stream.
+	if semiEOF && len(tokens) > 0 {
 		last := tokens[len(tokens)-1]
-		if !(last.kind == Identifier && sc.SkipSemi[last.content] ||
-			last.kind == Operator && !sc.SkipSemi[last.content]) {
-			tokens = append(tokens, &Token{kind: Separator, content: ";"})
+		if last.Str == ";" {
+			return tokens, nil
+		}
+		if !(last.Id == lang.Ident && sc.TokenProps[last.Str].SkipSemi ||
+			last.Id.IsOperator() && !sc.TokenProps[last.Str].SkipSemi) {
+			tokens = append(tokens, Token{Id: lang.Semicolon, Str: ";"})
 		}
 	}
 	return tokens, nil
@@ -188,7 +142,7 @@ func loc(s string, p int) string {
 }
 
 // Next returns the next token in string.
-func (sc *Scanner) Next(src string) (tok *Token, err error) {
+func (sc *Scanner) Next(src string) (tok Token, err error) {
 	p := 0
 
 	// Skip initial separators.
@@ -204,56 +158,65 @@ func (sc *Scanner) Next(src string) (tok *Token, err error) {
 	for i, r := range src {
 		switch {
 		case sc.isSep(r):
-			return &Token{}, nil
+			return Token{}, nil
 		case sc.isGroupSep(r):
 			// TODO: handle group separators.
-			return &Token{kind: Separator, pos: p + i, content: string(r)}, nil
+			return Token{Id: sc.TokenProps[string(r)].TokenId, Pos: p + i, Str: string(r)}, nil
 		case sc.isLineSep(r):
-			return &Token{kind: Separator, pos: p + i, content: " "}, nil
+			return Token{Pos: p + i, Str: "\n"}, nil
 		case sc.isStr(r):
 			s, ok := sc.getStr(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
-			return &Token{kind: String, pos: p + i, content: s, start: 1, end: 1}, err
+			return Token{Id: lang.String, Pos: p + i, Str: s, Beg: 1, End: 1}, err
 		case sc.isBlock(r):
 			b, ok := sc.getBlock(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
-			return &Token{kind: Block, pos: p + i, content: b, start: 1, end: 1}, err
+			tok := Token{Pos: p + i, Str: b, Beg: 1, End: 1}
+			tok.Id = sc.TokenProps[tok.Name()].TokenId
+			return tok, err
 		case sc.isOp(r):
 			op, isOp := sc.getOp(src[i:])
 			if isOp {
-				return &Token{kind: Operator, pos: p + i, content: op}, nil
+				id := sc.TokenProps[op].TokenId
+				if id == lang.Illegal {
+					err = fmt.Errorf("%w: %s", ErrIllegal, op)
+				}
+				return Token{Id: id, Pos: p + i, Str: op}, err
 			}
 			flag := sc.BlockProp[op]
-			if flag&CharStr != 0 {
+			if flag&lang.CharStr != 0 {
 				s, ok := sc.getStr(src[i:], len(op))
 				if !ok {
 					err = ErrBlock
 				}
-				return &Token{kind: String, pos: p + i, content: s, start: len(op), end: len(op)}, err
+				return Token{Id: lang.Comment, Pos: p + i, Str: s, Beg: len(op), End: len(op)}, err
 			}
 		case isNum(r):
-			c, v := sc.getNum(src[i:])
-			return &Token{kind: Number, pos: p + i, content: c, value: v}, nil
+			return Token{Id: lang.Int, Pos: p + i, Str: sc.getNum(src[i:])}, nil
 		default:
 			id, isId := sc.getId(src[i:])
 			if isId {
-				return &Token{kind: Identifier, pos: p + i, content: id}, nil
+				ident := sc.TokenProps[id].TokenId
+				if ident == lang.Illegal {
+					ident = lang.Ident
+				}
+				return Token{Id: ident, Pos: p + i, Str: id}, nil
 			}
 			flag := sc.BlockProp[id]
-			if flag&CharBlock != 0 {
+			if flag&lang.CharBlock != 0 {
 				s, ok := sc.getBlock(src[i:], len(id))
 				if !ok {
 					err = ErrBlock
 				}
-				return &Token{kind: Block, pos: p + i, content: s, start: len(id), end: len(id)}, err
+				return Token{Pos: p + i, Str: s, Beg: len(id), End: len(id)}, err
 			}
 		}
 	}
-	return &Token{}, nil
+	return Token{}, nil
 }
 
 func (sc *Scanner) getId(src string) (s string, isId bool) {
@@ -287,7 +250,7 @@ func (sc *Scanner) getOp(src string) (s string, isOp bool) {
 	return s, true
 }
 
-func (sc *Scanner) getNum(src string) (s string, v any) {
+func (sc *Scanner) getNum(src string) (s string) {
 	// TODO: handle hexa, binary, octal, float and eng notations.
 	for i, r := range src {
 		if !isNum(r) {
@@ -295,31 +258,22 @@ func (sc *Scanner) getNum(src string) (s string, v any) {
 		}
 		s = src[:i+1]
 	}
-	var err error
-	if strings.ContainsRune(s, '.') {
-		v, err = strconv.ParseFloat(s, 64)
-	} else {
-		v, err = strconv.ParseInt(s, 0, 64)
-	}
-	if err != nil {
-		v = err
-	}
-	return s, v
+	return s
 }
 
 func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 	start := src[:nstart]
 	end := sc.End[start]
 	prop := sc.BlockProp[start]
-	canEscape := prop&StrEsc != 0
-	nonl := prop&StrNonl != 0
-	excludeEnd := prop&ExcludeEnd != 0
+	canEscape := prop&lang.StrEsc != 0
+	nonl := prop&lang.StrNonl != 0
+	excludeEnd := prop&lang.ExcludeEnd != 0
 	var esc bool
 
 	for i, r := range src[nstart:] {
 		s = src[:nstart+i+1]
 		if r == '\n' && nonl {
-			return
+			return s, ok
 		}
 		if strings.HasSuffix(s, end) && !esc {
 			if excludeEnd {
@@ -329,7 +283,7 @@ func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 		}
 		esc = canEscape && r == '\\' && !esc
 	}
-	ok = prop&EosValidEnd != 0
+	ok = prop&lang.EosValidEnd != 0
 	return s, ok
 }
 
@@ -359,22 +313,12 @@ func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {
 			skip = nstart + i + len(str) - l1
 		}
 		if n == 0 {
-			if prop&ExcludeEnd != 0 {
+			if prop&lang.ExcludeEnd != 0 {
 				s = s[:len(s)-len(end)]
 			}
 			return s, true
 		}
 	}
-	ok = prop&EosValidEnd != 0
+	ok = prop&lang.EosValidEnd != 0
 	return s, ok
-}
-
-// Index returns the index of the first instance with content s in tokens, or -1 if not found.
-func Index(tokens []*Token, s string) int {
-	for i, t := range tokens {
-		if t.content == s {
-			return i
-		}
-	}
-	return -1
 }

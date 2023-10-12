@@ -1,105 +1,45 @@
-package scanner
+package scanner_test
 
 import (
+	"fmt"
 	"log"
 	"testing"
+
+	"github.com/gnolang/parscan/lang/golang"
+	"github.com/gnolang/parscan/scanner"
 )
 
-var GoScanner = &Scanner{
-	CharProp: [ASCIILen]uint{
-		'\t': CharSep,
-		'\n': CharLineSep,
-		' ':  CharSep,
-		'!':  CharOp,
-		'"':  CharStr | StrEsc | StrNonl,
-		'%':  CharOp,
-		'&':  CharOp,
-		'\'': CharStr | StrEsc,
-		'(':  CharBlock,
-		'*':  CharOp,
-		'+':  CharOp,
-		',':  CharGroupSep,
-		'-':  CharOp,
-		'`':  CharStr,
-		'.':  CharOp,
-		'/':  CharOp,
-		':':  CharOp,
-		';':  CharGroupSep,
-		'<':  CharOp,
-		'=':  CharOp,
-		'>':  CharOp,
-		'[':  CharBlock,
-		'^':  CharOp,
-		'{':  CharBlock,
-		'|':  CharOp,
-		'~':  CharOp,
-	},
-	End: map[string]string{
-		"(":  ")",
-		"{":  "}",
-		"[":  "]",
-		"/*": "*/",
-		`"`:  `"`,
-		"'":  "'",
-		"`":  "`",
-		"//": "\n",
-	},
-	BlockProp: map[string]uint{
-		"(":  CharBlock,
-		"{":  CharBlock,
-		"[":  CharBlock,
-		`"`:  CharStr | StrEsc | StrNonl,
-		"`":  CharStr,
-		"'":  CharStr | StrEsc,
-		"/*": CharStr,
-		"//": CharStr | ExcludeEnd | EosValidEnd,
-	},
-	SkipSemi: map[string]bool{
-		"++":        true,
-		"--":        true,
-		"case":      true,
-		"chan":      true,
-		"const":     true,
-		"default":   true,
-		"defer":     true,
-		"else":      true,
-		"for":       true,
-		"func":      true,
-		"go":        true,
-		"goto":      true,
-		"if":        true,
-		"import":    true,
-		"interface": true,
-		"map":       true,
-		"package":   true,
-		"range":     true,
-		"select":    true,
-		"struct":    true,
-		"switch":    true,
-		"type":      true,
-		"var":       true,
-	},
+var GoScanner *scanner.Scanner
+
+func init() {
+	log.SetFlags(log.Lshortfile)
+	GoScanner = scanner.NewScanner(golang.GoSpec)
 }
 
 func TestScan(t *testing.T) {
-	log.SetFlags(log.Lshortfile)
-	GoScanner.Init()
 	for _, test := range tests {
 		test := test
 		t.Run("", func(t *testing.T) {
 			errStr := ""
-			tokens, err := GoScanner.Scan(test.src)
+			tokens, err := GoScanner.Scan(test.src, true)
 			if err != nil {
 				errStr = err.Error()
 			}
 			if errStr != test.err {
 				t.Errorf("got error %v, want error %#v", errStr, test.err)
 			}
-			if result := tokens.String(); result != test.tok {
+			if result := tokStr(tokens); result != test.tok {
 				t.Errorf("got %v, want %v", result, test.tok)
 			}
 		})
 	}
+}
+
+func tokStr(tokens []scanner.Token) (s string) {
+	for _, t := range tokens {
+		s += fmt.Sprintf("%#v ", t.Str)
+	}
+	return
 }
 
 var tests = []struct {
@@ -192,4 +132,7 @@ def"`,
 }, { // #28
 	src: "f(3).\nfield",
 	tok: `"f" "(3)" "." "field" ";" `,
+}, { // #29
+	src: "\n\n\tif i < 1 {return 0}",
+	tok: `"if" "i" "<" "1" "{return 0}" ";" `,
 }}

@@ -1,244 +1,373 @@
 package parser
 
 import (
+	"fmt"
+	"log"
+	"strconv"
+	"strings"
+
+	"github.com/gnolang/parscan/lang"
 	"github.com/gnolang/parscan/scanner"
 )
 
-const (
-	Stmt = 1 << iota
-	ExprSep
-	Call
-	Index
-	Decl
-	MultiOp
-)
-
-type NodeSpec struct {
-	Kind       // AST node kind
-	Flags uint // composable properties used for AST generation
-	Order int  // operator precedence order
-}
-
 type Parser struct {
 	*scanner.Scanner
-	Spec map[string]NodeSpec
+
+	symbols    map[string]*symbol
+	function   *symbol
+	scope      string
+	fname      string
+	labelCount map[string]int
 }
 
-func (p *Parser) Parse(src string, ctx *Node) (nodes []*Node, err error) {
-	tokens, err := p.Scan(src)
-	if err != nil {
-		return
+func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
+	return p.Scanner.Scan(s, endSemi)
+}
+
+type Tokens []scanner.Token
+
+func (toks Tokens) String() (s string) {
+	for _, t := range toks {
+		s += fmt.Sprintf("%#v ", t.Str)
 	}
-	return p.ParseTokens(tokens, ctx)
+	return s
 }
 
-func (p *Parser) ParseTokens(tokens []*scanner.Token, ctx *Node) (nodes []*Node, err error) {
-	// TODO: error handling.
-	var root *Node              // current root node
-	var expr *Node              // current expression root node
-	var prev, c *Node           // previous and current nodes
-	var lce *Node               // last complete expression node
-	unaryOp := map[*Node]bool{} // unaryOp indicates if a node is an unary operator.
-	prevToken := map[*Node]*scanner.Token{}
+func (toks Tokens) Index(id lang.TokenId) int {
+	for i, t := range toks {
+		if t.Id == id {
+			return i
+		}
+	}
+	return -1
+}
 
-	for i, t := range tokens {
-		prev = c
-		c = &Node{
-			Token: t,
-			Kind:  p.Spec[t.Name()].Kind,
+func (toks Tokens) LastIndex(id lang.TokenId) int {
+	for i := len(toks) - 1; i >= 0; i-- {
+		if toks[i].Id == id {
+			return i
 		}
-		if i > 0 {
-			prevToken[c] = tokens[i-1]
-		}
-		if c.Kind == Comment {
-			continue
-		}
-		if t.IsOperator() && (i == 0 || tokens[i-1].IsOperator()) {
-			unaryOp[c] = true
-		}
-		if c.Kind == Undefined {
-			switch t.Kind() {
-			case scanner.Number:
-				c.Kind = LiteralNumber
-			case scanner.Identifier:
-				c.Kind = Ident
-			}
-		}
+	}
+	return -1
+}
 
-		if root == nil {
-			if p.isSep(c) {
-				continue
-			}
-			lce = nil
-			root = c
-			if p.isExpr(c) {
-				expr = c
-			}
-			continue
+func (toks Tokens) Split(id lang.TokenId) (result []Tokens) {
+	for {
+		i := toks.Index(id)
+		if i < 0 {
+			return append(result, toks)
+		}
+		result = append(result, toks[:i])
+		toks = toks[i+1:]
+	}
+}
+
+func (p *Parser) Parse(src string) (out Tokens, err error) {
+	log.Printf("Parse src: %#v\n", src)
+	in, err := p.Scan(src, true)
+	if err != nil {
+		return out, err
+	}
+	log.Println("Parse in:", in)
+	for len(in) > 0 {
+		endstmt := in.Index(lang.Semicolon)
+		if endstmt == -1 {
+			return out, scanner.ErrBlock
 		}
 
-		if t.IsBlock() {
-			if expr != nil {
-				if p.hasProp(c, ExprSep) && p.isExprSep(root) {
-					// A bracket block may end a previous expression.
-					root.Child = append(root.Child, expr)
-					expr = nil
-				} else if p.hasProp(c, Call) && !p.hasProp(root, Decl) && p.canCallToken(tokens[i-1]) {
-					// Handle (possibly nested) call expressions.
-					if lce == nil || lce != expr { // TODO(marc): not general, fix it.
-						lce = prev
-					}
-					lce.Child = []*Node{{Token: lce.Token, Child: lce.Child, Kind: lce.Kind}}
-					lce.Token = scanner.NewToken("Call", c.Pos())
-					lce.Kind = ExprCall
+		// Skip over simple init statements for some tokens (if, for, ...)
+		if lang.HasInit[in[0].Id] {
+			log.Println("may have init")
+			for in[endstmt-1].Id != lang.BraceBlock {
+				e2 := in[endstmt+1:].Index(lang.Semicolon)
+				if e2 == -1 {
+					return out, scanner.ErrBlock
 				}
+				endstmt += 1 + e2
 			}
-			tcont := t.Content()
-			s := tcont[t.Start() : len(tcont)-t.End()]
-			n2, err := p.Parse(s, c)
-			if err != nil {
+		}
+		o, err := p.ParseStmt(in[:endstmt])
+		if err != nil {
+			return out, err
+		}
+		out = append(out, o...)
+		in = in[endstmt+1:]
+	}
+	return out, err
+}
+
+func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
+	log.Println("ParseStmt in:", in)
+	if len(in) == 0 {
+		return nil, nil
+	}
+	switch t := in[0]; t.Id {
+	case lang.Func:
+		return p.ParseFunc(in)
+	case lang.If:
+		return p.ParseIf(in)
+	case lang.Return:
+		return p.ParseReturn(in)
+	default:
+		return p.ParseExpr(in)
+	}
+}
+
+func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
+	// TODO: handle anonymous functions (no function name)
+	// TODO: handle receiver (methods)
+	// TODO: handle parametric types (generics)
+	// TODO: handle variadic parameters
+	fname := in[1].Str
+	ofname := p.fname
+	p.fname = fname
+	ofunc := p.function
+	s, _, ok := p.getSym(fname, p.scope)
+	if !ok {
+		s = &symbol{}
+		p.symbols[p.scope+fname] = s
+	}
+	p.pushScope(fname)
+	defer func() {
+		p.fname = ofname // TODO remove if favor of function.
+		p.function = ofunc
+		p.popScope()
+	}()
+
+	out = Tokens{
+		{Id: lang.Enter, Str: "enter " + p.scope},
+		{Id: lang.Goto, Str: "goto " + fname + "_end"}, // Skip function definition.
+		{Id: lang.Label, Pos: in[0].Pos, Str: fname},
+	}
+
+	bi := in.Index(lang.BraceBlock)
+	if bi < 0 {
+		return out, fmt.Errorf("no function body")
+	}
+	typ, err := p.ParseType(in[:bi])
+	if err != nil {
+		return out, err
+	}
+	s.kind = symFunc
+	s.Type = typ
+	p.function = s
+
+	log.Println("body:", in[len(in)-1].Block())
+	toks, err := p.Parse(in[len(in)-1].Block())
+	if err != nil {
+		return out, err
+	}
+	out = append(out, toks...)
+	out = append(out,
+		scanner.Token{Id: lang.Label, Str: fname + "_end"},
+		scanner.Token{Id: lang.Exit},
+	)
+	log.Println("symbols", p.symbols)
+	return out, err
+}
+
+func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
+	prefix := p.fname + "_if" + strconv.Itoa(p.labelCount[p.scope+p.fname])
+	p.labelCount[p.scope+p.fname]++
+	sc := 0
+	ssc := strconv.Itoa(sc)
+	// We start from the end of the statement and examine tokens backward to
+	// get the destination labels already computed when jumps are set.
+	i := len(in) - 1
+	for i > 0 {
+		if in[i].Id != lang.BraceBlock {
+			return nil, fmt.Errorf("expected '{', got %v", in[i])
+		}
+		pre, err := p.Parse(in[i].Block())
+		if err != nil {
+			return nil, err
+		}
+		//pre := append(Tokens{{Id: lang.Label, Str: prefix + "_b" + ssc}}, blockout...)
+		if sc > 0 {
+			pre = append(pre, scanner.Token{Id: lang.Goto, Str: "goto " + prefix + "_e0"})
+		}
+		pre = append(pre, scanner.Token{Id: lang.Label, Str: prefix + "_e" + ssc})
+		out = append(pre, out...)
+
+		i--
+		ifp := in[:i].LastIndex(lang.If)
+
+		if in[i].Id == lang.Else { // Step over final 'else'.
+			i--
+			sc++
+			ssc = strconv.Itoa(sc)
+			continue
+		}
+
+		pre = Tokens{}
+		var init, cond Tokens
+		initcond := in[ifp+1 : i+1]
+		if ii := initcond.Index(lang.Semicolon); ii < 0 {
+			cond = initcond
+		} else {
+			init = initcond[:ii]
+			cond = initcond[ii+1:]
+		}
+		if len(init) > 0 {
+			if init, err = p.ParseStmt(init); err != nil {
 				return nil, err
 			}
-			c.Child = append(c.Child, n2...)
+			pre = append(pre, init...)
 		}
+		if cond, err = p.ParseExpr(cond); err != nil {
+			return nil, err
+		}
+		pre = append(pre, cond...)
+		pre = append(pre, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + prefix + "_e" + ssc})
+		out = append(pre, out...)
+		i = ifp
+		if i > 1 && in[i].Id == lang.If && in[i-1].Id == lang.Else { // Step over 'else if'.
+			i -= 2
+		}
+		sc++
+		ssc = strconv.Itoa(sc)
+	}
+	log.Println("prefix:", prefix)
+	log.Println("if tokens:", out)
+	return out, err
+}
 
-		// Process the end of an expression or a statement.
-		if t.IsSeparator() {
-			if t.Content() == "," && ctx.Kind != BlockParen {
-				// ignore comma separator in field lists
-			} else if expr != nil && p.hasProp(root, Stmt) {
-				root.Child = append(root.Child, expr)
-				if p.hasProp(expr, ExprSep) {
-					nodes = append(nodes, root)
-					root = nil
-				}
-				expr = nil
-			} else {
-				if expr != nil {
-					root = expr
-				}
-				nodes = append(nodes, root)
-				expr = nil
-				root = nil
+func (p *Parser) ParseReturn(in Tokens) (out Tokens, err error) {
+	if len(in) > 1 {
+		if out, err = p.ParseExpr(in[1:]); err != nil {
+			return out, err
+		}
+	}
+
+	// TODO: the function symbol should be already present in the parser context.
+	// otherwise no way to handle anonymous func.
+	s := p.function
+	in[0].Beg = s.Type.NumOut()
+	in[0].End = s.Type.NumIn()
+	log.Println("ParseReturn:", p.fname, in[0])
+	out = append(out, in[0])
+	return out, err
+}
+
+func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
+	log.Println("ParseExpr in:", in)
+	var ops Tokens
+	var vl int
+	//
+	// Process tokens from last to first, the goal is to reorder the tokens in
+	// a stack machine processing order, so it can be directly interpreted.
+	//
+	for i := len(in) - 1; i >= 0; i-- {
+		t := in[i]
+		// temporary assumptions: binary operators, returning 1 value
+		switch t.Id {
+		case lang.Ident, lang.Int, lang.String:
+			out = append(out, t)
+			vl++
+		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Less:
+			// TODO: handle operator precedence to swap operators / operands if necessary
+			if vl < 2 {
+				ops = append(ops, t)
+				break
 			}
+		case lang.ParenBlock:
+			// If the previous token is an arithmetic, logic or assign operator then
+			// this parenthesis block is an enclosed expr, otherwise a call expr.
+			if i == 0 || in[i-1].Id.IsOperator() {
+				out = append(out, t)
+				vl++
+				break
+			}
+			// The call expression can be a function call, a conversion,
+			// a type assersion (including for type switch)
+			// func call: push args and func address then call
+			out = append(out, t)
+			vl++
+			if t2 := in[i-1]; t2.Id == lang.Ident {
+				if s, sc, ok := p.getSym(t2.Str, p.scope); ok {
+					log.Println("callExpr:", t2.Str, p.scope, s, ok, sc)
+					if s.kind == symValue {
+						// Store the number of input parameters in the token Beg field.
+						ops = append(ops, scanner.Token{Str: "callX", Id: lang.CallX, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
+						break
+					}
+				}
+			}
+			ops = append(ops, scanner.Token{Str: "call", Id: lang.Call, Pos: t.Pos})
+		}
+		if ol := len(ops); ol > 0 && vl > ol {
+			op := ops[ol-1]
+			ops = ops[:ol-1]
+			out = append(out, op)
+			vl--
+		}
+	}
+	out = append(out, ops...) // TODO: verify that ops should be added in this order.
+
+	log.Println("ParseExpr out:", out, "vl:", vl, "ops:", ops)
+	// The tokens are now properly ordered, process nested blocks.
+	for i := len(out) - 1; i >= 0; i-- {
+		t := out[i]
+		var toks Tokens
+		switch t.Id {
+		case lang.ParenBlock, lang.BracketBlock:
+			if toks, err = p.ParseExprStr(t.Block()); err != nil {
+				return out, err
+			}
+		default:
 			continue
 		}
 
-		// We assume from now that current node is part of an expression subtree.
-		if expr == nil {
-			if p.isStatement(root) {
-				expr = c
-				continue
-			}
-			expr = root
-		}
-
-		// Update the expression subtree according to binary operator precedence rules.
-		// - operators are binary infix by default.
-		// - if an operator follows another, then it's unary prefix.
-		// - if an expression starts by an operator, then it's unary prefix.
-		// - non operator nodes have a default precedence of 0.
-		// TODO: handle postfix unary (i.e. ++) and ternary (i.e. ?:)
-		//
-		ep := p.Spec[expr.Content()].Order
-		cp := p.Spec[c.Content()].Order
-		a := expr
-		if unaryOp[c] {
-			cp = 0
-		}
-		if cp != 0 {
-			if cp > ep {
-				// Perform an operator permutation at expr root as required by precedence.
-				// TODO(marc): maybe it can be generalized in below else branch.
-				expr, c = c, expr
-				a = expr // Temporary ancestor: its children may have to be permuted.
-			} else {
-				// Findout if an operator permutation is necessary in subtree.
-				c1 := expr
-				for {
-					a = c1
-					if unaryOp[c1] {
-						c1, c = c, c1
-						a = c1
-						if c == expr {
-							expr = a
-						}
-						break
-					}
-					if len(c1.Child) < 2 {
-						break
-					}
-					c1 = c1.Child[1]
-					if !c1.IsOperator() || unaryOp[c1] || cp > p.Spec[c1.Content()].Order {
-						break
-					}
-				}
-				// No permutation occured. Append current to last visited ancestor.
-				if len(a.Child) > 1 {
-					a.Child = a.Child[:1]
-					c.Child = append(c.Child, c1)
-				}
-			}
-		} else if ep != 0 {
-			for len(a.Child) > 1 {
-				a = a.Child[1]
-			}
-		}
-		a.Child = append(a.Child, c)
-		if p.hasProp(a, Call) {
-			lce = a
-		}
+		// replace block token by its parsed result.
+		log.Println("toks:", toks)
+		out2 := append(Tokens{}, out[:i]...)
+		out2 = append(out2, toks...)
+		out = append(out2, out[i+1:]...)
 	}
-	if root != nil && p.isStatement(root) {
-		if expr != nil {
-			root.Child = append(root.Child, expr)
-		}
-	} else if expr != nil {
-		root = expr
-	}
-	if root != nil {
-		// /*
-		if p.hasProp(root, MultiOp) {
-			for {
-				if !p.fixMultiOp(root, prevToken) {
-					break
-				}
-			}
-		}
-		// */
-		nodes = append(nodes, root)
-	}
-	return nodes, err
+	log.Println("Final out:", out)
+	return out, err
 }
 
-func (p *Parser) fixMultiOp(root *Node, prevToken map[*Node]*scanner.Token) bool {
-	for i, c := range root.Child {
-		for j, cc := range c.Child {
-			if pt := prevToken[cc]; pt != nil && pt.Content() == "," {
-				c.RemoveChild(j)
-				root.InsertChild(cc, i)
-				return true
-			}
+func (p *Parser) ParseExprStr(s string) (tokens Tokens, err error) {
+	if tokens, err = p.Scan(s, false); err != nil {
+		return
+	}
+	var result Tokens
+	for _, sub := range tokens.Split(lang.Comma) {
+		toks, err := p.ParseExpr(sub)
+		if err != nil {
+			return result, err
 		}
+		result = append(toks, result...)
 	}
-	return false
+	return result, err
 }
 
-func (p *Parser) hasProp(n *Node, prop uint) bool { return p.Spec[n.Name()].Flags&prop != 0 }
-func (p *Parser) isStatement(n *Node) bool        { return p.Spec[n.Content()].Flags&Stmt != 0 }
-func (p *Parser) isExprSep(n *Node) bool          { return p.Spec[n.Content()].Flags&ExprSep != 0 }
-func (p *Parser) isExpr(n *Node) bool             { return !p.isStatement(n) && !p.isExprSep(n) }
-func (p *Parser) isSep(n *Node) bool              { return n.Token.Kind() == scanner.Separator }
-func (p *Parser) IsBlock(n *Node) bool            { return n.Token.Kind() == scanner.Block }
-
-func (p *Parser) precedenceToken(t *scanner.Token) int {
-	s := t.Content()
-	if l := t.Start(); l > 0 {
-		s = s[:l]
+func (p *Parser) numItems(s string, sep lang.TokenId) int {
+	tokens, err := p.Scan(s, false)
+	if err != nil {
+		return -1
 	}
-	return p.Spec[s].Order
+	r := 0
+	for _, t := range tokens.Split(sep) {
+		if len(t) == 0 {
+			continue
+		}
+		r++
+	}
+	return r
 }
 
-func (p *Parser) canCallToken(t *scanner.Token) bool {
-	return p.precedenceToken(t) == 0 || p.Spec[t.Name()].Flags&Call != 0
+func (p *Parser) pushScope(name string) {
+	p.scope = strings.TrimPrefix(p.scope+"/"+name+"/", "/")
+}
+
+func (p *Parser) popScope() {
+	p.scope = strings.TrimSuffix(p.scope, "/")
+	j := strings.LastIndex(p.scope, "/")
+	if j == -1 {
+		p.scope = ""
+		return
+	}
+	p.scope = p.scope[:j]
 }

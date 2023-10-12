@@ -1,8 +1,8 @@
-# vm1
+# vm
 
-`vm1` is a bytecode based stack machine.
+`vm` is a bytecode based stack machine.
 
-The purpose of `vm1` is to provide a simple, fast, embeddable and
+The purpose of `vm` is to provide a simple, fast, embeddable and
 portable Go execution environment.
 
 ```mermaid
@@ -11,7 +11,7 @@ s[ ] --> |source| a(scanner)
 --> |tokens| b(parser)
 --> |AST| c(codegen)
 --> |bytecode| d[vm]
-subgraph vm1
+subgraph vm
     d
 end
 style s height:0px;

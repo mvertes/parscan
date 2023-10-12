@@ -1,32 +1,22 @@
-package codegen
+package parser
 
 import (
-	"os"
-
-	"github.com/gnolang/parscan/parser"
-	"github.com/gnolang/parscan/vm1"
+	"github.com/gnolang/parscan/scanner"
+	"github.com/gnolang/parscan/vm"
 )
 
 const debug = true
 
 type Interpreter struct {
-	*parser.Parser
 	*Compiler
-	*vm1.Machine
+	*vm.Machine
 }
 
-func NewInterpreter(p *parser.Parser) *Interpreter {
-	return &Interpreter{p, NewCompiler(), &vm1.Machine{}}
+func NewInterpreter(s *scanner.Scanner) *Interpreter {
+	return &Interpreter{NewCompiler(s), &vm.Machine{}}
 }
 
 func (i *Interpreter) Eval(src string) (res any, err error) {
-	n := &parser.Node{}
-	if n.Child, err = i.Parse(src, n); err != nil {
-		return res, err
-	}
-	if debug {
-		n.Dot(os.Getenv("DOT"), "")
-	}
 	codeOffset := len(i.Code)
 	dataOffset := 0
 	if codeOffset > 0 {
@@ -34,13 +24,22 @@ func (i *Interpreter) Eval(src string) (res any, err error) {
 		dataOffset = len(i.Data)
 	}
 	i.PopExit() // Remove last exit from previous run (re-entrance).
-	if err = i.CodeGen(n); err != nil {
+
+	t, err := i.Parse(src)
+	if err != nil {
+		return res, err
+	}
+	if err = i.Codegen(t); err != nil {
 		return res, err
 	}
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
-	i.PushCode([]int64{0, vm1.Exit})
+	i.PushCode([]int64{0, vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
+	if debug {
+		i.PrintData()
+		i.PrintCode()
+	}
 	err = i.Run()
 	return i.Top(), err
 }

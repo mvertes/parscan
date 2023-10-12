@@ -1,4 +1,4 @@
-package vm1
+package vm
 
 import (
 	"fmt"     // for tracing only
@@ -15,10 +15,13 @@ const (
 	Nop       = iota // --
 	Add              // n1 n2 -- sum ; sum = n1+n2
 	Assign           // val -- ; mem[$1] = val
+	Fassign          // val -- ; mem[$1] = val
 	Call             // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
+	Calli            // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallX            // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
 	Dup              // addr -- value ; value = mem[addr]
 	Fdup             // addr -- value ; value = mem[addr]
+	Equal            // n1 n2 -- cond ; cond = n1 == n2
 	Exit             // -- ;
 	Jump             // -- ; ip += $1
 	JumpTrue         // cond -- ; if cond { ip += $1 }
@@ -37,10 +40,13 @@ var strop = [...]string{ // for VM tracing.
 	Add:       "Add",
 	Assign:    "Assign",
 	Call:      "Call",
+	Calli:     "Calli",
 	CallX:     "CallX",
 	Dup:       "Dup",
-	Fdup:      "Fdup",
+	Equal:     "Equal",
 	Exit:      "Exit",
+	Fassign:   "Fassign",
+	Fdup:      "Fdup",
 	Jump:      "Jump",
 	JumpTrue:  "JumpTrue",
 	JumpFalse: "JumpFalse",
@@ -94,7 +100,16 @@ func (m *Machine) Run() (err error) {
 		case Assign:
 			mem[op[2]] = mem[sp-1]
 			mem = mem[:sp-1]
+		case Fassign:
+			mem[fp+int(op[2])-1] = mem[sp-1]
+			mem = mem[:sp-1]
 		case Call:
+			nip := mem[sp-1].(int)
+			mem = append(mem[:sp-1], ip+1, fp)
+			ip = nip
+			fp = sp + 1
+			continue
+		case Calli:
 			mem = append(mem, ip+1, fp)
 			fp = sp + 2
 			ip += int(op[2])
@@ -103,17 +118,20 @@ func (m *Machine) Run() (err error) {
 			l := int(op[2])
 			in := make([]reflect.Value, l)
 			for i := range in {
-				in[l-1-i] = reflect.ValueOf(mem[sp-1-i])
+				in[i] = reflect.ValueOf(mem[sp-2-i])
 			}
-			f := reflect.ValueOf(mem[sp-l-1])
+			f := reflect.ValueOf(mem[sp-1])
 			mem = mem[:sp-l-1]
 			for _, v := range f.Call(in) {
 				mem = append(mem, v.Interface())
 			}
 		case Dup:
 			mem = append(mem, mem[int(op[2])])
+		case Equal:
+			mem[sp-2] = mem[sp-2].(int) == mem[sp-1].(int)
+			mem = mem[:sp-1]
 		case Exit:
-			return
+			return err
 		case Fdup:
 			mem = append(mem, mem[int(op[2])+fp-1])
 		case Jump:
@@ -134,7 +152,7 @@ func (m *Machine) Run() (err error) {
 				continue
 			}
 		case Lower:
-			mem[sp-2] = mem[sp-2].(int) < mem[sp-1].(int)
+			mem[sp-2] = mem[sp-1].(int) < mem[sp-2].(int)
 			mem = mem[:sp-1]
 		case Loweri:
 			mem[sp-1] = mem[sp-1].(int) < int(op[2])
@@ -149,7 +167,7 @@ func (m *Machine) Run() (err error) {
 			mem = append(mem[:ofp-int(op[2])-int(op[3])-1], mem[sp-int(op[2]):]...)
 			continue
 		case Sub:
-			mem[sp-2] = mem[sp-2].(int) - mem[sp-1].(int)
+			mem[sp-2] = mem[sp-1].(int) - mem[sp-2].(int)
 			mem = mem[:sp-1]
 		case Subi:
 			mem[sp-1] = mem[sp-1].(int) - int(op[2])
@@ -165,13 +183,13 @@ func (m *Machine) PushCode(code ...[]int64) (p int) {
 }
 
 func (m *Machine) SetIP(ip int)          { m.ip = ip }
-func (m *Machine) Push(v ...any) (l int) { l = len(m.mem); m.mem = append(m.mem, v...); return }
-func (m *Machine) Pop() (v any)          { l := len(m.mem) - 1; v = m.mem[l]; m.mem = m.mem[:l]; return }
+func (m *Machine) Push(v ...any) (l int) { l = len(m.mem); m.mem = append(m.mem, v...); return l }
+func (m *Machine) Pop() (v any)          { l := len(m.mem) - 1; v = m.mem[l]; m.mem = m.mem[:l]; return v }
 func (m *Machine) Top() (v any) {
 	if l := len(m.mem); l > 0 {
 		v = m.mem[l-1]
 	}
-	return
+	return v
 }
 
 func (m *Machine) PopExit() {
@@ -180,17 +198,32 @@ func (m *Machine) PopExit() {
 	}
 }
 
+func CodeString(op []int64) string {
+	switch len(op) {
+	case 2:
+		return strop[op[1]]
+	case 3:
+		return fmt.Sprintf("%s %d", strop[op[1]], op[2])
+	case 4:
+		return fmt.Sprintf("%s %d %d", strop[op[1]], op[2], op[3])
+	}
+	return ""
+}
+
 // Disassemble returns the code as a readable string.
 func Disassemble(code [][]int64) (asm string) {
 	for _, op := range code {
-		switch len(op) {
-		case 2:
-			asm += strop[op[1]] + "\n"
-		case 3:
-			asm += fmt.Sprintf("%s %d\n", strop[op[1]], op[2])
-		case 4:
-			asm += fmt.Sprintf("%s %d %d\n", strop[op[1]], op[2], op[3])
-		}
+		asm += CodeString(op) + "\n"
+		/*
+			switch len(op) {
+			case 2:
+				asm += strop[op[1]] + "\n"
+			case 3:
+				asm += fmt.Sprintf("%s %d\n", strop[op[1]], op[2])
+			case 4:
+				asm += fmt.Sprintf("%s %d %d\n", strop[op[1]], op[2], op[3])
+			}
+		*/
 	}
 	return asm
 }

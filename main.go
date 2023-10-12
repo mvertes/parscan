@@ -9,10 +9,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/gnolang/parscan/codegen"
 	"github.com/gnolang/parscan/lang/golang"
+	"github.com/gnolang/parscan/parser"
 	"github.com/gnolang/parscan/scanner"
-	"github.com/gnolang/parscan/vm0"
 )
 
 type Interpreter interface {
@@ -61,32 +60,20 @@ func repl(interp Interpreter, in io.Reader) (err error) {
 }
 
 func run(arg []string) (err error) {
-	var i int
-
 	rflag := flag.NewFlagSet("run", flag.ContinueOnError)
-	rflag.IntVar(&i, "i", 1, "set interpreter version for execution, possible values: 0, 1")
 	rflag.Usage = func() {
 		fmt.Println("Usage: parscan run [options] [path] [args]")
-		fmt.Println("Options:")
-		rflag.PrintDefaults()
+		//fmt.Println("Options:")
+		//rflag.PrintDefaults()
 	}
 	if err = rflag.Parse(arg); err != nil {
 		return err
 	}
 	args := rflag.Args()
 
-	var interp Interpreter
-	switch i {
-	case 0:
-		interp = vm0.New(golang.GoParser)
-	case 1:
-		interp = codegen.NewInterpreter(golang.GoParser)
-		interp.(*codegen.Interpreter).AddSym(fmt.Println, "println")
-	default:
-		return fmt.Errorf("invalid interpreter version: %v", i)
-	}
+	interp := parser.NewInterpreter(scanner.NewScanner(golang.GoSpec))
+	interp.AddSym("println", fmt.Println)
 
-	log.Println("args:", args)
 	in := os.Stdin
 	if len(args) > 0 {
 		if in, err = os.Open(arg[0]); err != nil {
