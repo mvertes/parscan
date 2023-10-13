@@ -13,11 +13,13 @@ import (
 type Parser struct {
 	*scanner.Scanner
 
-	symbols    map[string]*symbol
-	function   *symbol
-	scope      string
-	fname      string
+	symbols  map[string]*symbol
+	function *symbol
+	scope    string
+	fname    string
+
 	labelCount map[string]int
+	breakLabel string
 }
 
 func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
@@ -77,7 +79,6 @@ func (p *Parser) Parse(src string) (out Tokens, err error) {
 
 		// Skip over simple init statements for some tokens (if, for, ...)
 		if lang.HasInit[in[0].Id] {
-			log.Println("may have init")
 			for in[endstmt-1].Id != lang.BraceBlock {
 				e2 := in[endstmt+1:].Index(lang.Semicolon)
 				if e2 == -1 {
@@ -102,6 +103,8 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 		return nil, nil
 	}
 	switch t := in[0]; t.Id {
+	case lang.Break:
+		return p.ParseBreak(in)
 	case lang.For:
 		return p.ParseFor(in)
 	case lang.Func:
@@ -115,11 +118,27 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 	}
 }
 
+func (p *Parser) ParseBreak(in Tokens) (out Tokens, err error) {
+	var label string
+	switch len(in) {
+	case 1:
+		label = p.breakLabel
+	case 2:
+		if in[1].Id != lang.Ident {
+			return nil, fmt.Errorf("invalid break statement")
+		}
+		label = in[1].Str
+	default:
+		return nil, fmt.Errorf("invalid break statement")
+	}
+	out = Tokens{{Id: lang.Goto, Str: "goto " + label}}
+	return out, err
+}
+
 func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
 	// TODO: detect invalid code.
-	fc := strconv.Itoa(p.labelCount[p.scope+p.fname])
-	prefix := p.fname + "_for" + fc
-	p.labelCount[p.scope+p.fname]++
+	fc := strconv.Itoa(p.labelCount[p.scope])
+	p.labelCount[p.scope]++
 	var init, cond, post, body Tokens
 	pre := in[1 : len(in)-1].Split(lang.Semicolon)
 	switch len(pre) {
@@ -131,20 +150,25 @@ func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
 		return nil, fmt.Errorf("invalild for statement")
 	}
 	p.pushScope("for" + fc)
-	defer p.popScope()
+	breakLabel := p.breakLabel
+	p.breakLabel = p.scope + "e"
+	defer func() {
+		p.breakLabel = breakLabel
+		p.popScope()
+	}()
 	if len(init) > 0 {
 		if init, err = p.ParseStmt(init); err != nil {
 			return nil, err
 		}
 		out = init
 	}
-	out = append(out, scanner.Token{Id: lang.Label, Str: prefix + "b"})
+	out = append(out, scanner.Token{Id: lang.Label, Str: p.scope + "b"})
 	if len(cond) > 0 {
 		if cond, err = p.ParseExpr(cond); err != nil {
 			return nil, err
 		}
 		out = append(out, cond...)
-		out = append(out, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + prefix + "e"})
+		out = append(out, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + p.scope + "e"})
 	}
 	if body, err = p.Parse(in[len(in)-1].Block()); err != nil {
 		return nil, err
@@ -157,8 +181,8 @@ func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
 		out = append(out, post...)
 	}
 	out = append(out,
-		scanner.Token{Id: lang.Goto, Str: "goto " + prefix + "b"},
-		scanner.Token{Id: lang.Label, Str: prefix + "e"})
+		scanner.Token{Id: lang.Goto, Str: "goto " + p.scope + "b"},
+		scanner.Token{Id: lang.Label, Str: p.scope + "e"})
 	return out, err
 }
 
@@ -216,14 +240,14 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 }
 
 func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
-	prefix := p.fname + "_if" + strconv.Itoa(p.labelCount[p.scope+p.fname])
-	p.labelCount[p.scope+p.fname]++
-	sc := 0
-	ssc := strconv.Itoa(sc)
+	label := "if" + strconv.Itoa(p.labelCount[p.scope])
+	p.labelCount[p.scope]++
+	p.pushScope(label)
+	defer p.popScope()
 	// We start from the end of the statement and examine tokens backward to
 	// get the destination labels already computed when jumps are set.
-	i := len(in) - 1
-	for i > 0 {
+	for sc, i := 0, len(in)-1; i > 0; sc++ {
+		ssc := strconv.Itoa(sc)
 		if in[i].Id != lang.BraceBlock {
 			return nil, fmt.Errorf("expected '{', got %v", in[i])
 		}
@@ -232,21 +256,19 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		if sc > 0 {
-			pre = append(pre, scanner.Token{Id: lang.Goto, Str: "goto " + prefix + "_e0"})
+			pre = append(pre, scanner.Token{Id: lang.Goto, Str: "goto " + p.scope + "e0"})
 		}
-		pre = append(pre, scanner.Token{Id: lang.Label, Str: prefix + "_e" + ssc})
+		pre = append(pre, scanner.Token{Id: lang.Label, Str: p.scope + "e" + ssc})
 		out = append(pre, out...)
 		i--
-		ifp := in[:i].LastIndex(lang.If)
 
 		if in[i].Id == lang.Else { // Step over final 'else'.
 			i--
-			sc++
-			ssc = strconv.Itoa(sc)
 			continue
 		}
 		pre = Tokens{}
 		var init, cond Tokens
+		ifp := in[:i].LastIndex(lang.If)
 		initcond := in[ifp+1 : i+1]
 		if ii := initcond.Index(lang.Semicolon); ii < 0 {
 			cond = initcond
@@ -264,14 +286,12 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		pre = append(pre, cond...)
-		pre = append(pre, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + prefix + "_e" + ssc})
+		pre = append(pre, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + p.scope + "e" + ssc})
 		out = append(pre, out...)
 		i = ifp
 		if i > 1 && in[i].Id == lang.If && in[i-1].Id == lang.Else { // Step over 'else if'.
 			i -= 2
 		}
-		sc++
-		ssc = strconv.Itoa(sc)
 	}
 	return out, err
 }
@@ -403,15 +423,16 @@ func (p *Parser) numItems(s string, sep lang.TokenId) int {
 }
 
 func (p *Parser) pushScope(name string) {
-	p.scope = strings.TrimPrefix(p.scope+"/"+name+"/", "/")
+	if p.scope != "" {
+		p.scope += "/"
+	}
+	p.scope += name
 }
 
 func (p *Parser) popScope() {
-	p.scope = strings.TrimSuffix(p.scope, "/")
 	j := strings.LastIndex(p.scope, "/")
 	if j == -1 {
-		p.scope = ""
-		return
+		j = 0
 	}
 	p.scope = p.scope[:j]
 }
