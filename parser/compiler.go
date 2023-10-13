@@ -85,6 +85,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			st := tokens[i-1]
 			l := len(c.Data)
 			c.Data = append(c.Data, nil)
+			// TODO: symbol should be added at parse, not here.
 			c.addSym(l, st.Str, nil, symVar, nil, false)
 			c.Emit(int64(st.Pos), vm.Assign, int64(l))
 
@@ -121,7 +122,6 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			}
 
 		case lang.Label:
-			// If the label is a function, the symbol already exists
 			lc := len(c.Code)
 			s, ok := c.symbols[t.Str]
 			if ok {
@@ -134,10 +134,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 					c.Data[s.index] = lc
 				}
 			} else {
-				ld := len(c.Data)
-				c.Data = append(c.Data, lc)
-				c.addSym(ld, t.Str, lc, symLabel, nil, false)
-				//c.symbols[t.Str] = &symbol{kind: symLabel, value: lc}
+				c.symbols[t.Str] = &symbol{kind: symLabel, value: lc}
 			}
 
 		case lang.JumpFalse:
