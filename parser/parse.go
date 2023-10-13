@@ -208,10 +208,8 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	}()
 
 	out = Tokens{
-		{Id: lang.Enter, Str: "enter " + p.scope},
 		{Id: lang.Goto, Str: "goto " + fname + "_end"}, // Skip function definition.
-		{Id: lang.Label, Pos: in[0].Pos, Str: fname},
-	}
+		{Id: lang.Label, Pos: in[0].Pos, Str: fname}}
 
 	bi := in.Index(lang.BraceBlock)
 	if bi < 0 {
@@ -231,10 +229,7 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	out = append(out, toks...)
-	out = append(out,
-		scanner.Token{Id: lang.Label, Str: fname + "_end"},
-		scanner.Token{Id: lang.Exit},
-	)
+	out = append(out, scanner.Token{Id: lang.Label, Str: fname + "_end"})
 	log.Println("symbols", p.symbols)
 	return out, err
 }
@@ -325,7 +320,16 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 		t := in[i]
 		// temporary assumptions: binary operators, returning 1 value
 		switch t.Id {
-		case lang.Ident, lang.Int, lang.String:
+		case lang.Ident:
+			// resolve symbol if not a selector rhs.
+			// TODO: test for selector expr.
+			_, sc, ok := p.getSym(t.Str, p.scope)
+			if ok && sc != "" {
+				t.Str = sc + "/" + t.Str
+			}
+			out = append(out, t)
+			vl++
+		case lang.Int, lang.String:
 			out = append(out, t)
 			vl++
 		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Less:

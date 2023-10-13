@@ -63,7 +63,7 @@ func TestFunc(t *testing.T) {
 		{src: "func f(a int) int {return a+2}; 7 - f(3)", res: "2"},
 		{src: "func f(a int) int {return a+2}; f(5) - f(3)", res: "2"},
 		{src: "func f(a int) int {return a+2}; f(3) - 2", res: "3"},
-		{src: "func f(a int, b int, c int) int {return a+b-c} ; f(7, 1, 3)", res: "5"},
+		{src: "func f(a, b, c int) int {return a+b-c} ; f(7, 1, 3)", res: "5"},
 	})
 }
 

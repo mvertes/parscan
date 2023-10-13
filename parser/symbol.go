@@ -34,14 +34,12 @@ func (p *Parser) addSym(i int, name string, v any, k symKind, t reflect.Type, lo
 // getSym searches for an existing symbol starting from the deepest scope.
 func (p *Parser) getSym(name, scope string) (sym *symbol, sc string, ok bool) {
 	for {
-		if sym, ok = p.symbols[scope+name]; ok {
+		if sym, ok = p.symbols[scope+"/"+name]; ok {
 			return sym, scope, ok
 		}
-		scope = strings.TrimSuffix(scope, "/")
 		i := strings.LastIndex(scope, "/")
 		if i == -1 {
-			scope = ""
-			break
+			i = 0
 		}
 		if scope = scope[:i]; scope == "" {
 			break

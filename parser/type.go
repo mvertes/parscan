@@ -84,9 +84,9 @@ func (p *Parser) parseParamTypes(in Tokens, arg bool) (types []reflect.Type, err
 				// Type was ommitted, apply the previous one from the right.
 				types = append([]reflect.Type{types[0]}, types...)
 				if arg {
-					p.addSym(-i-2, p.scope+param, nil, symVar, types[0], true)
+					p.addSym(-i-2, p.scope+"/"+param, nil, symVar, types[0], true)
 				} else {
-					p.addSym(i, p.scope+param, nil, symVar, types[0], true)
+					p.addSym(i, p.scope+"/"+param, nil, symVar, types[0], true)
 				}
 				continue
 			}
@@ -97,9 +97,9 @@ func (p *Parser) parseParamTypes(in Tokens, arg bool) (types []reflect.Type, err
 		}
 		if param != "" {
 			if arg {
-				p.addSym(-i-2, p.scope+param, nil, symVar, typ, true)
+				p.addSym(-i-2, p.scope+"/"+param, nil, symVar, typ, true)
 			} else {
-				p.addSym(i, p.scope+param, nil, symVar, typ, true)
+				p.addSym(i, p.scope+"/"+param, nil, symVar, typ, true)
 			}
 		}
 		types = append([]reflect.Type{typ}, types...)

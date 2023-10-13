@@ -44,12 +44,9 @@ func (c *Compiler) AddSym(name string, value any) int {
 
 func (c *Compiler) Codegen(tokens Tokens) (err error) {
 	fixList := Tokens{}
-	function := []string{""}
-
 	log.Println("Codegen tokens:", tokens)
 
 	for i, t := range tokens {
-		scope := function[len(function)-1]
 		switch t.Id {
 		case lang.Int:
 			n, err := strconv.Atoi(t.Str)
@@ -91,16 +88,9 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			c.addSym(l, st.Str, nil, symVar, nil, false)
 			c.Emit(int64(st.Pos), vm.Assign, int64(l))
 
-		case lang.Enter:
-			// TODO: merge with label ?
-			function = append(function, t.Str[6:])
-
-		case lang.Exit:
-			function = function[:len(function)-1]
-
 		case lang.Assign:
 			st := tokens[i-1]
-			s, _, ok := c.getSym(st.Str, scope)
+			s, ok := c.symbols[st.Str]
 			if !ok {
 				return fmt.Errorf("symbol not found: %s", st.Str)
 			}
@@ -120,7 +110,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 					continue
 				}
 			}
-			s, _, ok := c.getSym(t.Str, scope)
+			s, ok := c.symbols[t.Str]
 			if !ok {
 				return fmt.Errorf("symbol not found: %s", t.Str)
 			}
@@ -132,8 +122,8 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 		case lang.Label:
 			// If the label is a function, the symbol already exists
-			s, _, ok := c.getSym(t.Str, scope)
 			lc := len(c.Code)
+			s, ok := c.symbols[t.Str]
 			if ok {
 				s.value = lc
 				if s.kind == symFunc {
@@ -153,7 +143,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 		case lang.JumpFalse:
 			label := t.Str[10:]
 			i := 0
-			if s, _, ok := c.getSym(label, scope); !ok {
+			if s, ok := c.symbols[label]; !ok {
 				// t.Beg contains the position in code which needs to be fixed.
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
@@ -165,7 +155,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 		case lang.Goto:
 			label := t.Str[5:]
 			i := 0
-			if s, _, ok := c.getSym(label, scope); !ok {
+			if s, ok := c.symbols[label]; !ok {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {

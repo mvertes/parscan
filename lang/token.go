@@ -101,8 +101,6 @@ const (
 	CallX
 	Label
 	JumpFalse
-	Enter // entering in function context
-	Exit  // exiting from function context
 )
 
 func (t TokenId) IsKeyword() bool  { return t >= Break && t <= Var }
