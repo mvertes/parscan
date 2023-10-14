@@ -63,9 +63,10 @@ Go language support:
 - [x] for statement
 - [ ] switch statement
 - [x] break statement
-- [ ] continue statement
+- [x] continue statement
 - [ ] fallthrough statement
-- [ ] goto statement
+- [x] goto statement
+- [x] label statement
 - [ ] select statement
 - [x] binary operators
 - [ ] unary operators

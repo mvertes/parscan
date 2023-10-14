@@ -12,57 +12,58 @@ const (
 	Char
 	String
 
-	// Operators
-	Add
-	Sub
-	Mul
-	Quo
-	Rem
-	And
-	Or
-	Xor
+	// Binary operators (except indicated)
+	Add    // +
+	Sub    // -
+	Mul    // *
+	Quo    // /
+	Rem    // %
+	And    // &
+	Or     // |
+	Xor    // ^
 	Shl    // <<
 	Shr    // >>
-	AndNot //
+	AndNot // &^
 
-	AddAssign
-	SubAssign
-	MulAssign
-	QuoAssign
-	RemAssign
-	AndAssign
-	OrAssign
-	XorAssign
-	ShlAssign
-	ShrAssign
-	AndNotAssign
+	AddAssign    // +=
+	SubAssign    // -=
+	MulAssign    // *=
+	QuoAssign    // /=
+	RemAssign    // %=
+	AndAssign    // &=
+	OrAssign     // |=
+	XorAssign    // ^=
+	ShlAssign    // <<=
+	ShrAssign    // >>=
+	AndNotAssign // &^=
 
-	Land
-	Lor
-	Arrow
-	Inc
-	Dec
-	Equal
-	Less
-	Greater
-	Assign
-	Not
-	Plus    // unitary +
-	Minus   // unitary -
-	Address // unitary &
-	Deref   // unitary *
-	NotEqual
-	LessEqual
-	GreaterEqual
-	Define
-	Ellipsis
-	Period
-	Tilde
+	Land         // &&
+	Lor          // ||
+	Arrow        // unary ->
+	Inc          // ++
+	Dec          // --
+	Equal        // ==
+	Less         // <
+	Greater      // >
+	Assign       // =
+	Not          // unary !
+	Plus         // unary +
+	Minus        // unary -
+	Address      // unary &
+	Deref        // unary *
+	BitComp      // unary ^
+	NotEqual     // !=
+	LessEqual    // <=
+	GreaterEqual // >=
+	Define       // :=
+	Ellipsis     // unary ...
+	Period       // .
+	Tilde        // unary ~
 
 	// Separators
-	Comma
-	Semicolon
-	Colon
+	Comma     // ,
+	Semicolon // ;
+	Colon     // :
 
 	// Block tokens
 	ParenBlock   // (..)

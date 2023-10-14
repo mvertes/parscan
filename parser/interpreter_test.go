@@ -19,24 +19,28 @@ func init() {
 	GoScanner = scanner.NewScanner(golang.GoSpec)
 }
 
+func gen(test etest) func(*testing.T) {
+	return func(t *testing.T) {
+		interp := parser.NewInterpreter(GoScanner)
+		errStr := ""
+		r, e := interp.Eval(test.src)
+		t.Log(r, e)
+		if e != nil {
+			errStr = e.Error()
+		}
+		if errStr != test.err {
+			t.Errorf("got error %#v, want error %#v", errStr, test.err)
+		}
+		if res := fmt.Sprintf("%v", r); test.err == "" && res != test.res {
+			t.Errorf("got %#v, want %#v", res, test.res)
+		}
+	}
+}
+
 func run(t *testing.T, tests []etest) {
 	for _, test := range tests {
 		test := test
-		t.Run("", func(t *testing.T) {
-			interp := parser.NewInterpreter(GoScanner)
-			errStr := ""
-			r, e := interp.Eval(test.src)
-			t.Log(r, e)
-			if e != nil {
-				errStr = e.Error()
-			}
-			if errStr != test.err {
-				t.Errorf("got error %#v, want error %#v", errStr, test.err)
-			}
-			if res := fmt.Sprintf("%v", r); test.err == "" && res != test.res {
-				t.Errorf("got %#v, want %#v", res, test.res)
-			}
-		})
+		t.Run("", gen(test))
 	}
 }
 
@@ -82,5 +86,19 @@ func TestFor(t *testing.T) {
 		{src: "func f() int {a := 0; for i := 0; i < 3; i = i+1 {a = a+i}; return a}; f()", res: "3"},
 		{src: "a := 0; for {a = a+1; if a == 3 {break}}; a", res: "3"},
 		{src: "func f() int {a := 0; for {a = a+1; if a == 3 {break}}; return a}; f()", res: "3"},
+		{src: "func f() int {a := 0; for {a = a+1; if a < 3 {continue}; break}; return a}; f()", res: "3"},
 	})
+}
+
+func TestGoto(t *testing.T) {
+	gen(etest{src: `
+func f(a int) int {
+	a = a+1
+	goto end
+	a = a+1
+end:
+	return a
+}
+f(3)`,
+		res: "4"})(t)
 }

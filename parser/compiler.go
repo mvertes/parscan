@@ -177,7 +177,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 		case lang.JumpFalse:
 			label = t.Str[10:]
 		}
-		s, _, ok := c.getSym(label, "")
+		s, ok := c.symbols[label]
 		if !ok {
 			return fmt.Errorf("label not found: %q", label)
 		}

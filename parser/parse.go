@@ -18,8 +18,10 @@ type Parser struct {
 	scope    string
 	fname    string
 
-	labelCount map[string]int
-	breakLabel string
+	funcScope     string
+	labelCount    map[string]int
+	breakLabel    string
+	continueLabel string
 }
 
 func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
@@ -76,7 +78,6 @@ func (p *Parser) Parse(src string) (out Tokens, err error) {
 		if endstmt == -1 {
 			return out, scanner.ErrBlock
 		}
-
 		// Skip over simple init statements for some tokens (if, for, ...)
 		if lang.HasInit[in[0].Id] {
 			for in[endstmt-1].Id != lang.BraceBlock {
@@ -105,14 +106,23 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 	switch t := in[0]; t.Id {
 	case lang.Break:
 		return p.ParseBreak(in)
+	case lang.Continue:
+		return p.ParseContinue(in)
 	case lang.For:
 		return p.ParseFor(in)
 	case lang.Func:
 		return p.ParseFunc(in)
+	case lang.Goto:
+		return p.ParseGoto(in)
 	case lang.If:
 		return p.ParseIf(in)
 	case lang.Return:
 		return p.ParseReturn(in)
+	case lang.Ident:
+		if len(in) == 2 && in[1].Id == lang.Colon {
+			return p.ParseLabel(in)
+		}
+		fallthrough
 	default:
 		return p.ParseExpr(in)
 	}
@@ -127,12 +137,39 @@ func (p *Parser) ParseBreak(in Tokens) (out Tokens, err error) {
 		if in[1].Id != lang.Ident {
 			return nil, fmt.Errorf("invalid break statement")
 		}
+		// TODO: check validity of user provided label
 		label = in[1].Str
 	default:
 		return nil, fmt.Errorf("invalid break statement")
 	}
 	out = Tokens{{Id: lang.Goto, Str: "goto " + label}}
 	return out, err
+}
+
+func (p *Parser) ParseContinue(in Tokens) (out Tokens, err error) {
+	var label string
+	switch len(in) {
+	case 1:
+		label = p.continueLabel
+	case 2:
+		if in[1].Id != lang.Ident {
+			return nil, fmt.Errorf("invalid continue statement")
+		}
+		// TODO: check validity of user provided label
+		label = in[1].Str
+	default:
+		return nil, fmt.Errorf("invalid continue statement")
+	}
+	out = Tokens{{Id: lang.Goto, Str: "goto " + label}}
+	return out, err
+}
+
+func (p *Parser) ParseGoto(in Tokens) (out Tokens, err error) {
+	if len(in) != 2 || in[1].Id != lang.Ident {
+		return nil, fmt.Errorf("invalid goto statement")
+	}
+	// TODO: check validity of user provided label
+	return Tokens{{Id: lang.Goto, Str: "goto " + p.funcScope + "/" + in[1].Str}}, nil
 }
 
 func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
@@ -150,10 +187,10 @@ func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
 		return nil, fmt.Errorf("invalild for statement")
 	}
 	p.pushScope("for" + fc)
-	breakLabel := p.breakLabel
-	p.breakLabel = p.scope + "e"
+	breakLabel, continueLabel := p.breakLabel, p.continueLabel
+	p.breakLabel, p.continueLabel = p.scope+"e", p.scope+"b"
 	defer func() {
-		p.breakLabel = breakLabel
+		p.breakLabel, p.continueLabel = breakLabel, continueLabel
 		p.popScope()
 	}()
 	if len(init) > 0 {
@@ -195,15 +232,18 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	ofname := p.fname
 	p.fname = fname
 	ofunc := p.function
+	funcScope := p.funcScope
 	s, _, ok := p.getSym(fname, p.scope)
 	if !ok {
 		s = &symbol{}
 		p.symbols[p.scope+fname] = s
 	}
 	p.pushScope(fname)
+	p.funcScope = p.scope
 	defer func() {
 		p.fname = ofname // TODO remove if favor of function.
 		p.function = ofunc
+		p.funcScope = funcScope
 		p.popScope()
 	}()
 
@@ -289,6 +329,10 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 		}
 	}
 	return out, err
+}
+
+func (p *Parser) ParseLabel(in Tokens) (out Tokens, err error) {
+	return Tokens{{Id: lang.Label, Str: p.funcScope + "/" + in[0].Str}}, nil
 }
 
 func (p *Parser) ParseReturn(in Tokens) (out Tokens, err error) {
