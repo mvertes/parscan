@@ -20,7 +20,8 @@ const ASCIILen = 1 << 7 // 128
 
 type TokenProp struct {
 	TokenId
-	SkipSemi bool // automatic semicolon insertion after newline
+	SkipSemi   bool // automatic semicolon insertion after newline
+	Precedence int  // operator precedence
 }
 
 type Spec struct {

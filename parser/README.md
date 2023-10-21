@@ -72,19 +72,19 @@ Go language support:
 - [ ] unary operators
 - [ ] logical operators && and ||
 - [ ] assign operators
-- [ ] operator precedence
+- [x] operator precedence rules
 - [x] parenthesis expressions
 - [x] call expressions
 - [ ] index expressions
 - [ ] selector expressions
-- [ ] type conversions
+- [ ] type convertions
 - [ ] type assertions
 - [ ] parametric types (generic)
 - [ ] type parametric functions (generic)
 - [ ] type constraints (generic)
 - [ ] type checking
 - [ ] comment pragmas
-- [ ] packages import
+- [ ] package import
 - [ ] modules
 
 Other items:

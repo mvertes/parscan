@@ -68,8 +68,14 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 		case lang.Add:
 			c.Emit(int64(t.Pos), vm.Add)
 
+		case lang.Mul:
+			c.Emit(int64(t.Pos), vm.Mul)
+
 		case lang.Sub:
 			c.Emit(int64(t.Pos), vm.Sub)
+
+		case lang.Greater:
+			c.Emit(int64(t.Pos), vm.Greater)
 
 		case lang.Less:
 			c.Emit(int64(t.Pos), vm.Lower)
@@ -188,12 +194,18 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 }
 
 func (c *Compiler) PrintCode() {
-	labels := map[int]string{}
+	labels := map[int]string{} // labels indexed by code location
+	data := map[int]string{}   // data indexed by frame location
+
 	for name, sym := range c.symbols {
 		if sym.kind == symLabel || sym.kind == symFunc {
 			labels[sym.value.(int)] = name
 		}
+		if sym.used {
+			data[sym.index] = name
+		}
 	}
+
 	fmt.Println("# Code:")
 	for i, l := range c.Code {
 		if label, ok := labels[i]; ok {
@@ -205,9 +217,18 @@ func (c *Compiler) PrintCode() {
 			if d, ok := labels[i+(int)(l[2])]; ok {
 				extra = "// " + d
 			}
+		case vm.Dup, vm.Assign, vm.Fdup, vm.Fassign:
+			if d, ok := data[int(l[2])]; ok {
+				extra = "// " + d
+			}
 		}
 		fmt.Printf("%4d %-14v %v\n", i, vm.CodeString(l), extra)
 	}
+
+	if label, ok := labels[len(c.Code)]; ok {
+		fmt.Println(label + ":")
+	}
+	fmt.Println("# End code")
 }
 
 type entry struct {

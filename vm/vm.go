@@ -23,11 +23,13 @@ const (
 	Fdup             // addr -- value ; value = mem[addr]
 	Equal            // n1 n2 -- cond ; cond = n1 == n2
 	Exit             // -- ;
+	Greater          // n1 n2 -- cond; cond = n1 > n2
 	Jump             // -- ; ip += $1
 	JumpTrue         // cond -- ; if cond { ip += $1 }
 	JumpFalse        // cond -- ; if cond { ip += $1 }
 	Lower            // n1 n2 -- cond ; cond = n1 < n2
 	Loweri           // n1 -- cond ; cond = n1 < $1
+	Mul              // n1 n2 -- prod ; prod = n1*n2
 	Pop              // v --
 	Push             // -- v
 	Return           // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
@@ -47,11 +49,13 @@ var strop = [...]string{ // for VM tracing.
 	Exit:      "Exit",
 	Fassign:   "Fassign",
 	Fdup:      "Fdup",
+	Greater:   "Greater",
 	Jump:      "Jump",
 	JumpTrue:  "JumpTrue",
 	JumpFalse: "JumpFalse",
 	Lower:     "Lower",
 	Loweri:    "Loweri",
+	Mul:       "Mul",
 	Pop:       "Pop",
 	Push:      "Push",
 	Return:    "Return",
@@ -96,6 +100,9 @@ func (m *Machine) Run() (err error) {
 		switch op := code[ip]; op[1] {
 		case Add:
 			mem[sp-2] = mem[sp-2].(int) + mem[sp-1].(int)
+			mem = mem[:sp-1]
+		case Mul:
+			mem[sp-2] = mem[sp-2].(int) * mem[sp-1].(int)
 			mem = mem[:sp-1]
 		case Assign:
 			mem[op[2]] = mem[sp-1]
@@ -151,6 +158,9 @@ func (m *Machine) Run() (err error) {
 				ip += int(op[2])
 				continue
 			}
+		case Greater:
+			mem[sp-2] = mem[sp-1].(int) > mem[sp-2].(int)
+			mem = mem[:sp-1]
 		case Lower:
 			mem[sp-2] = mem[sp-1].(int) < mem[sp-2].(int)
 			mem = mem[:sp-1]
@@ -214,16 +224,6 @@ func CodeString(op []int64) string {
 func Disassemble(code [][]int64) (asm string) {
 	for _, op := range code {
 		asm += CodeString(op) + "\n"
-		/*
-			switch len(op) {
-			case 2:
-				asm += strop[op[1]] + "\n"
-			case 3:
-				asm += fmt.Sprintf("%s %d\n", strop[op[1]], op[2])
-			case 4:
-				asm += fmt.Sprintf("%s %d %d\n", strop[op[1]], op[2], op[3])
-			}
-		*/
 	}
 	return asm
 }

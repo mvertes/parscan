@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -66,6 +67,17 @@ func (toks Tokens) Split(id lang.TokenId) (result []Tokens) {
 	}
 }
 
+func (toks Tokens) SplitStart(id lang.TokenId) (result []Tokens) {
+	for {
+		i := toks[1:].Index(id)
+		if i < 0 {
+			return append(result, toks)
+		}
+		result = append(result, toks[:i])
+		toks = toks[i+1:]
+	}
+}
+
 func (p *Parser) Parse(src string) (out Tokens, err error) {
 	log.Printf("Parse src: %#v\n", src)
 	in, err := p.Scan(src, true)
@@ -118,6 +130,8 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 		return p.ParseIf(in)
 	case lang.Return:
 		return p.ParseReturn(in)
+	case lang.Switch:
+		return p.ParseSwitch(in)
 	case lang.Ident:
 		if len(in) == 2 && in[1].Id == lang.Colon {
 			return p.ParseLabel(in)
@@ -186,8 +200,8 @@ func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, fmt.Errorf("invalild for statement")
 	}
-	p.pushScope("for" + fc)
 	breakLabel, continueLabel := p.breakLabel, p.continueLabel
+	p.pushScope("for" + fc)
 	p.breakLabel, p.continueLabel = p.scope+"e", p.scope+"b"
 	defer func() {
 		p.breakLabel, p.continueLabel = breakLabel, continueLabel
@@ -235,7 +249,7 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	funcScope := p.funcScope
 	s, _, ok := p.getSym(fname, p.scope)
 	if !ok {
-		s = &symbol{}
+		s = &symbol{used: true}
 		p.symbols[p.scope+fname] = s
 	}
 	p.pushScope(fname)
@@ -331,6 +345,81 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
+func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
+	var init, cond, clauses Tokens
+	initcond := in[1 : len(in)-1]
+	if ii := initcond.Index(lang.Semicolon); ii < 0 {
+		cond = initcond
+	} else {
+		init = initcond[:ii]
+		cond = initcond[ii+1:]
+	}
+	label := "switch" + strconv.Itoa(p.labelCount[p.scope])
+	p.labelCount[p.scope]++
+	breakLabel := p.breakLabel
+	p.pushScope(label)
+	p.breakLabel = p.scope
+	defer func() {
+		p.breakLabel = breakLabel
+		p.popScope()
+	}()
+	log.Println("### ic:", initcond, "#init:", init, "#cond:", cond)
+	if len(init) > 0 {
+		if init, err = p.ParseStmt(init); err != nil {
+			return nil, err
+		}
+		out = init
+	}
+	if len(cond) > 0 {
+		if cond, err = p.ParseExpr(cond); err != nil {
+			return nil, err
+		}
+	} else {
+		cond = Tokens{{Id: lang.Ident, Str: "true"}}
+	}
+	out = append(out, cond...)
+	// Split switch body into  case clauses.
+	clauses, err = p.Scan(in[len(in)-1].Block(), true)
+	log.Println("## clauses:", clauses)
+	sc := clauses.SplitStart(lang.Case)
+	// Make sure that the default clause is the last.
+	lsc := len(sc) - 1
+	for i, cl := range sc {
+		if cl[1].Id == lang.Colon && i != lsc {
+			sc[i], sc[lsc] = sc[lsc], sc[i]
+			break
+		}
+	}
+	// Process each clause.
+	for i, cl := range sc {
+		co, err := p.ParseCaseClause(cl, i)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, co...)
+	}
+	return out, err
+}
+
+func (p *Parser) ParseCaseClause(in Tokens, index int) (out Tokens, err error) {
+	var initcond, init, cond, body Tokens
+	tl := in.Split(lang.Colon)
+	if len(tl) != 2 {
+		return nil, errors.New("invalid case clause")
+	}
+	initcond, body = tl[0][1:], tl[1]
+	if ii := initcond.Index(lang.Semicolon); ii < 0 {
+		cond = initcond
+	} else {
+		init = initcond[:ii]
+		cond = initcond[ii+1:]
+	}
+	lcond := cond.Split(lang.Comma)
+	log.Println("# ParseCaseClause:", init, "cond:", cond, len(lcond))
+	_ = body
+	return out, err
+}
+
 func (p *Parser) ParseLabel(in Tokens) (out Tokens, err error) {
 	return Tokens{{Id: lang.Label, Str: p.funcScope + "/" + in[0].Str}}, nil
 }
@@ -376,7 +465,7 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 		case lang.Int, lang.String:
 			out = append(out, t)
 			vl++
-		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Less:
+		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Greater, lang.Less, lang.Mul:
 			// TODO: handle operator precedence to swap operators / operands if necessary
 			if vl < 2 {
 				ops = append(ops, t)
@@ -407,9 +496,16 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 			}
 			ops = append(ops, scanner.Token{Str: "call", Id: lang.Call, Pos: t.Pos})
 		}
-		if ol := len(ops); ol > 0 && vl > ol {
-			op := ops[ol-1]
-			ops = ops[:ol-1]
+		if lops, lout := len(ops), len(out); lops > 0 && vl > lops {
+			op := ops[lops-1]
+			ops = ops[:lops-1]
+			// Reorder tokens according to operator precedence rules.
+			if p.precedence(out[lout-2]) > p.precedence(op) {
+				op, out[lout-1], out[lout-2] = out[lout-2], op, out[lout-1]
+				if p.precedence(out[lout-3]) > p.precedence(out[lout-1]) {
+					out[lout-1], out[lout-2], out[lout-3] = out[lout-3], out[lout-1], out[lout-2]
+				}
+			}
 			out = append(out, op)
 			vl--
 		}
@@ -483,4 +579,8 @@ func (p *Parser) popScope() {
 		j = 0
 	}
 	p.scope = p.scope[:j]
+}
+
+func (p *Parser) precedence(t scanner.Token) int {
+	return p.TokenProps[t.Str].Precedence
 }

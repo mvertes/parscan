@@ -55,6 +55,10 @@ func TestExpr(t *testing.T) {
 		{src: "(6+(1+2)+3)+5", res: "17"},
 		{src: "(6+(1+2+3)+5", err: "1:1: block not terminated"},
 		{src: "a := 2; a = 3; a", res: "3"},
+		{src: "2 * 3 + 1 == 7", res: "true"},
+		{src: "7 == 2 * 3 + 1", res: "true"},
+		{src: "1 + 3 * 2 == 2 * 3 + 1", res: "true"},
+		{src: "a := 1 + 3 * 2 == 2 * 3 + 1; a", res: "true"},
 	})
 }
 
@@ -77,6 +81,8 @@ func TestIf(t *testing.T) {
 		{src: "a := 0; if a == 1 { a = 2 } else { a = 1 }; a", res: "1"},
 		{src: "a := 0; if a == 1 { a = 2 } else if a == 0 { a = 3 } else { a = 1 }; a", res: "3"},
 		{src: "a := 0; if a == 1 { a = 2 } else if a == 2 { a = 3 } else { a = 1 }; a", res: "1"},
+		//{src: "a := 1; if a > 0 && a < 2 { a = 3 }; a", res: "3"},
+		//{src: "a := 1; if a < 0 || a < 2 { a = 3 }; a", res: "3"},
 	})
 }
 
@@ -91,7 +97,8 @@ func TestFor(t *testing.T) {
 }
 
 func TestGoto(t *testing.T) {
-	gen(etest{src: `
+	run(t, []etest{{
+		src: `
 func f(a int) int {
 	a = a+1
 	goto end
@@ -99,6 +106,26 @@ func f(a int) int {
 end:
 	return a
 }
-f(3)`,
-		res: "4"})(t)
+f(3)`, res: "4"},
+	})
 }
+
+/*
+func TestSwitch(t *testing.T) {
+	run(t, []etest{{
+		src: `
+func f(a int) int {
+	switch a {
+	default:
+		a = 0
+	case 1,2:
+		a = a+1
+	case 3:
+		a = a+2
+	}
+	return a
+}
+f(3)`, res: "5"},
+	})
+}
+*/
