@@ -124,6 +124,11 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			if s.local {
 				c.Emit(int64(t.Pos), vm.Fdup, int64(s.index))
 			} else {
+				if s.index < 0 {
+					// This global symbol is defined but not yet used. Add it to data.
+					s.index = len(c.Data)
+					c.Data = append(c.Data, s.value)
+				}
 				c.Emit(int64(t.Pos), vm.Dup, int64(s.index))
 			}
 
@@ -155,6 +160,30 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			}
 			c.Emit(int64(t.Pos), vm.JumpFalse, int64(i))
 
+		case lang.JumpSetFalse:
+			label := t.Str[13:]
+			i := 0
+			if s, ok := c.symbols[label]; !ok {
+				// t.Beg contains the position in code which needs to be fixed.
+				t.Beg = len(c.Code)
+				fixList = append(fixList, t)
+			} else {
+				i = s.value.(int) - len(c.Code)
+			}
+			c.Emit(int64(t.Pos), vm.JumpSetFalse, int64(i))
+
+		case lang.JumpSetTrue:
+			label := t.Str[12:]
+			i := 0
+			if s, ok := c.symbols[label]; !ok {
+				// t.Beg contains the position in code which needs to be fixed.
+				t.Beg = len(c.Code)
+				fixList = append(fixList, t)
+			} else {
+				i = s.value.(int) - len(c.Code)
+			}
+			c.Emit(int64(t.Pos), vm.JumpSetTrue, int64(i))
+
 		case lang.Goto:
 			label := t.Str[5:]
 			i := 0
@@ -177,11 +206,16 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 	// Finally we fix unresolved labels for jump destinations.
 	for _, t := range fixList {
 		var label string
+		// TODO: this could be simplified.
 		switch t.Id {
 		case lang.Goto:
 			label = t.Str[5:]
 		case lang.JumpFalse:
 			label = t.Str[10:]
+		case lang.JumpSetFalse:
+			label = t.Str[13:]
+		case lang.JumpSetTrue:
+			label = t.Str[12:]
 		}
 		s, ok := c.symbols[label]
 		if !ok {
@@ -213,7 +247,7 @@ func (c *Compiler) PrintCode() {
 		}
 		extra := ""
 		switch l[1] {
-		case vm.Jump, vm.JumpFalse, vm.JumpTrue, vm.Calli:
+		case vm.Jump, vm.JumpFalse, vm.JumpTrue, vm.JumpSetFalse, vm.JumpSetTrue, vm.Calli:
 			if d, ok := labels[i+(int)(l[2])]; ok {
 				extra = "// " + d
 			}

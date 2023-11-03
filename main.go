@@ -72,7 +72,6 @@ func run(arg []string) (err error) {
 	args := rflag.Args()
 
 	interp := parser.NewInterpreter(scanner.NewScanner(golang.GoSpec))
-	interp.AddSym("println", fmt.Println)
 
 	in := os.Stdin
 	if len(args) > 0 {

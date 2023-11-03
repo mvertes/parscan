@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 )
@@ -51,15 +52,17 @@ func (p *Parser) getSym(name, scope string) (sym *symbol, sc string, ok bool) {
 
 func initUniverse() map[string]*symbol {
 	return map[string]*symbol{
-		"any":    {kind: symType, Type: reflect.TypeOf((*any)(nil)).Elem()},
-		"bool":   {kind: symType, Type: reflect.TypeOf((*bool)(nil)).Elem()},
-		"error":  {kind: symType, Type: reflect.TypeOf((*error)(nil)).Elem()},
-		"int":    {kind: symType, Type: reflect.TypeOf((*int)(nil)).Elem()},
-		"string": {kind: symType, Type: reflect.TypeOf((*string)(nil)).Elem()},
+		"any":    {kind: symType, index: -1, Type: reflect.TypeOf((*any)(nil)).Elem()},
+		"bool":   {kind: symType, index: -1, Type: reflect.TypeOf((*bool)(nil)).Elem()},
+		"error":  {kind: symType, index: -1, Type: reflect.TypeOf((*error)(nil)).Elem()},
+		"int":    {kind: symType, index: -1, Type: reflect.TypeOf((*int)(nil)).Elem()},
+		"string": {kind: symType, index: -1, Type: reflect.TypeOf((*string)(nil)).Elem()},
 
-		"nil":   {},
-		"iota":  {value: 0},
-		"true":  {value: true},
-		"false": {value: false},
+		"nil":   {index: -1},
+		"iota":  {index: -1, value: 0},
+		"true":  {index: -1, value: true, Type: reflect.TypeOf(true)},
+		"false": {index: -1, value: false, Type: reflect.TypeOf(false)},
+
+		"println": {index: -1, value: func(v ...any) { fmt.Println(v...) }},
 	}
 }

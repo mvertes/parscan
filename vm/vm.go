@@ -12,55 +12,59 @@ const debug = true
 // Byte-code instruction set.
 const (
 	// instruction effect on stack: values consumed -- values produced
-	Nop       = iota // --
-	Add              // n1 n2 -- sum ; sum = n1+n2
-	Assign           // val -- ; mem[$1] = val
-	Fassign          // val -- ; mem[$1] = val
-	Call             // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
-	Calli            // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
-	CallX            // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
-	Dup              // addr -- value ; value = mem[addr]
-	Fdup             // addr -- value ; value = mem[addr]
-	Equal            // n1 n2 -- cond ; cond = n1 == n2
-	Exit             // -- ;
-	Greater          // n1 n2 -- cond; cond = n1 > n2
-	Jump             // -- ; ip += $1
-	JumpTrue         // cond -- ; if cond { ip += $1 }
-	JumpFalse        // cond -- ; if cond { ip += $1 }
-	Lower            // n1 n2 -- cond ; cond = n1 < n2
-	Loweri           // n1 -- cond ; cond = n1 < $1
-	Mul              // n1 n2 -- prod ; prod = n1*n2
-	Pop              // v --
-	Push             // -- v
-	Return           // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
-	Sub              // n1 n2 -- diff ; diff = n1 - n2
-	Subi             // n1 -- diff ; diff = n1 - $1
+	Nop          = iota // --
+	Add                 // n1 n2 -- sum ; sum = n1+n2
+	Assign              // val -- ; mem[$1] = val
+	Fassign             // val -- ; mem[$1] = val
+	Call                // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
+	Calli               // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
+	CallX               // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
+	Dup                 // addr -- value ; value = mem[addr]
+	Fdup                // addr -- value ; value = mem[addr]
+	Equal               // n1 n2 -- cond ; cond = n1 == n2
+	Exit                // -- ;
+	Greater             // n1 n2 -- cond; cond = n1 > n2
+	Jump                // -- ; ip += $1
+	JumpTrue            // cond -- ; if cond { ip += $1 }
+	JumpFalse           // cond -- ; if cond { ip += $1 }
+	JumpSetTrue         //
+	JumpSetFalse        //
+	Lower               // n1 n2 -- cond ; cond = n1 < n2
+	Loweri              // n1 -- cond ; cond = n1 < $1
+	Mul                 // n1 n2 -- prod ; prod = n1*n2
+	Pop                 // v --
+	Push                // -- v
+	Return              // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
+	Sub                 // n1 n2 -- diff ; diff = n1 - n2
+	Subi                // n1 -- diff ; diff = n1 - $1
 )
 
 var strop = [...]string{ // for VM tracing.
-	Nop:       "Nop",
-	Add:       "Add",
-	Assign:    "Assign",
-	Call:      "Call",
-	Calli:     "Calli",
-	CallX:     "CallX",
-	Dup:       "Dup",
-	Equal:     "Equal",
-	Exit:      "Exit",
-	Fassign:   "Fassign",
-	Fdup:      "Fdup",
-	Greater:   "Greater",
-	Jump:      "Jump",
-	JumpTrue:  "JumpTrue",
-	JumpFalse: "JumpFalse",
-	Lower:     "Lower",
-	Loweri:    "Loweri",
-	Mul:       "Mul",
-	Pop:       "Pop",
-	Push:      "Push",
-	Return:    "Return",
-	Sub:       "Sub",
-	Subi:      "Subi",
+	Nop:          "Nop",
+	Add:          "Add",
+	Assign:       "Assign",
+	Call:         "Call",
+	Calli:        "Calli",
+	CallX:        "CallX",
+	Dup:          "Dup",
+	Equal:        "Equal",
+	Exit:         "Exit",
+	Fassign:      "Fassign",
+	Fdup:         "Fdup",
+	Greater:      "Greater",
+	Jump:         "Jump",
+	JumpTrue:     "JumpTrue",
+	JumpFalse:    "JumpFalse",
+	JumpSetTrue:  "JumpSetTrue",
+	JumpSetFalse: "JumpSetFalse",
+	Lower:        "Lower",
+	Loweri:       "Loweri",
+	Mul:          "Mul",
+	Pop:          "Pop",
+	Push:         "Push",
+	Return:       "Return",
+	Sub:          "Sub",
+	Subi:         "Subi",
 }
 
 // Machine represents a virtual machine.
@@ -90,7 +94,7 @@ func (m *Machine) Run() (err error) {
 				op3 = strconv.Itoa(int(c[3]))
 			}
 		}
-		log.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-9s %-4s %-4s] mem:%v\n", ip, sp, fp, strop[c[1]], op2, op3, mem)
+		log.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-12s %-4s %-4s] mem:%v\n", ip, sp, fp, strop[c[1]], op2, op3, mem)
 	}
 
 	for {
@@ -158,6 +162,22 @@ func (m *Machine) Run() (err error) {
 				ip += int(op[2])
 				continue
 			}
+		case JumpSetTrue:
+			cond := mem[sp-1].(bool)
+			if cond {
+				ip += int(op[2])
+				// Note that stack is not modified if cond is true
+				continue
+			}
+			mem = mem[:sp-1]
+		case JumpSetFalse:
+			cond := mem[sp-1].(bool)
+			if !cond {
+				ip += int(op[2])
+				// Note that stack is not modified if cond is false
+				continue
+			}
+			mem = mem[:sp-1]
 		case Greater:
 			mem[sp-2] = mem[sp-1].(int) > mem[sp-2].(int)
 			mem = mem[:sp-1]
