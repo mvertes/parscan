@@ -62,6 +62,21 @@ func TestExpr(t *testing.T) {
 	})
 }
 
+func TestLogical(t *testing.T) {
+	run(t, []etest{
+		{src: "true && false", res: "false"},
+		{src: "true && true", res: "true"},
+		{src: "true && true && false", res: "false"},
+		{src: "false || true && true", res: "true"},
+		{src: "2 < 3 && 1 > 2 || 3 == 3", res: "true"},
+		{src: "2 > 3 && 1 > 2 || 3 == 3", res: "true"},
+		{src: "2 > 3 || 2 == 1+1 && 3>0", res: "true"},
+		{src: "2 > 3 || 2 == 1+1 && 3>4 || 1<2", res: "true"},
+		{src: "a := 1+1 < 3 && 4 == 2+2; a", res: "true"},
+		{src: "a := 1+1 < 3 || 3 == 2+2; a", res: "true"},
+	})
+}
+
 func TestFunc(t *testing.T) {
 	run(t, []etest{
 		{src: "func f() int {return 2}; a := f(); a", res: "2"},
