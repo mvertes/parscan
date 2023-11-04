@@ -85,7 +85,7 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 	if out, err = p.ParseLogical(out); err != nil {
 		return out, err
 	}
-	if l := len(out) - 1; out[l].Id == lang.Define || out[l].Id == lang.Assign {
+	if l := len(out) - 1; l >= 0 && (out[l].Id == lang.Define || out[l].Id == lang.Assign) {
 		// Handle the assignment of a logical expression.
 		s1 := p.subExprLen(out[:l])
 		head, err := p.ParseLogical(out[:l-s1])
@@ -139,7 +139,7 @@ func (p *Parser) ParseExprStr(s string) (tokens Tokens, err error) {
 // If the last token is not a logical operator then the function is idempotent.
 func (p *Parser) ParseLogical(in Tokens) (out Tokens, err error) {
 	l := len(in) - 1
-	if !in[l].Id.IsLogicalOp() {
+	if l < 0 || !in[l].Id.IsLogicalOp() {
 		return in, nil
 	}
 	xp := strconv.Itoa(p.labelCount[p.scope])

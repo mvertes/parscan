@@ -96,8 +96,8 @@ func TestIf(t *testing.T) {
 		{src: "a := 0; if a == 1 { a = 2 } else { a = 1 }; a", res: "1"},
 		{src: "a := 0; if a == 1 { a = 2 } else if a == 0 { a = 3 } else { a = 1 }; a", res: "3"},
 		{src: "a := 0; if a == 1 { a = 2 } else if a == 2 { a = 3 } else { a = 1 }; a", res: "1"},
-		//{src: "a := 1; if a > 0 && a < 2 { a = 3 }; a", res: "3"},
-		//{src: "a := 1; if a < 0 || a < 2 { a = 3 }; a", res: "3"},
+		{src: "a := 1; if a > 0 && a < 2 { a = 3 }; a", res: "3"},
+		{src: "a := 1; if a < 0 || a < 2 { a = 3 }; a", res: "3"},
 	})
 }
 

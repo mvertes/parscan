@@ -70,7 +70,7 @@ Go language support:
 - [ ] select statement
 - [x] binary operators
 - [ ] unary operators
-- [ ] logical operators && and ||
+- [x] logical operators && and ||
 - [ ] assign operators
 - [x] operator precedence rules
 - [x] parenthesis expressions
