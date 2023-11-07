@@ -125,22 +125,33 @@ f(3)`, res: "4"},
 	})
 }
 
-/*
 func TestSwitch(t *testing.T) {
-	run(t, []etest{{
-		src: `
-func f(a int) int {
+	src0 := `func f(a int) int {
 	switch a {
-	default:
-		a = 0
-	case 1,2:
-		a = a+1
-	case 3:
-		a = a+2
+	default:  a = 0
+	case 1,2: a = a+1
+	case 3:   a = a+2
 	}
 	return a
 }
-f(3)`, res: "5"},
+`
+	src1 := `func f(a int) int {
+	switch {
+	case a < 3: return 2
+	case a < 5: return 5
+	default:  a = 0
+	}
+	return a
+}
+`
+	run(t, []etest{
+		{src: src0 + "f(1)", res: "2"},
+		{src: src0 + "f(2)", res: "3"},
+		{src: src0 + "f(3)", res: "5"},
+		{src: src0 + "f(4)", res: "0"},
+
+		{src: src1 + "f(1)", res: "2"},
+		{src: src1 + "f(4)", res: "5"},
+		{src: src1 + "f(6)", res: "0"},
 	})
 }
-*/

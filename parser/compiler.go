@@ -110,6 +110,9 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 		case lang.Equal:
 			c.Emit(int64(t.Pos), vm.Equal)
 
+		case lang.EqualSet:
+			c.Emit(int64(t.Pos), vm.EqualSet)
+
 		case lang.Ident:
 			if i < len(tokens)-1 {
 				switch t1 := tokens[i+1]; t1.Id {
@@ -228,12 +231,13 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 }
 
 func (c *Compiler) PrintCode() {
-	labels := map[int]string{} // labels indexed by code location
-	data := map[int]string{}   // data indexed by frame location
+	labels := map[int][]string{} // labels indexed by code location
+	data := map[int]string{}     // data indexed by frame location
 
 	for name, sym := range c.symbols {
 		if sym.kind == symLabel || sym.kind == symFunc {
-			labels[sym.value.(int)] = name
+			i := sym.value.(int)
+			labels[i] = append(labels[i], name)
 		}
 		if sym.used {
 			data[sym.index] = name
@@ -242,14 +246,14 @@ func (c *Compiler) PrintCode() {
 
 	fmt.Println("# Code:")
 	for i, l := range c.Code {
-		if label, ok := labels[i]; ok {
+		for _, label := range labels[i] {
 			fmt.Println(label + ":")
 		}
 		extra := ""
 		switch l[1] {
 		case vm.Jump, vm.JumpFalse, vm.JumpTrue, vm.JumpSetFalse, vm.JumpSetTrue, vm.Calli:
 			if d, ok := labels[i+(int)(l[2])]; ok {
-				extra = "// " + d
+				extra = "// " + d[0]
 			}
 		case vm.Dup, vm.Assign, vm.Fdup, vm.Fassign:
 			if d, ok := data[int(l[2])]; ok {
@@ -259,7 +263,7 @@ func (c *Compiler) PrintCode() {
 		fmt.Printf("%4d %-14v %v\n", i, vm.CodeString(l), extra)
 	}
 
-	if label, ok := labels[len(c.Code)]; ok {
+	for _, label := range labels[len(c.Code)] {
 		fmt.Println(label + ":")
 	}
 	fmt.Println("# End code")

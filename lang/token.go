@@ -109,6 +109,7 @@ const (
 	JumpFalse
 	JumpSetFalse
 	JumpSetTrue
+	EqualSet
 )
 
 func (t TokenId) IsKeyword() bool   { return t >= Break && t <= Var }

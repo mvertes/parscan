@@ -22,6 +22,7 @@ const (
 	Dup                 // addr -- value ; value = mem[addr]
 	Fdup                // addr -- value ; value = mem[addr]
 	Equal               // n1 n2 -- cond ; cond = n1 == n2
+	EqualSet            // n1 n2 -- n1 cond ; cond = n1 == n2
 	Exit                // -- ;
 	Greater             // n1 n2 -- cond; cond = n1 > n2
 	Jump                // -- ; ip += $1
@@ -48,6 +49,7 @@ var strop = [...]string{ // for VM tracing.
 	CallX:        "CallX",
 	Dup:          "Dup",
 	Equal:        "Equal",
+	EqualSet:     "EqualSet",
 	Exit:         "Exit",
 	Fassign:      "Fassign",
 	Fdup:         "Fdup",
@@ -141,6 +143,16 @@ func (m *Machine) Run() (err error) {
 		case Equal:
 			mem[sp-2] = mem[sp-2].(int) == mem[sp-1].(int)
 			mem = mem[:sp-1]
+		case EqualSet:
+			if mem[sp-2].(int) == mem[sp-1].(int) {
+				// If equal then lhs and rhs are popped, replaced by test result, as in Equal.
+				mem[sp-2] = true
+				mem = mem[:sp-1]
+			} else {
+				// If not equal then the lhs is let on stack for further processing.
+				// This is used to simplify bytecode in case clauses of switch statments.
+				mem[sp-1] = false
+			}
 		case Exit:
 			return err
 		case Fdup:

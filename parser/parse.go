@@ -84,7 +84,36 @@ func (p *Parser) Parse(src string) (out Tokens, err error) {
 	if err != nil {
 		return out, err
 	}
-	log.Println("Parse in:", in)
+	return p.ParseStmts(in)
+	/*
+		log.Println("Parse in:", in)
+		for len(in) > 0 {
+			endstmt := in.Index(lang.Semicolon)
+			if endstmt == -1 {
+				return out, scanner.ErrBlock
+			}
+			// Skip over simple init statements for some tokens (if, for, ...)
+			if lang.HasInit[in[0].Id] {
+				for in[endstmt-1].Id != lang.BraceBlock {
+					e2 := in[endstmt+1:].Index(lang.Semicolon)
+					if e2 == -1 {
+						return out, scanner.ErrBlock
+					}
+					endstmt += 1 + e2
+				}
+			}
+			o, err := p.ParseStmt(in[:endstmt])
+			if err != nil {
+				return out, err
+			}
+			out = append(out, o...)
+			in = in[endstmt+1:]
+		}
+		return out, err
+	*/
+}
+
+func (p *Parser) ParseStmts(in Tokens) (out Tokens, err error) {
 	for len(in) > 0 {
 		endstmt := in.Index(lang.Semicolon)
 		if endstmt == -1 {
@@ -111,7 +140,7 @@ func (p *Parser) Parse(src string) (out Tokens, err error) {
 }
 
 func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
-	log.Println("ParseStmt in:", in)
+	log.Println("ParseStmt in:", in, len(in))
 	if len(in) == 0 {
 		return nil, nil
 	}
@@ -370,17 +399,16 @@ func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
 		}
 		out = init
 	}
+	condSwitch := false
 	if len(cond) > 0 {
 		if cond, err = p.ParseExpr(cond); err != nil {
 			return nil, err
 		}
-	} else {
-		cond = Tokens{{Id: lang.Ident, Str: "true"}}
+		out = append(out, cond...)
+		condSwitch = true
 	}
-	out = append(out, cond...)
 	// Split switch body into  case clauses.
 	clauses, err = p.Scan(in[len(in)-1].Block(), true)
-	log.Println("## clauses:", clauses)
 	sc := clauses.SplitStart(lang.Case)
 	// Make sure that the default clause is the last.
 	lsc := len(sc) - 1
@@ -391,32 +419,58 @@ func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
 		}
 	}
 	// Process each clause.
+	nc := len(sc) - 1
 	for i, cl := range sc {
-		co, err := p.ParseCaseClause(cl, i)
+		co, err := p.ParseCaseClause(cl, i, nc, condSwitch)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, co...)
 	}
+	out = append(out, scanner.Token{Id: lang.Label, Str: p.scope + "e"})
 	return out, err
 }
 
-func (p *Parser) ParseCaseClause(in Tokens, index int) (out Tokens, err error) {
-	var initcond, init, cond, body Tokens
+func (p *Parser) ParseCaseClause(in Tokens, index, max int, condSwitch bool) (out Tokens, err error) {
+	in = append(in, scanner.Token{Id: lang.Semicolon}) // Force a ';' at the end of body clause.
+	var conds, body Tokens
 	tl := in.Split(lang.Colon)
 	if len(tl) != 2 {
 		return nil, errors.New("invalid case clause")
 	}
-	initcond, body = tl[0][1:], tl[1]
-	if ii := initcond.Index(lang.Semicolon); ii < 0 {
-		cond = initcond
-	} else {
-		init = initcond[:ii]
-		cond = initcond[ii+1:]
+	conds = tl[0][1:]
+	if body, err = p.ParseStmts(tl[1]); err != nil {
+		return out, err
 	}
-	lcond := cond.Split(lang.Comma)
-	log.Println("# ParseCaseClause:", init, "cond:", cond, len(lcond))
-	_ = body
+	lcond := conds.Split(lang.Comma)
+	for i, cond := range lcond {
+		if cond, err = p.ParseExpr(cond); err != nil {
+			return out, err
+		}
+		txt := fmt.Sprintf("%sc%d.%d", p.scope, index, i)
+		next := ""
+		if i == len(lcond)-1 { // End of cond: next, go to next clause or exit
+			if index < max {
+				next = fmt.Sprintf("%sc%d.%d", p.scope, index+1, 0)
+			} else {
+				next = p.scope + "e"
+			}
+		} else {
+			next = fmt.Sprintf("%sc%d.%d", p.scope, index, i+1)
+		}
+		out = append(out, scanner.Token{Id: lang.Label, Str: txt})
+		if len(cond) > 0 {
+			out = append(out, cond...)
+			if condSwitch {
+				out = append(out, scanner.Token{Id: lang.EqualSet})
+			}
+			out = append(out, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + next})
+		}
+		out = append(out, body...)
+		if i != len(lcond)-1 || index != max {
+			out = append(out, scanner.Token{Id: lang.Goto, Str: "Goto " + p.scope + "e"})
+		}
+	}
 	return out, err
 }
 

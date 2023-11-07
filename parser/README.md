@@ -61,7 +61,8 @@ Go language support:
 - [ ] go statement
 - [x] if statement (including else and else if)
 - [x] for statement
-- [ ] switch statement
+- [x] switch statement
+- [ ] type switch statement
 - [x] break statement
 - [x] continue statement
 - [ ] fallthrough statement
