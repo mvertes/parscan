@@ -130,7 +130,8 @@ func TestSwitch(t *testing.T) {
 	switch a {
 	default:  a = 0
 	case 1,2: a = a+1
-	case 3:   a = a+2
+	case 3:   a = a+2; break; a = 3
+	case 4:   a = 10
 	}
 	return a
 }
@@ -148,7 +149,8 @@ func TestSwitch(t *testing.T) {
 		{src: src0 + "f(1)", res: "2"},
 		{src: src0 + "f(2)", res: "3"},
 		{src: src0 + "f(3)", res: "5"},
-		{src: src0 + "f(4)", res: "0"},
+		{src: src0 + "f(4)", res: "10"},
+		{src: src0 + "f(5)", res: "0"},
 
 		{src: src1 + "f(1)", res: "2"},
 		{src: src1 + "f(4)", res: "5"},

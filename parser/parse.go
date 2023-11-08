@@ -85,32 +85,6 @@ func (p *Parser) Parse(src string) (out Tokens, err error) {
 		return out, err
 	}
 	return p.ParseStmts(in)
-	/*
-		log.Println("Parse in:", in)
-		for len(in) > 0 {
-			endstmt := in.Index(lang.Semicolon)
-			if endstmt == -1 {
-				return out, scanner.ErrBlock
-			}
-			// Skip over simple init statements for some tokens (if, for, ...)
-			if lang.HasInit[in[0].Id] {
-				for in[endstmt-1].Id != lang.BraceBlock {
-					e2 := in[endstmt+1:].Index(lang.Semicolon)
-					if e2 == -1 {
-						return out, scanner.ErrBlock
-					}
-					endstmt += 1 + e2
-				}
-			}
-			o, err := p.ParseStmt(in[:endstmt])
-			if err != nil {
-				return out, err
-			}
-			out = append(out, o...)
-			in = in[endstmt+1:]
-		}
-		return out, err
-	*/
 }
 
 func (p *Parser) ParseStmts(in Tokens) (out Tokens, err error) {
@@ -387,12 +361,11 @@ func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
 	p.labelCount[p.scope]++
 	breakLabel := p.breakLabel
 	p.pushScope(label)
-	p.breakLabel = p.scope
+	p.breakLabel = p.scope + "e"
 	defer func() {
 		p.breakLabel = breakLabel
 		p.popScope()
 	}()
-	log.Println("### ic:", initcond, "#init:", init, "#cond:", cond)
 	if len(init) > 0 {
 		if init, err = p.ParseStmt(init); err != nil {
 			return nil, err
@@ -427,7 +400,7 @@ func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
 		}
 		out = append(out, co...)
 	}
-	out = append(out, scanner.Token{Id: lang.Label, Str: p.scope + "e"})
+	out = append(out, scanner.Token{Id: lang.Label, Str: p.breakLabel})
 	return out, err
 }
 
