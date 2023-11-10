@@ -96,21 +96,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 				}
 				// Type was ommitted, apply the previous one from the right.
 				types = append([]reflect.Type{types[0]}, types...)
-				zv := reflect.New(types[0]).Elem().Interface()
-				switch flag {
-				case parseTypeIn:
-					p.addSym(-i-2, param, zv, symVar, types[0], true)
-				case parseTypeOut:
-					p.addSym(p.framelen[p.funcScope], param, zv, symVar, types[0], true)
-					p.framelen[p.funcScope]++
-				case parseTypeVar:
-					if local {
-						p.addSym(p.framelen[p.funcScope], param, zv, symVar, types[0], local)
-						p.framelen[p.funcScope]++
-					} else {
-						p.addSym(unsetAddr, param, zv, symVar, types[0], local)
-					}
-				}
+				p.addSymVar(i, param, types[0], flag, local)
 				vars = append(vars, param)
 				continue
 			}
@@ -120,28 +106,30 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 			return nil, nil, err
 		}
 		if param != "" {
-			zv := reflect.New(typ).Elem().Interface()
-			switch flag {
-			case parseTypeIn:
-				p.addSym(-i-2, param, zv, symVar, typ, true)
-			case parseTypeOut:
-				p.addSym(p.framelen[p.funcScope], param, zv, symVar, typ, true)
-				p.framelen[p.funcScope]++
-			case parseTypeVar:
-				if local {
-					p.addSym(p.framelen[p.funcScope], param, zv, symVar, typ, local)
-					p.framelen[p.funcScope]++
-				} else {
-					p.addSym(unsetAddr, param, zv, symVar, typ, local)
-				}
-			}
-		} else if flag == parseTypeOut {
-			p.framelen[p.funcScope]++
+			p.addSymVar(i, param, typ, flag, local)
 		}
 		types = append([]reflect.Type{typ}, types...)
 		vars = append(vars, param)
 	}
 	return types, vars, err
+}
+
+func (p *Parser) addSymVar(index int, name string, typ reflect.Type, flag typeFlag, local bool) {
+	zv := reflect.New(typ).Elem().Interface()
+	switch flag {
+	case parseTypeIn:
+		p.addSym(-index-2, name, zv, symVar, typ, true)
+	case parseTypeOut:
+		p.addSym(p.framelen[p.funcScope], name, zv, symVar, typ, true)
+		p.framelen[p.funcScope]++
+	case parseTypeVar:
+		if !local {
+			p.addSym(unsetAddr, name, zv, symVar, typ, local)
+			break
+		}
+		p.addSym(p.framelen[p.funcScope], name, zv, symVar, typ, local)
+		p.framelen[p.funcScope]++
+	}
 }
 
 // hasFirstParam returns true if the first token of a list is a parameter name.

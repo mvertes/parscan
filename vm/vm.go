@@ -25,6 +25,7 @@ const (
 	EqualSet            // n1 n2 -- n1 cond ; cond = n1 == n2
 	Exit                // -- ;
 	Greater             // n1 n2 -- cond; cond = n1 > n2
+	Grow                // -- ; sp += $1
 	Jump                // -- ; ip += $1
 	JumpTrue            // cond -- ; if cond { ip += $1 }
 	JumpFalse           // cond -- ; if cond { ip += $1 }
@@ -54,6 +55,7 @@ var strop = [...]string{ // for VM tracing.
 	Fassign:      "Fassign",
 	Fdup:         "Fdup",
 	Greater:      "Greater",
+	Grow:         "Grow",
 	Jump:         "Jump",
 	JumpTrue:     "JumpTrue",
 	JumpFalse:    "JumpFalse",
@@ -202,6 +204,8 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-int(op[2])]
 		case Push:
 			mem = append(mem, int(op[2]))
+		case Grow:
+			mem = append(mem, make([]any, op[2])...)
 		case Return:
 			ip = mem[fp-2].(int)
 			ofp := fp
