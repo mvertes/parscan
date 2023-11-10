@@ -1,9 +1,11 @@
 package parser
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
+	"strings"
 
 	"github.com/gnolang/parscan/lang"
 )
@@ -36,7 +38,7 @@ func (p *Parser) ParseType(in Tokens) (typ reflect.Type, err error) {
 		if err != nil {
 			return nil, err
 		}
-		arg, err := p.parseParamTypes(iargs, true)
+		arg, _, err := p.parseParamTypes(iargs, parseTypeIn)
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +48,7 @@ func (p *Parser) ParseType(in Tokens) (typ reflect.Type, err error) {
 				return nil, err
 			}
 		}
-		ret, err := p.parseParamTypes(out, false)
+		ret, _, err := p.parseParamTypes(out, parseTypeOut)
 		if err != nil {
 			return nil, err
 		}
@@ -63,9 +65,19 @@ func (p *Parser) ParseType(in Tokens) (typ reflect.Type, err error) {
 	return typ, err
 }
 
+type typeFlag int
+
+const (
+	parseTypeIn typeFlag = iota
+	parseTypeOut
+	parseTypeVar
+)
+
+var missingTypeError = errors.New("Missing type")
+
 // parseParamTypes parses a list of comma separated typed parameters and returns a list of
 // runtime types. Implicit parameter names and types are supported.
-func (p *Parser) parseParamTypes(in Tokens, arg bool) (types []reflect.Type, err error) {
+func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type, vars []string, err error) {
 	// Parse from right to left, to allow multiple comma separated parameters of the same type.
 	list := in.Split(lang.Comma)
 	for i := len(list) - 1; i >= 0; i-- {
@@ -74,37 +86,62 @@ func (p *Parser) parseParamTypes(in Tokens, arg bool) (types []reflect.Type, err
 			continue
 		}
 		param := ""
+		local := p.funcScope != ""
 		if p.hasFirstParam(t) {
-			param = t[0].Str
+			param = strings.TrimPrefix(p.scope+"/"+t[0].Str, "/")
 			t = t[1:]
 			if len(t) == 0 {
 				if len(types) == 0 {
-					return nil, fmt.Errorf("Invalid type %v", t[0])
+					return nil, nil, missingTypeError
 				}
 				// Type was ommitted, apply the previous one from the right.
 				types = append([]reflect.Type{types[0]}, types...)
-				if arg {
-					p.addSym(-i-2, p.scope+"/"+param, nil, symVar, types[0], true)
-				} else {
-					p.addSym(i, p.scope+"/"+param, nil, symVar, types[0], true)
+				zv := reflect.New(types[0]).Elem().Interface()
+				switch flag {
+				case parseTypeIn:
+					p.addSym(-i-2, param, zv, symVar, types[0], true)
+				case parseTypeOut:
+					p.addSym(p.framelen[p.funcScope], param, zv, symVar, types[0], true)
+					p.framelen[p.funcScope]++
+				case parseTypeVar:
+					if local {
+						p.addSym(p.framelen[p.funcScope], param, zv, symVar, types[0], local)
+						p.framelen[p.funcScope]++
+					} else {
+						p.addSym(unsetAddr, param, zv, symVar, types[0], local)
+					}
 				}
+				vars = append(vars, param)
 				continue
 			}
 		}
 		typ, err := p.ParseType(t)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if param != "" {
-			if arg {
-				p.addSym(-i-2, p.scope+"/"+param, nil, symVar, typ, true)
-			} else {
-				p.addSym(i, p.scope+"/"+param, nil, symVar, typ, true)
+			zv := reflect.New(typ).Elem().Interface()
+			switch flag {
+			case parseTypeIn:
+				p.addSym(-i-2, param, zv, symVar, typ, true)
+			case parseTypeOut:
+				p.addSym(p.framelen[p.funcScope], param, zv, symVar, typ, true)
+				p.framelen[p.funcScope]++
+			case parseTypeVar:
+				if local {
+					p.addSym(p.framelen[p.funcScope], param, zv, symVar, typ, local)
+					p.framelen[p.funcScope]++
+				} else {
+					p.addSym(unsetAddr, param, zv, symVar, typ, local)
+				}
 			}
+		} else if flag == parseTypeOut {
+			p.framelen[p.funcScope]++
 		}
 		types = append([]reflect.Type{typ}, types...)
+		vars = append(vars, param)
 	}
-	return types, err
+	return types, vars, err
 }
 
 // hasFirstParam returns true if the first token of a list is a parameter name.

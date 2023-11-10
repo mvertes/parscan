@@ -20,6 +20,7 @@ type Parser struct {
 	fname    string
 
 	funcScope     string
+	framelen      map[string]int // length of function frames indexed by funcScope
 	labelCount    map[string]int
 	breakLabel    string
 	continueLabel string
@@ -27,55 +28,6 @@ type Parser struct {
 
 func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
 	return p.Scanner.Scan(s, endSemi)
-}
-
-type Tokens []scanner.Token
-
-func (toks Tokens) String() (s string) {
-	for _, t := range toks {
-		s += fmt.Sprintf("%#v ", t.Str)
-	}
-	return s
-}
-
-func (toks Tokens) Index(id lang.TokenId) int {
-	for i, t := range toks {
-		if t.Id == id {
-			return i
-		}
-	}
-	return -1
-}
-
-func (toks Tokens) LastIndex(id lang.TokenId) int {
-	for i := len(toks) - 1; i >= 0; i-- {
-		if toks[i].Id == id {
-			return i
-		}
-	}
-	return -1
-}
-
-func (toks Tokens) Split(id lang.TokenId) (result []Tokens) {
-	for {
-		i := toks.Index(id)
-		if i < 0 {
-			return append(result, toks)
-		}
-		result = append(result, toks[:i])
-		toks = toks[i+1:]
-	}
-}
-
-func (toks Tokens) SplitStart(id lang.TokenId) (result []Tokens) {
-	for {
-		i := toks[1:].Index(id)
-		if i < 0 {
-			return append(result, toks)
-		}
-		result = append(result, toks[:i])
-		toks = toks[i+1:]
-	}
 }
 
 func (p *Parser) Parse(src string) (out Tokens, err error) {
@@ -135,6 +87,8 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 		return p.ParseReturn(in)
 	case lang.Switch:
 		return p.ParseSwitch(in)
+	case lang.Var:
+		return p.ParseVar(in)
 	case lang.Ident:
 		if len(in) == 2 && in[1].Id == lang.Colon {
 			return p.ParseLabel(in)
@@ -280,14 +234,15 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	s.Type = typ
 	p.function = s
 
-	log.Println("body:", in[len(in)-1].Block())
 	toks, err := p.Parse(in[len(in)-1].Block())
 	if err != nil {
 		return out, err
 	}
+	if l := p.framelen[p.funcScope] - 1; l > 0 {
+		out = append(out, scanner.Token{Id: lang.Grow, Beg: l})
+	}
 	out = append(out, toks...)
 	out = append(out, scanner.Token{Id: lang.Label, Str: fname + "_end"})
-	log.Println("symbols", p.symbols)
 	return out, err
 }
 
@@ -463,7 +418,6 @@ func (p *Parser) ParseReturn(in Tokens) (out Tokens, err error) {
 	s := p.function
 	in[0].Beg = s.Type.NumOut()
 	in[0].End = s.Type.NumIn()
-	log.Println("ParseReturn:", p.fname, in[0])
 	out = append(out, in[0])
 	return out, err
 }

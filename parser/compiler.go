@@ -22,7 +22,7 @@ type Compiler struct {
 
 func NewCompiler(scanner *scanner.Scanner) *Compiler {
 	return &Compiler{
-		Parser:  &Parser{Scanner: scanner, symbols: initUniverse(), labelCount: map[string]int{}},
+		Parser:  &Parser{Scanner: scanner, symbols: initUniverse(), framelen: map[string]int{}, labelCount: map[string]int{}},
 		Entry:   -1,
 		strings: map[string]int{},
 	}
@@ -86,6 +86,9 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 		case lang.CallX:
 			c.Emit(int64(t.Pos), vm.CallX, int64(t.Beg))
 
+		case lang.Grow:
+			c.Emit(int64(t.Pos), vm.Grow, int64(t.Beg))
+
 		case lang.Define:
 			// TODO: support assignment to local, composite objects
 			st := tokens[i-1]
@@ -104,6 +107,10 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			if s.local {
 				c.Emit(int64(st.Pos), vm.Fassign, int64(s.index))
 			} else {
+				if s.index == unsetAddr {
+					s.index = len(c.Data)
+					c.Data = append(c.Data, s.value)
+				}
 				c.Emit(int64(st.Pos), vm.Assign, int64(s.index))
 			}
 
@@ -127,8 +134,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			if s.local {
 				c.Emit(int64(t.Pos), vm.Fdup, int64(s.index))
 			} else {
-				if s.index < 0 {
-					// This global symbol is defined but not yet used. Add it to data.
+				if s.index == unsetAddr {
 					s.index = len(c.Data)
 					c.Data = append(c.Data, s.value)
 				}

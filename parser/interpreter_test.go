@@ -10,7 +10,10 @@ import (
 	"github.com/gnolang/parscan/scanner"
 )
 
-type etest struct{ src, res, err string }
+type etest struct {
+	src, res, err string
+	skip          bool
+}
 
 var GoScanner *scanner.Scanner
 
@@ -21,6 +24,9 @@ func init() {
 
 func gen(test etest) func(*testing.T) {
 	return func(t *testing.T) {
+		if test.skip {
+			t.Skip()
+		}
 		interp := parser.NewInterpreter(GoScanner)
 		errStr := ""
 		r, e := interp.Eval(test.src)
@@ -112,8 +118,8 @@ func TestFor(t *testing.T) {
 }
 
 func TestGoto(t *testing.T) {
-	run(t, []etest{{
-		src: `
+	run(t, []etest{
+		{src: `
 func f(a int) int {
 	a = a+1
 	goto end
@@ -155,5 +161,22 @@ func TestSwitch(t *testing.T) {
 		{src: src1 + "f(1)", res: "2"},
 		{src: src1 + "f(4)", res: "5"},
 		{src: src1 + "f(6)", res: "0"},
+	})
+}
+
+func TestVar(t *testing.T) {
+	run(t, []etest{
+		{src: "var a int; a", res: "0"},
+		{src: "var a, b, c int; a", res: "0"},
+		{src: "var a, b, c int; a + b", res: "0"},
+		{src: "var a, b, c int; a + b + c", res: "0"},
+		{src: "var a int = 2+1; a", res: "3"},
+		{src: "var a, b int = 2, 5; a+b", res: "7"},
+		{src: "var x = 5; x", res: "5"},
+		{src: "var a = 1; func f() int { var a, b int = 3, 4; return a+b}; a+f()", res: "8"},
+		{src: `var (
+	a, b int = 4+1, 3
+	c = 8
+); a+b+c`, res: "16"},
 	})
 }

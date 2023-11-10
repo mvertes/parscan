@@ -51,7 +51,7 @@ Go language support:
 - [ ] channel operations
 - [x] var defined by assign :=
 - [x] var assign =
-- [ ] var declaration
+- [x] var declaration
 - [ ] type declaration
 - [x] func declaration
 - [ ] const declaration
