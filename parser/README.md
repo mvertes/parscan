@@ -52,7 +52,7 @@ Go language support:
 - [x] var defined by assign :=
 - [x] var assign =
 - [x] var declaration
-- [ ] type declaration
+- [x] type declaration
 - [x] func declaration
 - [ ] const declaration
 - [ ] iota expression

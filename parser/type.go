@@ -3,17 +3,28 @@ package parser
 import (
 	"errors"
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
 
 	"github.com/gnolang/parscan/lang"
 )
 
-// ParseType parses a list of tokens defining a type expresssion and returns
+type typeFlag int
+
+const (
+	parseTypeIn typeFlag = iota
+	parseTypeOut
+	parseTypeVar
+	parseTypeType
+)
+
+var (
+	missingTypeError = errors.New("Missing type")
+)
+
+// ParseTypeExpr parses a list of tokens defining a type expresssion and returns
 // the corresponding runtime type or an error.
-func (p *Parser) ParseType(in Tokens) (typ reflect.Type, err error) {
-	log.Println("ParseType", in)
+func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 	switch in[0].Id {
 	case lang.Func:
 		// Get argument and return token positions depending on function pattern:
@@ -65,16 +76,6 @@ func (p *Parser) ParseType(in Tokens) (typ reflect.Type, err error) {
 	return typ, err
 }
 
-type typeFlag int
-
-const (
-	parseTypeIn typeFlag = iota
-	parseTypeOut
-	parseTypeVar
-)
-
-var missingTypeError = errors.New("Missing type")
-
 // parseParamTypes parses a list of comma separated typed parameters and returns a list of
 // runtime types. Implicit parameter names and types are supported.
 func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type, vars []string, err error) {
@@ -101,7 +102,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 				continue
 			}
 		}
-		typ, err := p.ParseType(t)
+		typ, err := p.ParseTypeExpr(t)
 		if err != nil {
 			return nil, nil, err
 		}

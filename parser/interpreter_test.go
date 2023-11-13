@@ -164,6 +164,17 @@ func TestSwitch(t *testing.T) {
 	})
 }
 
+func TestType(t *testing.T) {
+	run(t, []etest{
+		{src: "type t int; var a t = 1; a", res: "1"},
+		{src: "type t = int; var a t = 1; a", res: "1"},
+		{src: `type (
+	I int
+	S string
+); var s S = "xx"; s`, res: "xx"},
+	})
+}
+
 func TestVar(t *testing.T) {
 	run(t, []etest{
 		{src: "var a int; a", res: "0"},

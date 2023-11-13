@@ -87,6 +87,8 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 		return p.ParseReturn(in)
 	case lang.Switch:
 		return p.ParseSwitch(in)
+	case lang.Type:
+		return p.ParseType(in)
 	case lang.Var:
 		return p.ParseVar(in)
 	case lang.Ident:
@@ -226,7 +228,7 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	if bi < 0 {
 		return out, fmt.Errorf("no function body")
 	}
-	typ, err := p.ParseType(in[:bi])
+	typ, err := p.ParseTypeExpr(in[:bi])
 	if err != nil {
 		return out, err
 	}

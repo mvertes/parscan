@@ -9,8 +9,48 @@ import (
 	"github.com/gnolang/parscan/scanner"
 )
 
+func (p *Parser) ParseType(in Tokens) (out Tokens, err error) {
+	if len(in) < 2 {
+		return out, missingTypeError
+	}
+	if in[1].Id != lang.ParenBlock {
+		return p.parseTypeLine(in[1:])
+	}
+	if in, err = p.Scan(in[1].Block(), false); err != nil {
+		return out, err
+	}
+	for _, lt := range in.Split(lang.Semicolon) {
+		ot, err := p.parseTypeLine(lt)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, ot...)
+	}
+	return out, err
+}
+
+func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
+	if len(in) < 2 {
+		return out, missingTypeError
+	}
+	if in[0].Id != lang.Ident {
+		return out, errors.New("not an ident")
+	}
+	isAlias := in[1].Id == lang.Assign
+	toks := in[1:]
+	if isAlias {
+		toks = toks[1:]
+	}
+	typ, err := p.ParseTypeExpr(toks)
+	if err != nil {
+		return out, err
+	}
+	p.addSym(unsetAddr, in[0].Str, nil, symType, typ, p.funcScope != "")
+	return out, err
+}
+
 func (p *Parser) ParseVar(in Tokens) (out Tokens, err error) {
-	if len(in) < 1 {
+	if len(in) < 2 {
 		return out, errors.New("missing expression")
 	}
 	if in[1].Id != lang.ParenBlock {
