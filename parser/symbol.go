@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"go/constant"
 	"reflect"
 	"strings"
 )
@@ -23,6 +24,7 @@ type symbol struct {
 	kind  symKind
 	index int // address of symbol in frame
 	value any
+	cval  constant.Value
 	Type  reflect.Type
 	local bool // if true address is relative to local frame, otherwise global
 	used  bool
@@ -62,7 +64,7 @@ func initUniverse() map[string]*symbol {
 		"string": {kind: symType, index: unsetAddr, Type: reflect.TypeOf((*string)(nil)).Elem()},
 
 		"nil":   {index: unsetAddr},
-		"iota":  {index: unsetAddr, value: 0},
+		"iota":  {kind: symConst, index: unsetAddr},
 		"true":  {index: unsetAddr, value: true, Type: reflect.TypeOf(true)},
 		"false": {index: unsetAddr, value: false, Type: reflect.TypeOf(false)},
 

@@ -54,8 +54,8 @@ Go language support:
 - [x] var declaration
 - [x] type declaration
 - [x] func declaration
-- [ ] const declaration
-- [ ] iota expression
+- [x] const declaration
+- [x] iota expression
 - [ ] defer statement
 - [ ] recover statement
 - [ ] go statement

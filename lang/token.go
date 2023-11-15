@@ -6,10 +6,12 @@ const (
 	Illegal = iota
 	Comment
 	Ident
-	Int
+
+	// Literal values
+	Char
 	Float
 	Imag
-	Char
+	Int
 	String
 
 	// Binary operators (except indicated)
@@ -114,6 +116,7 @@ const (
 )
 
 func (t TokenId) IsKeyword() bool   { return t >= Break && t <= Var }
+func (t TokenId) IsLiteral() bool   { return t >= Char && t <= String }
 func (t TokenId) IsOperator() bool  { return t >= Add && t <= Tilde }
 func (t TokenId) IsBlock() bool     { return t >= ParenBlock && t <= BraceBlock }
 func (t TokenId) IsBoolOp() bool    { return t >= Equal && t <= NotEqual || t == Not }

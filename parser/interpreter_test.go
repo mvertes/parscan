@@ -164,6 +164,21 @@ func TestSwitch(t *testing.T) {
 	})
 }
 
+func TestConst(t *testing.T) {
+	src0 := `const (
+	a = iota
+	b
+	c
+)
+`
+	run(t, []etest{
+		{src: "const a = 1+2; a", res: "3"},
+		{src: "const a, b = 1, 2; a+b", res: "3"},
+
+		{src: src0 + "c", res: "2"},
+	})
+}
+
 func TestType(t *testing.T) {
 	run(t, []etest{
 		{src: "type t int; var a t = 1; a", res: "1"},

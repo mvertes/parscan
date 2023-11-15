@@ -75,6 +75,8 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 		return p.ParseBreak(in)
 	case lang.Continue:
 		return p.ParseContinue(in)
+	case lang.Const:
+		return p.ParseConst(in)
 	case lang.For:
 		return p.ParseFor(in)
 	case lang.Func:

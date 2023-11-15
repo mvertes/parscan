@@ -71,12 +71,14 @@ var strop = [...]string{ // for VM tracing.
 	Subi:         "Subi",
 }
 
+type Code [][]int64
+
 // Machine represents a virtual machine.
 type Machine struct {
-	code   [][]int64 // code to execute
-	mem    []any     // memory, as a stack
-	ip, fp int       // instruction and frame pointer
-	ic     uint64    // instruction counter, incremented at each instruction executed
+	code   Code   // code to execute
+	mem    []any  // memory, as a stack
+	ip, fp int    // instruction and frame pointer
+	ic     uint64 // instruction counter, incremented at each instruction executed
 	// flags  uint      // to set options such as restrict CallX, etc...
 }
 
