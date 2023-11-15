@@ -40,7 +40,7 @@ Go language support:
 - [x] function types
 - [ ] variadic functions
 - [ ] pointers
-- [ ] structures
+- [x] structures
 - [ ] embedded structures
 - [ ] recursive structures
 - [ ] interfaces

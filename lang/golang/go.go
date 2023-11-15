@@ -74,6 +74,8 @@ var GoSpec = &lang.Spec{
 		"*":  {TokenId: lang.Mul, Precedence: 1},
 		"/":  {TokenId: lang.Quo, Precedence: 1},
 		"%":  {TokenId: lang.Rem, Precedence: 1},
+		"<<": {TokenId: lang.Shl, Precedence: 1},
+		">>": {TokenId: lang.Shr, Precedence: 1},
 		"+":  {TokenId: lang.Add, Precedence: 2},
 		"-":  {TokenId: lang.Sub, Precedence: 2},
 		"=":  {TokenId: lang.Assign, Precedence: 6},

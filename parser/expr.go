@@ -34,7 +34,7 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 		case lang.Int, lang.String:
 			out = append(out, t)
 			vl++
-		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Land, lang.Lor:
+		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Land, lang.Lor, lang.Shl, lang.Shr:
 			if vl < 2 {
 				ops = append(ops, t)
 				break

@@ -174,19 +174,23 @@ func TestConst(t *testing.T) {
 	run(t, []etest{
 		{src: "const a = 1+2; a", res: "3"},
 		{src: "const a, b = 1, 2; a+b", res: "3"},
+		{src: "const huge = 1 << 100; const four = huge >> 98; four", res: "4"},
 
 		{src: src0 + "c", res: "2"},
 	})
 }
 
 func TestType(t *testing.T) {
+	src0 := `type(
+	I int
+	S string
+)
+`
 	run(t, []etest{
 		{src: "type t int; var a t = 1; a", res: "1"},
 		{src: "type t = int; var a t = 1; a", res: "1"},
-		{src: `type (
-	I int
-	S string
-); var s S = "xx"; s`, res: "xx"},
+		{src: src0 + `var s S = "xx"; s`, res: "xx"},
+		{src: "type T struct {a string; b, c int}; var t T; t", res: "{ 0 0}"},
 	})
 }
 

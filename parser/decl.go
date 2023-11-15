@@ -48,7 +48,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 	}
 	var vars []string
 	if _, vars, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
-		if errors.Is(err, missingTypeError) {
+		if errors.Is(err, MissingTypeErr) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
 				// TODO: compute type from rhs
@@ -188,7 +188,7 @@ var gotok = map[lang.TokenId]token.Token{
 
 func (p *Parser) ParseType(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
-		return out, missingTypeError
+		return out, MissingTypeErr
 	}
 	if in[1].Id != lang.ParenBlock {
 		return p.parseTypeLine(in[1:])
@@ -208,7 +208,7 @@ func (p *Parser) ParseType(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
-		return out, missingTypeError
+		return out, MissingTypeErr
 	}
 	if in[0].Id != lang.Ident {
 		return out, errors.New("not an ident")
@@ -254,7 +254,7 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 	}
 	var vars []string
 	if _, vars, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
-		if errors.Is(err, missingTypeError) {
+		if errors.Is(err, MissingTypeErr) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
 				// TODO: compute type from rhs

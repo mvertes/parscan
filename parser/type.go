@@ -19,7 +19,10 @@ const (
 )
 
 var (
-	missingTypeError = errors.New("Missing type")
+	InvalidTypeErr        = errors.New("invalid type")
+	MissingTypeErr        = errors.New("missing type")
+	SyntaxErr             = errors.New("syntax error")
+	TypeNotImplementedErr = errors.New("not implemented")
 )
 
 // ParseTypeExpr parses a list of tokens defining a type expresssion and returns
@@ -69,9 +72,32 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 		// TODO: selector expression (pkg.type)
 		s, _, ok := p.getSym(in[0].Str, p.scope)
 		if !ok || s.kind != symType {
-			return nil, fmt.Errorf("invalid type %s", in[0].Str)
+			return nil, fmt.Errorf("%w: %s", InvalidTypeErr, in[0].Str)
 		}
 		return s.Type, nil
+
+	case lang.Struct:
+		if len(in) != 2 || in[1].Id != lang.BraceBlock {
+			return nil, fmt.Errorf("%w: %v", SyntaxErr, in)
+		}
+		if in, err = p.Scan(in[1].Block(), false); err != nil {
+			return nil, err
+		}
+		var fields []reflect.StructField
+		for _, lt := range in.Split(lang.Semicolon) {
+			types, names, err := p.parseParamTypes(lt, parseTypeType)
+			if err != nil {
+				return nil, err
+			}
+			for i, name := range names {
+				fields = append(fields, reflect.StructField{Name: "X" + name, Type: types[i]})
+				// TODO: handle embedded fields
+			}
+		}
+		return reflect.StructOf(fields), nil
+
+	default:
+		return nil, fmt.Errorf("%w: %v", TypeNotImplementedErr, in[0].Name())
 	}
 	return typ, err
 }
@@ -93,7 +119,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 			t = t[1:]
 			if len(t) == 0 {
 				if len(types) == 0 {
-					return nil, nil, missingTypeError
+					return nil, nil, MissingTypeErr
 				}
 				// Type was ommitted, apply the previous one from the right.
 				types = append([]reflect.Type{types[0]}, types...)
