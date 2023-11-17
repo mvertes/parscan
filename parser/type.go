@@ -142,7 +142,10 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 }
 
 func (p *Parser) addSymVar(index int, name string, typ reflect.Type, flag typeFlag, local bool) {
-	zv := reflect.New(typ).Elem().Interface()
+	var zv any = reflect.New(typ).Elem()
+	if typ.Kind() != reflect.Struct {
+		zv = zv.(reflect.Value).Interface()
+	}
 	switch flag {
 	case parseTypeIn:
 		p.addSym(-index-2, name, zv, symVar, typ, true)

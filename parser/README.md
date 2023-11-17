@@ -77,7 +77,7 @@ Go language support:
 - [x] parenthesis expressions
 - [x] call expressions
 - [ ] index expressions
-- [ ] selector expressions
+- [x] selector expressions
 - [ ] type convertions
 - [ ] type assertions
 - [ ] parametric types (generic)

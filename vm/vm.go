@@ -16,6 +16,7 @@ const (
 	Add                 // n1 n2 -- sum ; sum = n1+n2
 	Assign              // val -- ; mem[$1] = val
 	Fassign             // val -- ; mem[$1] = val
+	Vassign             // val dest -- ; dest.Set(val)
 	Call                // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	Calli               // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallX               // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
@@ -24,6 +25,7 @@ const (
 	Equal               // n1 n2 -- cond ; cond = n1 == n2
 	EqualSet            // n1 n2 -- n1 cond ; cond = n1 == n2
 	Exit                // -- ;
+	Field               // s -- f ; f = s.FieldIndex($1, ...)
 	Greater             // n1 n2 -- cond; cond = n1 > n2
 	Grow                // -- ; sp += $1
 	Jump                // -- ; ip += $1
@@ -54,6 +56,7 @@ var strop = [...]string{ // for VM tracing.
 	Exit:         "Exit",
 	Fassign:      "Fassign",
 	Fdup:         "Fdup",
+	Field:        "Field",
 	Greater:      "Greater",
 	Grow:         "Grow",
 	Jump:         "Jump",
@@ -69,6 +72,7 @@ var strop = [...]string{ // for VM tracing.
 	Return:       "Return",
 	Sub:          "Sub",
 	Subi:         "Subi",
+	Vassign:      "Vassign",
 }
 
 type Code [][]int64
@@ -161,6 +165,8 @@ func (m *Machine) Run() (err error) {
 			return err
 		case Fdup:
 			mem = append(mem, mem[int(op[2])+fp-1])
+		case Field:
+			mem[sp-1] = mem[sp-1].(reflect.Value).FieldByIndex(slint(op[2:]))
 		case Jump:
 			ip += int(op[2])
 			continue
@@ -219,6 +225,9 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-1]
 		case Subi:
 			mem[sp-1] = mem[sp-1].(int) - int(op[2])
+		case Vassign:
+			mem[sp-1].(reflect.Value).Set(reflect.ValueOf(mem[sp-2]))
+			mem = mem[:sp-2]
 		}
 		ip++
 	}
@@ -264,4 +273,12 @@ func Disassemble(code [][]int64) (asm string) {
 		asm += CodeString(op) + "\n"
 	}
 	return asm
+}
+
+func slint(a []int64) []int {
+	r := make([]int, len(a))
+	for i, v := range a {
+		r[i] = int(v)
+	}
+	return r
 }

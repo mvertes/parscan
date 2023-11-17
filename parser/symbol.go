@@ -30,6 +30,13 @@ type symbol struct {
 	used  bool
 }
 
+func symtype(s *symbol) reflect.Type {
+	if s.Type != nil {
+		return s.Type
+	}
+	return reflect.TypeOf(s.value)
+}
+
 func (p *Parser) AddSym(i int, name string, v any) { p.addSym(i, name, v, symValue, nil, false) }
 
 func (p *Parser) addSym(i int, name string, v any, k symKind, t reflect.Type, local bool) {

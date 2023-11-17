@@ -10,8 +10,9 @@ import (
 
 func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 	log.Println("ParseExpr in:", in)
-	var ops Tokens
+	var ops, selectors Tokens
 	var vl int
+	var selectorId string
 	//
 	// Process tokens from last to first, the goal is to reorder the tokens in
 	// a stack machine processing order, so it can be directly interpreted.
@@ -21,8 +22,11 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 		// temporary assumptions: binary operators, returning 1 value
 		switch t.Id {
 		case lang.Ident:
+			if i > 0 && in[i-1].Id == lang.Period {
+				selectorId = t.Str
+				continue
+			}
 			// resolve symbol if not a selector rhs.
-			// TODO: test for selector expr.
 			_, sc, ok := p.getSym(t.Str, p.scope)
 			if ok {
 				if sc != "" {
@@ -31,6 +35,10 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 			}
 			out = append(out, t)
 			vl++
+		case lang.Period:
+			t.Str += selectorId
+			selectors = append(Tokens{t}, selectors...)
+			continue
 		case lang.Int, lang.String:
 			out = append(out, t)
 			vl++
@@ -63,6 +71,10 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 				}
 			}
 			ops = append(ops, scanner.Token{Str: "call", Id: lang.Call, Pos: t.Pos})
+		}
+		if len(selectors) > 0 {
+			out = append(out, selectors...)
+			selectors = nil
 		}
 		if lops, lout := len(ops), len(out); lops > 0 && vl > lops {
 			op := ops[lops-1]

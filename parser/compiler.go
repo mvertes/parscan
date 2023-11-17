@@ -36,10 +36,13 @@ func (c *Compiler) AddSym(name string, value any) int {
 }
 
 func (c *Compiler) Codegen(tokens Tokens) (err error) {
-	fixList := Tokens{}
 	log.Println("Codegen tokens:", tokens)
+	fixList := Tokens{}  // list of tokens to fix after we gathered all necessary information
+	stack := []*symbol{} // for symbolic evaluation, type checking, etc
 
 	emit := func(op ...int64) { c.Code = append(c.Code, op) }
+	push := func(s *symbol) { stack = append(stack, s) }
+	pop := func() *symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
 
 	for i, t := range tokens {
 		switch t.Id {
@@ -48,6 +51,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			if err != nil {
 				return err
 			}
+			push(&symbol{kind: symConst, value: n})
 			emit(int64(t.Pos), vm.Push, int64(n))
 
 		case lang.String:
@@ -58,15 +62,19 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				c.Data = append(c.Data, s)
 				c.strings[s] = i
 			}
+			push(&symbol{kind: symConst, value: s})
 			emit(int64(t.Pos), vm.Dup, int64(i))
 
 		case lang.Add:
+			push(&symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Add)
 
 		case lang.Mul:
+			push(&symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Mul)
 
 		case lang.Sub:
+			push(&symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Sub)
 
 		case lang.Greater:
@@ -95,19 +103,23 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 		case lang.Assign:
 			st := tokens[i-1]
+			if st.Id == lang.Period {
+				emit(int64(t.Pos), vm.Vassign)
+				break
+			}
 			s, ok := c.symbols[st.Str]
 			if !ok {
 				return fmt.Errorf("symbol not found: %s", st.Str)
 			}
 			if s.local {
 				emit(int64(st.Pos), vm.Fassign, int64(s.index))
-			} else {
-				if s.index == unsetAddr {
-					s.index = len(c.Data)
-					c.Data = append(c.Data, s.value)
-				}
-				emit(int64(st.Pos), vm.Assign, int64(s.index))
+				break
 			}
+			if s.index == unsetAddr {
+				s.index = len(c.Data)
+				c.Data = append(c.Data, s.value)
+			}
+			emit(int64(st.Pos), vm.Assign, int64(s.index))
 
 		case lang.Equal:
 			emit(int64(t.Pos), vm.Equal)
@@ -126,6 +138,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			if !ok {
 				return fmt.Errorf("symbol not found: %s", t.Str)
 			}
+			push(s)
 			if s.local {
 				emit(int64(t.Pos), vm.Fdup, int64(s.index))
 			} else {
@@ -199,6 +212,13 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			}
 			emit(int64(t.Pos), vm.Jump, int64(i))
 
+		case lang.Period:
+			if f, ok := pop().Type.FieldByName("X" + t.Str[1:]); ok {
+				emit(append([]int64{int64(t.Pos), vm.Field}, slint64(f.Index)...)...)
+				break
+			}
+			return fmt.Errorf("field or method not found: %s", t.Str[1:])
+
 		case lang.Return:
 			emit(int64(t.Pos), vm.Return, int64(t.Beg), int64(t.End))
 
@@ -229,6 +249,11 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 	}
 	return err
+}
+
+func arithmeticOpType(s1, s2 *symbol) reflect.Type {
+	// TODO: make it complete
+	return symtype(s1)
 }
 
 func (c *Compiler) PrintCode() {
@@ -295,4 +320,12 @@ func (c *Compiler) NumIn(i int) (int, bool) {
 		return t.NumIn(), t.IsVariadic()
 	}
 	return -1, false
+}
+
+func slint64(a []int) []int64 {
+	r := make([]int64, len(a))
+	for i, v := range a {
+		r[i] = int64(v)
+	}
+	return r
 }

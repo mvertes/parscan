@@ -180,6 +180,14 @@ func TestConst(t *testing.T) {
 	})
 }
 
+func TestStruct(t *testing.T) {
+	run(t, []etest{
+		{src: "type T struct {a string; b, c int}; var t T; t", res: "{ 0 0}"},
+		{src: "type T struct {a int}; var t T; t.a", res: "0"},
+		{src: "type T struct {a int}; var t T; t.a = 1; t.a", res: "1"},
+	})
+}
+
 func TestType(t *testing.T) {
 	src0 := `type(
 	I int
@@ -190,7 +198,6 @@ func TestType(t *testing.T) {
 		{src: "type t int; var a t = 1; a", res: "1"},
 		{src: "type t = int; var a t = 1; a", res: "1"},
 		{src: src0 + `var s S = "xx"; s`, res: "xx"},
-		{src: "type T struct {a string; b, c int}; var t T; t", res: "{ 0 0}"},
 	})
 }
 
