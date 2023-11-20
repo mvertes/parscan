@@ -71,6 +71,10 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 				}
 			}
 			ops = append(ops, scanner.Token{Str: "call", Id: lang.Call, Pos: t.Pos})
+		case lang.BracketBlock:
+			out = append(out, t)
+			vl++
+			ops = append(ops, scanner.Token{Str: "index", Id: lang.Index, Pos: t.Pos})
 		}
 		if len(selectors) > 0 {
 			out = append(out, selectors...)

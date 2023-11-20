@@ -44,7 +44,7 @@ Go language support:
 - [ ] embedded structures
 - [ ] recursive structures
 - [ ] interfaces
-- [ ] arrays, slices
+- [x] arrays, slices
 - [ ] maps
 - [ ] deterministic maps
 - [ ] channel types
@@ -76,7 +76,7 @@ Go language support:
 - [x] operator precedence rules
 - [x] parenthesis expressions
 - [x] call expressions
-- [ ] index expressions
+- [x] index expressions
 - [x] selector expressions
 - [ ] type convertions
 - [ ] type assertions

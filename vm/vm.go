@@ -28,6 +28,7 @@ const (
 	Field               // s -- f ; f = s.FieldIndex($1, ...)
 	Greater             // n1 n2 -- cond; cond = n1 > n2
 	Grow                // -- ; sp += $1
+	Index               // a i -- a[i] ;
 	Jump                // -- ; ip += $1
 	JumpTrue            // cond -- ; if cond { ip += $1 }
 	JumpFalse           // cond -- ; if cond { ip += $1 }
@@ -59,6 +60,7 @@ var strop = [...]string{ // for VM tracing.
 	Field:        "Field",
 	Greater:      "Greater",
 	Grow:         "Grow",
+	Index:        "Index",
 	Jump:         "Jump",
 	JumpTrue:     "JumpTrue",
 	JumpFalse:    "JumpFalse",
@@ -225,6 +227,9 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-1]
 		case Subi:
 			mem[sp-1] = mem[sp-1].(int) - int(op[2])
+		case Index:
+			mem[sp-2] = mem[sp-1].(reflect.Value).Index(mem[sp-2].(int))
+			mem = mem[:sp-1]
 		case Vassign:
 			mem[sp-1].(reflect.Value).Set(reflect.ValueOf(mem[sp-2]))
 			mem = mem[:sp-2]

@@ -180,6 +180,14 @@ func TestConst(t *testing.T) {
 	})
 }
 
+func TestArray(t *testing.T) {
+	run(t, []etest{
+		{src: "type T []int; var t T; t", res: "[]"},
+		{src: "type T [3]int; var t T; t", res: "[0 0 0]"},
+		{src: "type T [3]int; var t T; t[1] = 2; t", res: "[0 2 0]"},
+	})
+}
+
 func TestStruct(t *testing.T) {
 	run(t, []etest{
 		{src: "type T struct {a string; b, c int}; var t T; t", res: "{ 0 0}"},

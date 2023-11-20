@@ -77,6 +77,9 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			push(&symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Sub)
 
+		case lang.Index:
+			emit(int64(t.Pos), vm.Index)
+
 		case lang.Greater:
 			emit(int64(t.Pos), vm.Greater)
 
@@ -103,7 +106,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 		case lang.Assign:
 			st := tokens[i-1]
-			if st.Id == lang.Period {
+			if st.Id == lang.Period || st.Id == lang.Index {
 				emit(int64(t.Pos), vm.Vassign)
 				break
 			}

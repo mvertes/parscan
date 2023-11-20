@@ -108,6 +108,7 @@ const (
 	Call
 	CallX
 	Grow
+	Index
 	Label
 	JumpFalse
 	JumpSetFalse

@@ -29,6 +29,28 @@ var (
 // the corresponding runtime type or an error.
 func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 	switch in[0].Id {
+	case lang.BracketBlock:
+		typ, err := p.ParseTypeExpr(in[1:])
+		if err != nil {
+			return nil, err
+		}
+		if b := in[0].Block(); len(b) > 0 {
+			x, err := p.Scan(b, false)
+			if err != nil {
+				return nil, err
+			}
+			cval, _, err := p.evalConstExpr(x)
+			if err != nil {
+				return nil, err
+			}
+			size, ok := constValue(cval).(int)
+			if !ok {
+				return nil, fmt.Errorf("invalid size")
+			}
+			return reflect.ArrayOf(size, typ), nil
+		}
+		return reflect.SliceOf(typ), nil
+
 	case lang.Func:
 		// Get argument and return token positions depending on function pattern:
 		// method with receiver, named function or anonymous closure.
@@ -99,7 +121,6 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 	default:
 		return nil, fmt.Errorf("%w: %v", TypeNotImplementedErr, in[0].Name())
 	}
-	return typ, err
 }
 
 // parseParamTypes parses a list of comma separated typed parameters and returns a list of
@@ -143,7 +164,9 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 
 func (p *Parser) addSymVar(index int, name string, typ reflect.Type, flag typeFlag, local bool) {
 	var zv any = reflect.New(typ).Elem()
-	if typ.Kind() != reflect.Struct {
+	switch typ.Kind() {
+	case reflect.Struct, reflect.Array, reflect.Slice:
+	default:
 		zv = zv.(reflect.Value).Interface()
 	}
 	switch flag {
