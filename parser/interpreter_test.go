@@ -192,6 +192,13 @@ func TestArray(t *testing.T) {
 	})
 }
 
+func TestPointer(t *testing.T) {
+	run(t, []etest{
+		{src: "var a *int; a", res: "<nil>"},
+		//{src: "var a int = 2; var b *int = &a; b", res: "2"},
+	})
+}
+
 func TestStruct(t *testing.T) {
 	run(t, []etest{
 		{src: "type T struct {a string; b, c int}; var t T; t", res: "{ 0 0}"},

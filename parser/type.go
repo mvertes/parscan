@@ -51,6 +51,13 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 		}
 		return reflect.SliceOf(typ), nil
 
+	case lang.Mul:
+		typ, err := p.ParseTypeExpr(in[1:])
+		if err != nil {
+			return nil, err
+		}
+		return reflect.PointerTo(typ), nil
+
 	case lang.Func:
 		// Get argument and return token positions depending on function pattern:
 		// method with receiver, named function or anonymous closure.
@@ -165,7 +172,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 func (p *Parser) addSymVar(index int, name string, typ reflect.Type, flag typeFlag, local bool) {
 	var zv any = reflect.New(typ).Elem()
 	switch typ.Kind() {
-	case reflect.Struct, reflect.Array, reflect.Slice:
+	case reflect.Struct, reflect.Array, reflect.Slice, reflect.Pointer:
 	default:
 		zv = zv.(reflect.Value).Interface()
 	}

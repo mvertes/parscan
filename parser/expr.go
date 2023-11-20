@@ -42,7 +42,7 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 		case lang.Int, lang.String:
 			out = append(out, t)
 			vl++
-		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Land, lang.Lor, lang.Shl, lang.Shr, lang.Not:
+		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Land, lang.Lor, lang.Shl, lang.Shr, lang.Not, lang.And:
 			if i == 0 || in[i-1].Id.IsOperator() {
 				// An operator preceded by an operator or no token is unary.
 				t.Id = lang.UnaryOp[t.Id]

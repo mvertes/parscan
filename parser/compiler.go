@@ -87,6 +87,12 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 		case lang.Plus:
 			// Nothing to do.
 
+		case lang.Address:
+			emit(int64(t.Pos), vm.Address)
+
+		case lang.Deref:
+			emit(int64(t.Pos), vm.Deref)
+
 		case lang.Index:
 			emit(int64(t.Pos), vm.Index)
 
