@@ -116,6 +116,16 @@ const (
 	EqualSet
 )
 
+var UnaryOp = map[TokenId]TokenId{
+	Add:   Plus,    // +
+	And:   Address, // &
+	Not:   Not,     // !
+	Mul:   Deref,   // *
+	Sub:   Minus,   // -
+	Tilde: Tilde,   // ~
+	Xor:   BitComp, // ^
+}
+
 func (t TokenId) IsKeyword() bool   { return t >= Break && t <= Var }
 func (t TokenId) IsLiteral() bool   { return t >= Char && t <= String }
 func (t TokenId) IsOperator() bool  { return t >= Add && t <= Tilde }

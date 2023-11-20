@@ -34,7 +34,7 @@ Go language support:
 - [ ] export to runtime
 - [ ] builtin calls (new, make, copy, delete, len, cap, ...)
 - [ ] out of order declarations
-- [ ] arbirtrary precision constants
+- [x] arbirtrary precision constants
 - [x] basic types
 - [ ] complete numeric types
 - [x] function types
@@ -43,6 +43,7 @@ Go language support:
 - [x] structures
 - [ ] embedded structures
 - [ ] recursive structures
+- [ ] literal composite objects
 - [ ] interfaces
 - [x] arrays, slices
 - [ ] maps
@@ -70,7 +71,7 @@ Go language support:
 - [x] label statement
 - [ ] select statement
 - [x] binary operators
-- [ ] unary operators
+- [x] unary operators
 - [x] logical operators && and ||
 - [ ] assign operators
 - [x] operator precedence rules
@@ -78,6 +79,7 @@ Go language support:
 - [x] call expressions
 - [x] index expressions
 - [x] selector expressions
+- [ ] slice expressions
 - [ ] type convertions
 - [ ] type assertions
 - [ ] parametric types (generic)

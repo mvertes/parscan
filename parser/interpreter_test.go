@@ -65,6 +65,10 @@ func TestExpr(t *testing.T) {
 		{src: "7 == 2 * 3 + 1", res: "true"},
 		{src: "1 + 3 * 2 == 2 * 3 + 1", res: "true"},
 		{src: "a := 1 + 3 * 2 == 2 * 3 + 1; a", res: "true"},
+		{src: "-2", res: "-2"},
+		{src: "-2 + 5", res: "3"},
+		{src: "5 + -2", res: "3"},
+		{src: "!false", res: "true"},
 	})
 }
 

@@ -77,6 +77,16 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			push(&symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Sub)
 
+		case lang.Minus:
+			emit(int64(t.Pos), vm.Push, 0)
+			emit(int64(t.Pos), vm.Sub)
+
+		case lang.Not:
+			emit(int64(t.Pos), vm.Not)
+
+		case lang.Plus:
+			// Nothing to do.
+
 		case lang.Index:
 			emit(int64(t.Pos), vm.Index)
 

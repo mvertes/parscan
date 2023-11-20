@@ -37,6 +37,7 @@ const (
 	Lower               // n1 n2 -- cond ; cond = n1 < n2
 	Loweri              // n1 -- cond ; cond = n1 < $1
 	Mul                 // n1 n2 -- prod ; prod = n1*n2
+	Not                 // c -- r ; r = !c
 	Pop                 // v --
 	Push                // -- v
 	Return              // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
@@ -69,6 +70,7 @@ var strop = [...]string{ // for VM tracing.
 	Lower:        "Lower",
 	Loweri:       "Loweri",
 	Mul:          "Mul",
+	Not:          "Not",
 	Pop:          "Pop",
 	Push:         "Push",
 	Return:       "Return",
@@ -210,6 +212,8 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-1]
 		case Loweri:
 			mem[sp-1] = mem[sp-1].(int) < int(op[2])
+		case Not:
+			mem[sp-1] = !mem[sp-1].(bool)
 		case Pop:
 			mem = mem[:sp-int(op[2])]
 		case Push:

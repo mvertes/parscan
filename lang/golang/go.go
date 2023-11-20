@@ -91,6 +91,7 @@ var GoSpec = &lang.Spec{
 		"<=": {TokenId: lang.LessEqual, Precedence: 3},
 		">=": {TokenId: lang.GreaterEqual, Precedence: 3},
 		"->": {TokenId: lang.Arrow},
+		"!":  {TokenId: lang.Not},
 		"++": {TokenId: lang.Inc, SkipSemi: true},
 		"--": {TokenId: lang.Dec, SkipSemi: true},
 
