@@ -65,7 +65,7 @@ const (
 	Arrow    // unary ->
 	Ellipsis // unary ...
 	Not      // unary !
-	Tilde    // unary ~
+	Tilde    // unary ~ (underlying type)
 
 	// Separators (punctuation)
 	Comma     // ,
@@ -116,6 +116,7 @@ const (
 	EqualSet
 )
 
+// TODO: define UnaryOp per language
 var UnaryOp = map[TokenId]TokenId{
 	Add:   Plus,    // +
 	And:   Address, // &
