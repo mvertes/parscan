@@ -52,7 +52,7 @@ func run(t *testing.T, tests []etest) {
 
 func TestExpr(t *testing.T) {
 	run(t, []etest{
-		{src: "", res: "<nil>"},
+		{src: "", res: "<invalid reflect.Value>"},
 		{src: "1+2", res: "3"},
 		{src: "1+", err: "block not terminated"},
 		{src: "a := 1 + 2; b := 0; a + 1", res: "4"},
@@ -92,7 +92,7 @@ func TestFunc(t *testing.T) {
 		{src: "func f() int {return 2}; a := f(); a", res: "2"},
 		{src: "func f() int {return 2}; f()", res: "2"},
 		{src: "func f(a int) int {return a+2}; f(3)", res: "5"},
-		{src: "func f(a int) int {if a < 4 {a = 5}; return a }; f(3)", res: "5"},
+		{src: "func f(a int) int {if a < 4 {a = 5}; return a}; f(3)", res: "5"},
 		{src: "func f(a int) int {return a+2}; 7 - f(3)", res: "2"},
 		{src: "func f(a int) int {return a+2}; f(5) - f(3)", res: "2"},
 		{src: "func f(a int) int {return a+2}; f(3) - 2", res: "3"},
@@ -195,7 +195,8 @@ func TestArray(t *testing.T) {
 func TestPointer(t *testing.T) {
 	run(t, []etest{
 		{src: "var a *int; a", res: "<nil>"},
-		//{src: "var a int = 2; var b *int = &a; b", res: "2"},
+		{src: "var a int; var b *int = &a; *b", res: "0"},
+		{src: "var a int = 2; var b *int = &a; *b", res: "2"},
 	})
 }
 

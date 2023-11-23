@@ -14,7 +14,7 @@ const (
 	// instruction effect on stack: values consumed -- values produced
 	Nop          = iota // --
 	Add                 // n1 n2 -- sum ; sum = n1+n2
-	Address             // a -- &a ;
+	Addr                // a -- &a ;
 	Assign              // val -- ; mem[$1] = val
 	Fassign             // val -- ; mem[$1] = val
 	Vassign             // val dest -- ; dest.Set(val)
@@ -39,6 +39,7 @@ const (
 	Lower               // n1 n2 -- cond ; cond = n1 < n2
 	Loweri              // n1 -- cond ; cond = n1 < $1
 	Mul                 // n1 n2 -- prod ; prod = n1*n2
+	New                 // -- x; mem[fp+$1] = new mem[$2]
 	Not                 // c -- r ; r = !c
 	Pop                 // v --
 	Push                // -- v
@@ -50,7 +51,7 @@ const (
 var strop = [...]string{ // for VM tracing.
 	Nop:          "Nop",
 	Add:          "Add",
-	Address:      "Address",
+	Addr:         "Addr",
 	Assign:       "Assign",
 	Call:         "Call",
 	Calli:        "Calli",
@@ -74,6 +75,7 @@ var strop = [...]string{ // for VM tracing.
 	Lower:        "Lower",
 	Loweri:       "Loweri",
 	Mul:          "Mul",
+	New:          "New",
 	Not:          "Not",
 	Pop:          "Pop",
 	Push:         "Push",
@@ -87,8 +89,7 @@ type Code [][]int64
 
 // Machine represents a virtual machine.
 type Machine struct {
-	code Code // code to execute
-	// mem    []any  // memory, as a stack
+	code   Code            // code to execute
 	mem    []reflect.Value // memory, as a stack
 	ip, fp int             // instruction and frame pointer
 	ic     uint64          // instruction counter, incremented at each instruction executed
@@ -113,7 +114,7 @@ func (m *Machine) Run() (err error) {
 				op3 = strconv.Itoa(int(c[3]))
 			}
 		}
-		log.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-12s %-4s %-4s] mem:%v\n", ip, sp, fp, strop[c[1]], op2, op3, mem)
+		log.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-12s %-4s %-4s] mem:%v\n", ip, sp, fp, strop[c[1]], op2, op3, Vstring(mem))
 	}
 
 	for {
@@ -125,15 +126,15 @@ func (m *Machine) Run() (err error) {
 			mem[sp-2] = reflect.ValueOf(int(mem[sp-2].Int() + mem[sp-1].Int()))
 			mem = mem[:sp-1]
 		case Mul:
-			mem[sp-2].SetInt(mem[sp-2].Int() * mem[sp-1].Int())
+			mem[sp-2] = reflect.ValueOf(int(mem[sp-2].Int() * mem[sp-1].Int()))
 			mem = mem[:sp-1]
-		case Address:
+		case Addr:
 			mem[sp-1] = mem[sp-1].Addr()
 		case Assign:
-			mem[op[2]] = mem[sp-1]
+			mem[op[2]].Set(mem[sp-1])
 			mem = mem[:sp-1]
 		case Fassign:
-			mem[fp+int(op[2])-1] = mem[sp-1]
+			mem[fp+int(op[2])-1].Set(mem[sp-1])
 			mem = mem[:sp-1]
 		case Call:
 			nip := int(mem[sp-1].Int())
@@ -161,6 +162,8 @@ func (m *Machine) Run() (err error) {
 			mem[sp-1] = mem[sp-1].Elem()
 		case Dup:
 			mem = append(mem, mem[int(op[2])])
+		case New:
+			mem[int(op[2])+fp-1] = reflect.New(mem[int(op[3])].Type()).Elem()
 		case Equal:
 			mem[sp-2] = reflect.ValueOf(mem[sp-2].Equal(mem[sp-1]))
 			mem = mem[:sp-1]
@@ -226,7 +229,9 @@ func (m *Machine) Run() (err error) {
 		case Pop:
 			mem = mem[:sp-int(op[2])]
 		case Push:
-			mem = append(mem, reflect.ValueOf(int(op[2])))
+			//mem = append(mem, reflect.ValueOf(int(op[2])))
+			mem = append(mem, reflect.New(reflect.TypeOf(0)).Elem())
+			mem[sp].SetInt(op[2])
 		case Grow:
 			mem = append(mem, make([]reflect.Value, op[2])...)
 		case Return:
@@ -236,10 +241,10 @@ func (m *Machine) Run() (err error) {
 			mem = append(mem[:ofp-int(op[2])-int(op[3])-1], mem[sp-int(op[2]):]...)
 			continue
 		case Sub:
-			mem[sp-2].SetInt(mem[sp-1].Int() - mem[sp-2].Int())
+			mem[sp-2] = reflect.ValueOf(int(mem[sp-1].Int() - mem[sp-2].Int()))
 			mem = mem[:sp-1]
 		case Subi:
-			mem[sp-1].SetInt(mem[sp-1].Int() - op[2])
+			mem[sp-1] = reflect.ValueOf(int(mem[sp-1].Int() - op[2]))
 		case Index:
 			mem[sp-2] = mem[sp-1].Index(int(mem[sp-2].Int()))
 			mem = mem[:sp-1]
@@ -308,4 +313,15 @@ func slint(a []int64) []int {
 		r[i] = int(v)
 	}
 	return r
+}
+
+func Vstring(lv []reflect.Value) string {
+	s := "["
+	for _, v := range lv {
+		if s != "[" {
+			s += " "
+		}
+		s += fmt.Sprintf("%v", v)
+	}
+	return s + "]"
 }

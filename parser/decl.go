@@ -4,11 +4,14 @@ import (
 	"errors"
 	"go/constant"
 	"go/token"
+	"reflect"
 	"strings"
 
 	"github.com/gnolang/parscan/lang"
 	"github.com/gnolang/parscan/scanner"
 )
+
+var nilValue = reflect.ValueOf(nil)
 
 func (p *Parser) ParseConst(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
@@ -51,8 +54,8 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		if errors.Is(err, MissingTypeErr) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
-				// TODO: compute type from rhs
-				p.addSym(unsetAddr, strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/"), nil, symConst, nil, false)
+				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
+				p.addSym(unsetAddr, name, nilValue, symConst, nil, false)
 			}
 		} else {
 			return out, err
@@ -75,7 +78,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			kind:  symConst,
 			index: unsetAddr,
 			cval:  cval,
-			value: constValue(cval),
+			value: reflect.ValueOf(constValue(cval)),
 			local: p.funcScope != "",
 			used:  true,
 		}
@@ -222,7 +225,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	if err != nil {
 		return out, err
 	}
-	p.addSym(unsetAddr, in[0].Str, nil, symType, typ, p.funcScope != "")
+	p.addSym(unsetAddr, in[0].Str, reflect.New(typ).Elem(), symType, typ, p.funcScope != "")
 	return out, err
 }
 
@@ -257,8 +260,13 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		if errors.Is(err, MissingTypeErr) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
-				// TODO: compute type from rhs
-				p.addSym(unsetAddr, strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/"), nil, symVar, nil, false)
+				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
+				if p.funcScope == "" {
+					p.addSym(unsetAddr, name, nilValue, symVar, nil, false)
+					continue
+				}
+				p.addSym(p.framelen[p.funcScope], name, nilValue, symVar, nil, false)
+				p.framelen[p.funcScope]++
 			}
 		} else {
 			return out, err

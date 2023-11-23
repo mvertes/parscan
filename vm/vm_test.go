@@ -23,9 +23,8 @@ func TestVM(t *testing.T) {
 			if err := m.Run(); err != nil {
 				t.Errorf("run error: %v", err)
 			}
-			t.Log(m.mem)
-			r := fmt.Sprintf("%v", m.mem[test.start:test.end])
-			if r != test.mem {
+			t.Log(Vstring(m.mem))
+			if r := Vstring(m.mem[test.start:test.end]); r != test.mem {
 				t.Errorf("got %v, want %v", r, test.mem)
 			}
 		})

@@ -59,7 +59,7 @@ const (
 	// Unary operations
 	Plus     // unary +
 	Minus    // unary -
-	Address  // unary &
+	Addr     // unary &
 	Deref    // unary *
 	BitComp  // unary ^
 	Arrow    // unary ->
@@ -107,19 +107,20 @@ const (
 	// Internal virtual machine tokens (no corresponding keyword)
 	Call
 	CallX
+	EqualSet
 	Grow
 	Index
-	Label
 	JumpFalse
 	JumpSetFalse
 	JumpSetTrue
-	EqualSet
+	Label
+	New
 )
 
 // TODO: define UnaryOp per language
 var UnaryOp = map[TokenId]TokenId{
 	Add:   Plus,    // +
-	And:   Address, // &
+	And:   Addr,    // &
 	Not:   Not,     // !
 	Mul:   Deref,   // *
 	Sub:   Minus,   // -

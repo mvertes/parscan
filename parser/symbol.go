@@ -22,12 +22,12 @@ const unsetAddr = -65535
 
 type symbol struct {
 	kind  symKind
-	index int // address of symbol in frame
-	value any
-	cval  constant.Value
-	Type  reflect.Type
-	local bool // if true address is relative to local frame, otherwise global
-	used  bool
+	index int            // address of symbol in frame
+	value reflect.Value  //
+	cval  constant.Value //
+	Type  reflect.Type   //
+	local bool           // if true address is relative to local frame, otherwise global
+	used  bool           //
 }
 
 func symtype(s *symbol) reflect.Type {
@@ -37,11 +37,13 @@ func symtype(s *symbol) reflect.Type {
 	return reflect.TypeOf(s.value)
 }
 
-func (p *Parser) AddSym(i int, name string, v any) { p.addSym(i, name, v, symValue, nil, false) }
+func (p *Parser) AddSym(i int, name string, v reflect.Value) {
+	p.addSym(i, name, v, symValue, nil, false)
+}
 
-func (p *Parser) addSym(i int, name string, v any, k symKind, t reflect.Type, local bool) {
+func (p *Parser) addSym(i int, name string, v reflect.Value, k symKind, t reflect.Type, local bool) {
 	name = strings.TrimPrefix(name, "/")
-	p.symbols[name] = &symbol{kind: k, index: i, local: local, value: v, Type: t, used: true}
+	p.symbols[name] = &symbol{kind: k, index: i, local: local, value: v, Type: t}
 }
 
 // getSym searches for an existing symbol starting from the deepest scope.
@@ -72,9 +74,9 @@ func initUniverse() map[string]*symbol {
 
 		"nil":   {index: unsetAddr},
 		"iota":  {kind: symConst, index: unsetAddr},
-		"true":  {index: unsetAddr, value: true, Type: reflect.TypeOf(true)},
-		"false": {index: unsetAddr, value: false, Type: reflect.TypeOf(false)},
+		"true":  {index: unsetAddr, value: reflect.ValueOf(true), Type: reflect.TypeOf(true)},
+		"false": {index: unsetAddr, value: reflect.ValueOf(false), Type: reflect.TypeOf(false)},
 
-		"println": {index: unsetAddr, value: func(v ...any) { fmt.Println(v...) }},
+		"println": {index: unsetAddr, value: reflect.ValueOf(func(v ...any) { fmt.Println(v...) })},
 	}
 }
