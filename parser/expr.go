@@ -4,8 +4,8 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/gnolang/parscan/lang"
-	"github.com/gnolang/parscan/scanner"
+	"github.com/mvertes/parscan/lang"
+	"github.com/mvertes/parscan/scanner"
 )
 
 func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {

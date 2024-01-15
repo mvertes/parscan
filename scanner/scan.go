@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gnolang/parscan/lang"
+	"github.com/mvertes/parscan/lang"
 )
 
 var (

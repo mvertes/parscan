@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/gnolang/parscan/lang"
-	"github.com/gnolang/parscan/scanner"
+	"github.com/mvertes/parscan/lang"
+	"github.com/mvertes/parscan/scanner"
 )
 
 var nilValue = reflect.ValueOf(nil)

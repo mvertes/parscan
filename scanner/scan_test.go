@@ -5,8 +5,8 @@ import (
 	"log"
 	"testing"
 
-	"github.com/gnolang/parscan/lang/golang"
-	"github.com/gnolang/parscan/scanner"
+	"github.com/mvertes/parscan/lang/golang"
+	"github.com/mvertes/parscan/scanner"
 )
 
 var GoScanner *scanner.Scanner

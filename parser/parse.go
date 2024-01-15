@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gnolang/parscan/lang"
-	"github.com/gnolang/parscan/scanner"
+	"github.com/mvertes/parscan/lang"
+	"github.com/mvertes/parscan/scanner"
 )
 
 type Parser struct {

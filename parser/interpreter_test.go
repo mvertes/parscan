@@ -5,9 +5,9 @@ import (
 	"log"
 	"testing"
 
-	"github.com/gnolang/parscan/lang/golang"
-	"github.com/gnolang/parscan/parser"
-	"github.com/gnolang/parscan/scanner"
+	"github.com/mvertes/parscan/lang/golang"
+	"github.com/mvertes/parscan/parser"
+	"github.com/mvertes/parscan/scanner"
 )
 
 type etest struct {

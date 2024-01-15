@@ -1,8 +1,8 @@
 package parser
 
 import (
-	"github.com/gnolang/parscan/scanner"
-	"github.com/gnolang/parscan/vm"
+	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/vm"
 )
 
 const debug = true

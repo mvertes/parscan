@@ -1,6 +1,6 @@
 package golang
 
-import "github.com/gnolang/parscan/lang"
+import "github.com/mvertes/parscan/lang"
 
 var GoSpec = &lang.Spec{
 	CharProp: [lang.ASCIILen]uint{

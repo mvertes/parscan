@@ -1,3 +1,3 @@
-module github.com/gnolang/parscan
+module github.com/mvertes/parscan
 
 go 1.20

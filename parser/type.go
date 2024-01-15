@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/gnolang/parscan/lang"
+	"github.com/mvertes/parscan/lang"
 )
 
 type typeFlag int
