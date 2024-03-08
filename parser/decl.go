@@ -4,14 +4,14 @@ import (
 	"errors"
 	"go/constant"
 	"go/token"
-	"reflect"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/vm"
 )
 
-var nilValue = reflect.ValueOf(nil)
+var nilValue = vm.ValueOf(nil)
 
 func (p *Parser) ParseConst(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
@@ -78,7 +78,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			kind:  symConst,
 			index: unsetAddr,
 			cval:  cval,
-			value: reflect.ValueOf(constValue(cval)),
+			value: vm.ValueOf(constValue(cval)),
 			local: p.funcScope != "",
 			used:  true,
 		}
@@ -225,7 +225,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	if err != nil {
 		return out, err
 	}
-	p.addSym(unsetAddr, in[0].Str, reflect.New(typ).Elem(), symType, typ, p.funcScope != "")
+	p.addSym(unsetAddr, in[0].Str, vm.NewValue(typ), symType, typ, p.funcScope != "")
 	return out, err
 }
 

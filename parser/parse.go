@@ -420,8 +420,8 @@ func (p *Parser) ParseReturn(in Tokens) (out Tokens, err error) {
 	// TODO: the function symbol should be already present in the parser context.
 	// otherwise no way to handle anonymous func.
 	s := p.function
-	in[0].Beg = s.Type.NumOut()
-	in[0].End = s.Type.NumIn()
+	in[0].Beg = s.Type.Rtype.NumOut()
+	in[0].End = s.Type.Rtype.NumIn()
 	out = append(out, in[0])
 	return out, err
 }
