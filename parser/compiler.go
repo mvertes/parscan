@@ -115,10 +115,10 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.Call)
 
 		case lang.CallX:
-			typ := pop().Type
+			rtyp := pop().value.Data.Type()
 			// TODO: pop input types (careful with variadic function)
-			for i := 0; i < typ.Rtype.NumOut(); i++ {
-				push(&symbol{Type: typ.Out(i)})
+			for i := 0; i < rtyp.NumOut(); i++ {
+				push(&symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
 			}
 			emit(int64(t.Pos), vm.CallX, int64(t.Beg))
 
