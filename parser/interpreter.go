@@ -41,7 +41,7 @@ func (i *Interpreter) Eval(src string) (res any, err error) {
 		i.PrintCode()
 	}
 	err = i.Run()
-	return i.Top(), err
+	return i.Top().Data, err
 }
 
 func max(a, b int) int {

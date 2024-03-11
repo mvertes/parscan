@@ -3,7 +3,6 @@ package vm
 import (
 	"fmt"
 	"log"
-	"reflect"
 	"testing"
 )
 
@@ -50,11 +49,10 @@ func BenchmarkVM(b *testing.B) {
 }
 
 var tests = []struct {
-	//sym        []any     // initial memory values
-	sym        []reflect.Value // initial memory values
-	code       [][]int64       // bytecode to execute
-	start, end int             //
-	mem        string          // expected memory content
+	sym        []Value   // initial memory values
+	code       [][]int64 // bytecode to execute
+	start, end int       //
+	mem        string    // expected memory content
 }{{ // #00 -- A simple addition.
 	code: [][]int64{
 		{0, Push, 1},
@@ -64,7 +62,7 @@ var tests = []struct {
 	},
 	start: 0, end: 1, mem: "[3]",
 }, { // #01 -- Calling a function defined outside the VM.
-	sym: []reflect.Value{reflect.ValueOf(fmt.Println), reflect.ValueOf("Hello")},
+	sym: []Value{ValueOf(fmt.Println), ValueOf("Hello")},
 	code: [][]int64{
 		{0, Dup, 0},
 		{0, CallX, 1},

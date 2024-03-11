@@ -3,8 +3,9 @@ package parser
 import (
 	"fmt"
 	"go/constant"
-	"reflect"
 	"strings"
+
+	"github.com/mvertes/parscan/vm"
 )
 
 type symKind int
@@ -23,25 +24,25 @@ const unsetAddr = -65535
 type symbol struct {
 	kind  symKind
 	index int            // address of symbol in frame
-	value reflect.Value  //
+	Type  *vm.Type       //
+	value vm.Value       //
 	cval  constant.Value //
-	Type  reflect.Type   //
 	local bool           // if true address is relative to local frame, otherwise global
 	used  bool           //
 }
 
-func symtype(s *symbol) reflect.Type {
+func symtype(s *symbol) *vm.Type {
 	if s.Type != nil {
 		return s.Type
 	}
-	return reflect.TypeOf(s.value)
+	return vm.TypeOf(s.value)
 }
 
-func (p *Parser) AddSym(i int, name string, v reflect.Value) {
+func (p *Parser) AddSym(i int, name string, v vm.Value) {
 	p.addSym(i, name, v, symValue, nil, false)
 }
 
-func (p *Parser) addSym(i int, name string, v reflect.Value, k symKind, t reflect.Type, local bool) {
+func (p *Parser) addSym(i int, name string, v vm.Value, k symKind, t *vm.Type, local bool) {
 	name = strings.TrimPrefix(name, "/")
 	p.symbols[name] = &symbol{kind: k, index: i, local: local, value: v, Type: t}
 }
@@ -66,17 +67,17 @@ func (p *Parser) getSym(name, scope string) (sym *symbol, sc string, ok bool) {
 
 func initUniverse() map[string]*symbol {
 	return map[string]*symbol{
-		"any":    {kind: symType, index: unsetAddr, Type: reflect.TypeOf((*any)(nil)).Elem()},
-		"bool":   {kind: symType, index: unsetAddr, Type: reflect.TypeOf((*bool)(nil)).Elem()},
-		"error":  {kind: symType, index: unsetAddr, Type: reflect.TypeOf((*error)(nil)).Elem()},
-		"int":    {kind: symType, index: unsetAddr, Type: reflect.TypeOf((*int)(nil)).Elem()},
-		"string": {kind: symType, index: unsetAddr, Type: reflect.TypeOf((*string)(nil)).Elem()},
+		"any":    {kind: symType, index: unsetAddr, Type: vm.TypeOf((*any)(nil)).Elem()},
+		"bool":   {kind: symType, index: unsetAddr, Type: vm.TypeOf((*bool)(nil)).Elem()},
+		"error":  {kind: symType, index: unsetAddr, Type: vm.TypeOf((*error)(nil)).Elem()},
+		"int":    {kind: symType, index: unsetAddr, Type: vm.TypeOf((*int)(nil)).Elem()},
+		"string": {kind: symType, index: unsetAddr, Type: vm.TypeOf((*string)(nil)).Elem()},
 
 		"nil":   {index: unsetAddr},
 		"iota":  {kind: symConst, index: unsetAddr},
-		"true":  {index: unsetAddr, value: reflect.ValueOf(true), Type: reflect.TypeOf(true)},
-		"false": {index: unsetAddr, value: reflect.ValueOf(false), Type: reflect.TypeOf(false)},
+		"true":  {index: unsetAddr, value: vm.ValueOf(true), Type: vm.TypeOf(true)},
+		"false": {index: unsetAddr, value: vm.ValueOf(false), Type: vm.TypeOf(false)},
 
-		"println": {index: unsetAddr, value: reflect.ValueOf(func(v ...any) { fmt.Println(v...) })},
+		"println": {index: unsetAddr, value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })},
 	}
 }

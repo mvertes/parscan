@@ -3,10 +3,10 @@ package parser
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
+	"github.com/mvertes/parscan/vm"
 )
 
 type typeFlag int
@@ -27,7 +27,7 @@ var (
 
 // ParseTypeExpr parses a list of tokens defining a type expresssion and returns
 // the corresponding runtime type or an error.
-func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
+func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 	switch in[0].Id {
 	case lang.BracketBlock:
 		typ, err := p.ParseTypeExpr(in[1:])
@@ -47,16 +47,16 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 			if !ok {
 				return nil, fmt.Errorf("invalid size")
 			}
-			return reflect.ArrayOf(size, typ), nil
+			return vm.ArrayOf(size, typ), nil
 		}
-		return reflect.SliceOf(typ), nil
+		return vm.SliceOf(typ), nil
 
 	case lang.Mul:
 		typ, err := p.ParseTypeExpr(in[1:])
 		if err != nil {
 			return nil, err
 		}
-		return reflect.PointerTo(typ), nil
+		return vm.PointerTo(typ), nil
 
 	case lang.Func:
 		// Get argument and return token positions depending on function pattern:
@@ -95,7 +95,7 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 		if err != nil {
 			return nil, err
 		}
-		return reflect.FuncOf(arg, ret, false), nil
+		return vm.FuncOf(arg, ret, false), nil
 
 	case lang.Ident:
 		// TODO: selector expression (pkg.type)
@@ -112,18 +112,19 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 		if in, err = p.Scan(in[1].Block(), false); err != nil {
 			return nil, err
 		}
-		var fields []reflect.StructField
+		var fields []*vm.Type
 		for _, lt := range in.Split(lang.Semicolon) {
 			types, names, err := p.parseParamTypes(lt, parseTypeType)
+			fmt.Println("### Names:", names, types)
 			if err != nil {
 				return nil, err
 			}
 			for i, name := range names {
-				fields = append(fields, reflect.StructField{Name: "X" + name, Type: types[i]})
+				fields = append(fields, &vm.Type{Name: name, Rtype: types[i].Rtype})
 				// TODO: handle embedded fields
 			}
 		}
-		return reflect.StructOf(fields), nil
+		return vm.StructOf(fields), nil
 
 	default:
 		return nil, fmt.Errorf("%w: %v", TypeNotImplementedErr, in[0].Name())
@@ -132,7 +133,7 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ reflect.Type, err error) {
 
 // parseParamTypes parses a list of comma separated typed parameters and returns a list of
 // runtime types. Implicit parameter names and types are supported.
-func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type, vars []string, err error) {
+func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, vars []string, err error) {
 	// Parse from right to left, to allow multiple comma separated parameters of the same type.
 	list := in.Split(lang.Comma)
 	for i := len(list) - 1; i >= 0; i-- {
@@ -150,7 +151,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 					return nil, nil, MissingTypeErr
 				}
 				// Type was ommitted, apply the previous one from the right.
-				types = append([]reflect.Type{types[0]}, types...)
+				types = append([]*vm.Type{types[0]}, types...)
 				p.addSymVar(i, param, types[0], flag, local)
 				vars = append(vars, param)
 				continue
@@ -163,14 +164,14 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []reflect.Type
 		if param != "" {
 			p.addSymVar(i, param, typ, flag, local)
 		}
-		types = append([]reflect.Type{typ}, types...)
+		types = append([]*vm.Type{typ}, types...)
 		vars = append(vars, param)
 	}
 	return types, vars, err
 }
 
-func (p *Parser) addSymVar(index int, name string, typ reflect.Type, flag typeFlag, local bool) {
-	zv := reflect.New(typ).Elem()
+func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, local bool) {
+	zv := vm.NewValue(typ)
 	switch flag {
 	case parseTypeIn:
 		p.addSym(-index-2, name, zv, symVar, typ, true)
