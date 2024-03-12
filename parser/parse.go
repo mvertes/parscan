@@ -248,8 +248,8 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	out = append(out, toks...)
 	if out[len(out)-1].Id != lang.Return {
 		// Ensure that a return statment is always added at end of function.
-		// TODO: detect missing or wrong returns
-		x, err := p.ParseReturn([]scanner.Token{{Id: lang.Return}})
+		// TODO: detect missing or wrong returns.
+		x, err := p.ParseReturn(nil)
 		if err != nil {
 			return out, err
 		}
@@ -420,10 +420,12 @@ func (p *Parser) ParseLabel(in Tokens) (out Tokens, err error) {
 }
 
 func (p *Parser) ParseReturn(in Tokens) (out Tokens, err error) {
-	if len(in) > 1 {
+	if l := len(in); l > 1 {
 		if out, err = p.ParseExpr(in[1:]); err != nil {
 			return out, err
 		}
+	} else if l == 0 {
+		in = Tokens{{Id: lang.Return}} // Implicit return in functions with no return parameters.
 	}
 
 	// TODO: the function symbol should be already present in the parser context.
