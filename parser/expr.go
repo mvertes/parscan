@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 
@@ -86,6 +87,8 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 			out = append(out, t)
 			vl++
 			ops = append(ops, scanner.Token{Str: "index", Id: lang.Index, Pos: t.Pos})
+		default:
+			return nil, fmt.Errorf("expression not supported yet: %q", t.Str)
 		}
 		if len(selectors) > 0 {
 			out = append(out, selectors...)

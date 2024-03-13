@@ -28,7 +28,7 @@ Structurally, the vm implements logical and arithmetic operators,
 condional jumps for `if`, `for` and `switch` control flow, and function
 call, return and frame management.
 
-the memory state of the vm is a slice of Go interfaces (`[]any`).
+the memory state of the vm is a slice of (`[]Value`), where `Value` is similar to a `reflect.Value`, containing pointers to value data and type.
 
 The whole vm is coded in a single function of 80 lines with no
 dependencies. The size will grow as we add missing instructions, but the
