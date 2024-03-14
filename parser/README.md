@@ -13,7 +13,7 @@ The input of parser is a list of tokens produced by the scanner.
 Multiple tokens are processed at once. The minimal set to get
 meaningful results (not an error or nil) is a complete statement.
 
-The output of parser is also a list of tokens, to be consummed by
+The output of parser is also a list of tokens, to be consumed by
 the compiler to produce bytecode. The output tokens set is identical
 to the bytecode instructions set except that:
 
