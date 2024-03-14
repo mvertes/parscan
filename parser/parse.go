@@ -82,10 +82,15 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 		return p.ParseFor(in)
 	case lang.Func:
 		return p.ParseFunc(in)
+	case lang.Defer, lang.Go, lang.Fallthrough, lang.Import, lang.Select:
+		return out, fmt.Errorf("not yet implemented: %v", t.Id)
 	case lang.Goto:
 		return p.ParseGoto(in)
 	case lang.If:
 		return p.ParseIf(in)
+	case lang.Package:
+		// TODO: support packages
+		return out, err
 	case lang.Return:
 		return p.ParseReturn(in)
 	case lang.Switch:
@@ -118,7 +123,7 @@ func (p *Parser) ParseBreak(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, fmt.Errorf("invalid break statement")
 	}
-	out = Tokens{{Id: lang.Goto, Str: "goto " + label}}
+	out = Tokens{{Id: lang.Goto, Str: label}}
 	return out, err
 }
 
@@ -136,7 +141,7 @@ func (p *Parser) ParseContinue(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, fmt.Errorf("invalid continue statement")
 	}
-	out = Tokens{{Id: lang.Goto, Str: "goto " + label}}
+	out = Tokens{{Id: lang.Goto, Str: label}}
 	return out, err
 }
 
@@ -145,7 +150,7 @@ func (p *Parser) ParseGoto(in Tokens) (out Tokens, err error) {
 		return nil, fmt.Errorf("invalid goto statement")
 	}
 	// TODO: check validity of user provided label
-	return Tokens{{Id: lang.Goto, Str: "goto " + p.funcScope + "/" + in[1].Str}}, nil
+	return Tokens{{Id: lang.Goto, Str: p.funcScope + "/" + in[1].Str}}, nil
 }
 
 func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
@@ -181,7 +186,7 @@ func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		out = append(out, cond...)
-		out = append(out, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + p.scope + "e"})
+		out = append(out, scanner.Token{Id: lang.JumpFalse, Str: p.scope + "e"})
 	}
 	if body, err = p.Parse(in[len(in)-1].Block()); err != nil {
 		return nil, err
@@ -194,7 +199,7 @@ func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
 		out = append(out, post...)
 	}
 	out = append(out,
-		scanner.Token{Id: lang.Goto, Str: "goto " + p.scope + "b"},
+		scanner.Token{Id: lang.Goto, Str: p.scope + "b"},
 		scanner.Token{Id: lang.Label, Str: p.scope + "e"})
 	return out, err
 }
@@ -230,7 +235,7 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	}()
 
 	out = Tokens{
-		{Id: lang.Goto, Str: "goto " + fname + "_end"}, // Skip function definition.
+		{Id: lang.Goto, Str: fname + "_end"}, // Skip function definition.
 		{Id: lang.Label, Pos: in[0].Pos, Str: fname}}
 
 	bi := in.Index(lang.BraceBlock)
@@ -283,7 +288,7 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		if sc > 0 {
-			pre = append(pre, scanner.Token{Id: lang.Goto, Str: "goto " + p.scope + "e0"})
+			pre = append(pre, scanner.Token{Id: lang.Goto, Str: p.scope + "e0"})
 		}
 		pre = append(pre, scanner.Token{Id: lang.Label, Str: p.scope + "e" + ssc})
 		out = append(pre, out...)
@@ -313,7 +318,7 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		pre = append(pre, cond...)
-		pre = append(pre, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + p.scope + "e" + ssc})
+		pre = append(pre, scanner.Token{Id: lang.JumpFalse, Str: p.scope + "e" + ssc})
 		out = append(pre, out...)
 		i = ifp
 		if i > 1 && in[i].Id == lang.If && in[i-1].Id == lang.Else { // Step over 'else if'.
@@ -412,11 +417,11 @@ func (p *Parser) ParseCaseClause(in Tokens, index, max int, condSwitch bool) (ou
 			if condSwitch {
 				out = append(out, scanner.Token{Id: lang.EqualSet})
 			}
-			out = append(out, scanner.Token{Id: lang.JumpFalse, Str: "JumpFalse " + next})
+			out = append(out, scanner.Token{Id: lang.JumpFalse, Str: next})
 		}
 		out = append(out, body...)
 		if i != len(lcond)-1 || index != max {
-			out = append(out, scanner.Token{Id: lang.Goto, Str: "Goto " + p.scope + "e"})
+			out = append(out, scanner.Token{Id: lang.Goto, Str: p.scope + "e"})
 		}
 	}
 	return out, err

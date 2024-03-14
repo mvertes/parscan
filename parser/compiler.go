@@ -212,9 +212,8 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			}
 
 		case lang.JumpFalse:
-			label := t.Str[10:]
 			var i int64
-			if s, ok := c.symbols[label]; !ok {
+			if s, ok := c.symbols[t.Str]; !ok {
 				// t.Beg contains the position in code which needs to be fixed.
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
@@ -224,9 +223,8 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.JumpFalse, i)
 
 		case lang.JumpSetFalse:
-			label := t.Str[13:]
 			var i int64
-			if s, ok := c.symbols[label]; !ok {
+			if s, ok := c.symbols[t.Str]; !ok {
 				// t.Beg contains the position in code which needs to be fixed.
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
@@ -236,9 +234,8 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.JumpSetFalse, i)
 
 		case lang.JumpSetTrue:
-			label := t.Str[12:]
 			var i int64
-			if s, ok := c.symbols[label]; !ok {
+			if s, ok := c.symbols[t.Str]; !ok {
 				// t.Beg contains the position in code which needs to be fixed.
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
@@ -248,9 +245,8 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.JumpSetTrue, int64(i))
 
 		case lang.Goto:
-			label := t.Str[5:]
 			var i int64
-			if s, ok := c.symbols[label]; !ok {
+			if s, ok := c.symbols[t.Str]; !ok {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
@@ -275,21 +271,9 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 	// Finally we fix unresolved labels for jump destinations.
 	for _, t := range fixList {
-		var label string
-		// TODO: this could be simplified.
-		switch t.Id {
-		case lang.Goto:
-			label = t.Str[5:]
-		case lang.JumpFalse:
-			label = t.Str[10:]
-		case lang.JumpSetFalse:
-			label = t.Str[13:]
-		case lang.JumpSetTrue:
-			label = t.Str[12:]
-		}
-		s, ok := c.symbols[label]
+		s, ok := c.symbols[t.Str]
 		if !ok {
-			return fmt.Errorf("label not found: %q", label)
+			return fmt.Errorf("label not found: %q", t.Str)
 		}
 		c.Code[t.Beg][2] = s.value.Data.Int() - int64(t.Beg)
 

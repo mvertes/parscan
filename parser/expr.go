@@ -88,18 +88,20 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 					log.Println("callExpr:", t2.Str, p.scope, s, ok, sc)
 					if s.kind == symValue {
 						// Store the number of input parameters in the token Beg field.
-						ops = append(ops, scanner.Token{Str: "callX", Id: lang.CallX, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
+						ops = append(ops, scanner.Token{Id: lang.CallX, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
 						break
 					}
 				}
 			}
-			ops = append(ops, scanner.Token{Str: "call", Id: lang.Call, Pos: t.Pos})
+			ops = append(ops, scanner.Token{Id: lang.Call, Pos: t.Pos})
 		case lang.BracketBlock:
 			out = append(out, t)
 			vl++
-			ops = append(ops, scanner.Token{Str: "index", Id: lang.Index, Pos: t.Pos})
+			ops = append(ops, scanner.Token{Id: lang.Index, Pos: t.Pos})
+		case lang.Comment:
+			return out, nil
 		default:
-			return nil, fmt.Errorf("expression not supported yet: %q", t.Str)
+			return nil, fmt.Errorf("expression not supported yet: %v: %q", t.Id, t.Str)
 		}
 		if len(selectors) > 0 {
 			out = append(out, selectors...)
@@ -196,9 +198,9 @@ func (p *Parser) ParseLogical(in Tokens) (out Tokens, err error) {
 	}
 	out = append(out, lhs...)
 	if in[l].Id == lang.Lor {
-		out = append(out, scanner.Token{Id: lang.JumpSetTrue, Str: "JumpSetTrue " + p.scope + "x" + xp})
+		out = append(out, scanner.Token{Id: lang.JumpSetTrue, Str: p.scope + "x" + xp})
 	} else {
-		out = append(out, scanner.Token{Id: lang.JumpSetFalse, Str: "JumpSetFalse " + p.scope + "x" + xp})
+		out = append(out, scanner.Token{Id: lang.JumpSetFalse, Str: p.scope + "x" + xp})
 	}
 	out = append(out, rhs...)
 	out = append(out, scanner.Token{Id: lang.Label, Str: p.scope + "x" + xp})

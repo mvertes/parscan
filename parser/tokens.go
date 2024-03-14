@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"fmt"
-
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scanner"
 )
@@ -11,7 +9,7 @@ type Tokens []scanner.Token
 
 func (toks Tokens) String() (s string) {
 	for _, t := range toks {
-		s += fmt.Sprintf("%#v ", t.Str)
+		s += t.String() + " "
 	}
 	return s
 }

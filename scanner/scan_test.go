@@ -1,7 +1,6 @@
 package scanner_test
 
 import (
-	"fmt"
 	"log"
 	"testing"
 
@@ -37,9 +36,9 @@ func TestScan(t *testing.T) {
 
 func tokStr(tokens []scanner.Token) (s string) {
 	for _, t := range tokens {
-		s += fmt.Sprintf("%#v ", t.Str)
+		s += t.String() + " "
 	}
-	return
+	return s
 }
 
 var tests = []struct {
@@ -48,19 +47,19 @@ var tests = []struct {
 	src: "",
 }, { // #01
 	src: "   abc + 5",
-	tok: `"abc" "+" "5" ";" `,
+	tok: `Ident"abc" Add Int"5" Semicolon `,
 }, { // #02
 	src: "abc0+5 ",
-	tok: `"abc0" "+" "5" ";" `,
+	tok: `Ident"abc0" Add Int"5" Semicolon `,
 }, { // #03
 	src: "a+5\na=x-4",
-	tok: `"a" "+" "5" ";" "a" "=" "x" "-" "4" ";" `,
+	tok: `Ident"a" Add Int"5" Semicolon Ident"a" Assign Ident"x" Sub Int"4" Semicolon `,
 }, { // #04
 	src: `return "hello world" + 4`,
-	tok: `"return" "\"hello world\"" "+" "4" ";" `,
+	tok: `Return String"\"hello world\"" Add Int"4" Semicolon `,
 }, { // #05
 	src: `print(4 * (3+7))`,
-	tok: `"print" "(4 * (3+7))" ";" `,
+	tok: `Ident"print" ParenBlock"(4 * (3+7))" Semicolon `,
 }, { // #06
 	src: `"foo`,
 	err: "1:1: block not terminated",
@@ -73,66 +72,66 @@ def "foo truc`,
 	err: "1:1: block not terminated",
 }, { // #09
 	src: `"ab\\"`,
-	tok: `"\"ab\\\\\"" ";" `,
+	tok: `String"\"ab\\\\\"" Semicolon `,
 }, { // #10
 	src: `"ab\\\"`,
 	err: "1:1: block not terminated",
 }, { // #11
 	src: `"ab\\\\"`,
-	tok: `"\"ab\\\\\\\\\"" ";" `,
+	tok: `String"\"ab\\\\\\\\\"" Semicolon `,
 }, { // #12
 	src: `"abc
 def"`,
 	err: "1:1: block not terminated",
 }, { // #13
 	src: "`hello\nworld`",
-	tok: "\"`hello\\nworld`\" \";\" ",
+	tok: "String\"`hello\\nworld`\" Semicolon ",
 }, { // #14
 	src: "2* (3+4",
 	err: "1:4: block not terminated",
 }, { // #15
 	src: `("fo)o")+1`,
-	tok: `"(\"fo)o\")" "+" "1" ";" `,
+	tok: `ParenBlock"(\"fo)o\")" Add Int"1" Semicolon `,
 }, { // #16
 	src: `"foo""bar"`,
-	tok: `"\"foo\"" "\"bar\"" ";" `,
+	tok: `String"\"foo\"" String"\"bar\"" Semicolon `,
 }, { // #17
 	src: "/* a comment */ a = 2",
-	tok: `"/* a comment */" "a" "=" "2" ";" `,
+	tok: `Comment"/* a comment */" Ident"a" Assign Int"2" Semicolon `,
 }, { // #18
 	src: "return // quit\nbegin",
-	tok: `"return" "// quit" ";" "begin" ";" `,
+	tok: `Return Comment"// quit" Semicolon Ident"begin" Semicolon `,
 }, { // #19
 	src: "return // quit",
-	tok: `"return" "// quit" ";" `,
+	tok: `Return Comment"// quit" Semicolon `,
 }, { // #20
 	src: "println(3 /* argh ) */)",
-	tok: `"println" "(3 /* argh ) */)" ";" `,
+	tok: `Ident"println" ParenBlock"(3 /* argh ) */)" Semicolon `,
 }, { // #21
 	src: `println("in f")`,
-	tok: `"println" "(\"in f\")" ";" `,
+	tok: `Ident"println" ParenBlock"(\"in f\")" Semicolon `,
 }, { // #22
 	src: "a, b = 1, 2",
-	tok: `"a" "," "b" "=" "1" "," "2" ";" `,
+	tok: `Ident"a" Comma Ident"b" Assign Int"1" Comma Int"2" Semicolon `,
 }, { // #23
 	src: "1 + \n2 + 3",
-	tok: `"1" "+" "2" "+" "3" ";" `,
+	tok: `Int"1" Add Int"2" Add Int"3" Semicolon `,
 }, { // #24
 	src: "i++\n2 + 3",
-	tok: `"i" "++" ";" "2" "+" "3" ";" `,
+	tok: `Ident"i" Inc Semicolon Int"2" Add Int"3" Semicolon `,
 }, { // #25
 	src: "return\na = 1",
-	tok: `"return" ";" "a" "=" "1" ";" `,
+	tok: `Return Semicolon Ident"a" Assign Int"1" Semicolon `,
 }, { // #26
 	src: "if\na == 2 { return }",
-	tok: `"if" "a" "==" "2" "{ return }" ";" `,
+	tok: `If Ident"a" Equal Int"2" BraceBlock"{ return }" Semicolon `,
 }, { // #27
 	src: "f(4)\nreturn",
-	tok: `"f" "(4)" ";" "return" ";" `,
+	tok: `Ident"f" ParenBlock"(4)" Semicolon Return Semicolon `,
 }, { // #28
 	src: "f(3).\nfield",
-	tok: `"f" "(3)" "." "field" ";" `,
+	tok: `Ident"f" ParenBlock"(3)" Period Ident"field" Semicolon `,
 }, { // #29
 	src: "\n\n\tif i < 1 {return 0}",
-	tok: `"if" "i" "<" "1" "{return 0}" ";" `,
+	tok: `If Ident"i" Less Int"1" BraceBlock"{return 0}" Semicolon `,
 }}

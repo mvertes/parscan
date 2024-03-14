@@ -1,9 +1,11 @@
 package lang
 
+//go:generate stringer -type=TokenId
+
 type TokenId int
 
 const (
-	Illegal = iota
+	Illegal TokenId = iota
 	Comment
 	Ident
 

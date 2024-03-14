@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
@@ -35,6 +36,14 @@ func (t *Token) Name() string {
 		return name[:t.Beg] + ".." + name[len(name)-t.End:]
 	}
 	return name
+}
+
+func (t *Token) String() string {
+	s := t.Id.String()
+	if t.Id.IsLiteral() || t.Id.IsBlock() || t.Id == lang.Ident || t.Id == lang.Comment {
+		s += strconv.Quote(t.Str)
+	}
+	return s
 }
 
 // Scanner contains the scanner rules for a language.
