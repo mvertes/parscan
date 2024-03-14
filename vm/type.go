@@ -26,6 +26,9 @@ type Value struct {
 
 // NewValue returns an addressable zero value for the specified type.
 func NewValue(typ *Type) Value {
+	if typ.Rtype.Kind() == reflect.Func {
+		typ = TypeOf(0) // Function value is its index in the code segment.
+	}
 	return Value{Type: typ, Data: reflect.New(typ.Rtype).Elem()}
 }
 

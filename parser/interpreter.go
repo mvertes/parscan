@@ -34,6 +34,9 @@ func (i *Interpreter) Eval(src string) (res any, err error) {
 	}
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
+	if s, ok := i.symbols["main"]; ok {
+		i.PushCode([]int64{0, vm.Calli, i.Data[s.index].Data.Int()})
+	}
 	i.PushCode([]int64{0, vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
 	if debug {
@@ -42,11 +45,4 @@ func (i *Interpreter) Eval(src string) (res any, err error) {
 	}
 	err = i.Run()
 	return i.Top().Data, err
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

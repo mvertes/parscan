@@ -17,6 +17,17 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 	// Process tokens from last to first, the goal is to reorder the tokens in
 	// a stack machine processing order, so it can be directly interpreted.
 	//
+	if len(in) > 1 && in[0].Id == lang.Func {
+		// Function as value (i.e closure).
+		if out, err = p.ParseFunc(in); err != nil {
+			return out, err
+		}
+		// Get function label and use it as a symbol ident.
+		fid := out[1]
+		fid.Id = lang.Ident
+		out = append(out, fid)
+		return out, err
+	}
 	for i := len(in) - 1; i >= 0; i-- {
 		t := in[i]
 		// temporary assumptions: binary operators, returning 1 value

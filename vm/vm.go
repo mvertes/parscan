@@ -145,7 +145,7 @@ func (m *Machine) Run() (err error) {
 		case Calli:
 			mem = append(mem, ValueOf(ip+1), ValueOf(fp))
 			fp = sp + 2
-			ip += int(op[2])
+			ip = int(op[2])
 			continue
 		case CallX: // Should be made optional.
 			l := int(op[2])

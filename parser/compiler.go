@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 
 	"github.com/mvertes/parscan/lang"
@@ -313,10 +314,10 @@ func (c *Compiler) PrintCode() {
 		}
 	}
 
-	fmt.Println("# Code:")
+	fmt.Fprintln(os.Stderr, "# Code:")
 	for i, l := range c.Code {
 		for _, label := range labels[i] {
-			fmt.Println(label + ":")
+			fmt.Fprintln(os.Stderr, label+":")
 		}
 		extra := ""
 		switch l[1] {
@@ -329,13 +330,13 @@ func (c *Compiler) PrintCode() {
 				extra = "// " + d
 			}
 		}
-		fmt.Printf("%4d %-14v %v\n", i, vm.CodeString(l), extra)
+		fmt.Fprintf(os.Stderr, "%4d %-14v %v\n", i, vm.CodeString(l), extra)
 	}
 
 	for _, label := range labels[len(c.Code)] {
-		fmt.Println(label + ":")
+		fmt.Fprintln(os.Stderr, label+":")
 	}
-	fmt.Println("# End code")
+	fmt.Fprintln(os.Stderr, "# End code")
 }
 
 type entry struct {
@@ -351,9 +352,9 @@ func (c *Compiler) PrintData() {
 		}
 		dict[sym.index] = entry{name, sym}
 	}
-	fmt.Println("# Data:")
+	fmt.Fprintln(os.Stderr, "# Data:")
 	for i, d := range c.Data {
-		fmt.Printf("%4d %T %v %v\n", i, d.Data.Interface(), d.Data, dict[i])
+		fmt.Fprintf(os.Stderr, "%4d %T %v %v\n", i, d.Data.Interface(), d.Data, dict[i])
 	}
 }
 

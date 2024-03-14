@@ -98,6 +98,7 @@ func TestFunc(t *testing.T) {
 		{src: "func f(a int) int {return a+2}; f(3) - 2", res: "3"},
 		{src: "func f(a, b, c int) int {return a+b-c} ; f(7, 1, 3)", res: "5"},
 		{src: "var a int; func f() {a = a+2}; f(); a", res: "2"},
+		{src: "var f = func(a int) int {return a+3}; f(2)", res: "5"},
 	})
 }
 

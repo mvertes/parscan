@@ -24,6 +24,7 @@ type Parser struct {
 	labelCount    map[string]int
 	breakLabel    string
 	continueLabel string
+	clonum        int // closure instance number
 }
 
 func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
@@ -203,7 +204,13 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	// TODO: handle receiver (methods)
 	// TODO: handle parametric types (generics)
 	// TODO: handle variadic parameters
-	fname := in[1].Str
+	var fname string
+	if in[1].Id == lang.Ident {
+		fname = in[1].Str
+	} else {
+		fname = "#f" + strconv.Itoa(p.clonum)
+		p.clonum++
+	}
 	ofname := p.fname
 	p.fname = fname
 	ofunc := p.function

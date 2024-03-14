@@ -27,7 +27,7 @@ to the bytecode instructions set except that:
 Go language support:
 
 - [x] named functions
-- [ ] anonymous functions (closures)
+- [x] anonymous functions (closures)
 - [ ] methods
 - [x] internal function calls
 - [x] external function calls (calling runtime symbols in interpreter)

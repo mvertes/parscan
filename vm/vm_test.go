@@ -75,7 +75,7 @@ var tests = []struct {
 		{0, Push, 3},      // 1
 		{0, Return, 1, 1}, // 2
 		{0, Push, 1},      // 3
-		{0, Calli, -3},    // 4
+		{0, Calli, 1},     // 4
 		{0, Exit},         // 5
 	},
 	start: 0, end: 1, mem: "[3]",
@@ -138,16 +138,16 @@ var tests = []struct {
 		{0, JumpTrue, 9},  // 3  [], goto 12
 		{0, Fdup, -2},     // 4  [i]
 		{0, Subi, 2},      // 5  [(i-2)]
-		{0, Calli, -5},    // 6  [fib(i-2)]
+		{0, Calli, 1},     // 6  [fib(i-2)]
 		{0, Fdup, -2},     // 7  [fib(i-2) i]
 		{0, Subi, 1},      // 8  [(i-2) (i-1)]
-		{0, Calli, -8},    // 9  [fib(i-2) fib(i-1)], call 1
+		{0, Calli, 1},     // 9  [fib(i-2) fib(i-1)], call 1
 		{0, Add},          // 10 [fib(i-2)+fib(i-1)]
 		{0, Return, 1, 1}, // 11 return i
 		{0, Fdup, -2},     // 12 [i]
 		{0, Return, 1, 1}, // 13 return i
 		{0, Push, 6},      // 14 [1]
-		{0, Calli, -14},   // 15 [fib(*1)], call 1
+		{0, Calli, 1},     // 15 [fib(*1)], call 1
 		{0, Exit},         // 16
 	},
 	start: 0, end: 1, mem: "[8]",
