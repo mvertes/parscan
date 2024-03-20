@@ -2,8 +2,10 @@ package parser
 
 import (
 	"errors"
+	"fmt"
 	"go/constant"
 	"go/token"
+	"path"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
@@ -187,6 +189,48 @@ var gotok = map[lang.TokenId]token.Token{
 	lang.Minus:        token.SUB,
 	lang.BitComp:      token.XOR,
 	lang.Not:          token.NOT,
+}
+
+func (p *Parser) ParseImport(in Tokens) (out Tokens, err error) {
+	if len(in) < 2 {
+		return out, errors.New("missing expression")
+	}
+	if in[1].Id != lang.ParenBlock {
+		return p.parseImportLine(in[1:])
+	}
+	for _, li := range in.Split(lang.Semicolon) {
+		ot, err := p.parseImportLine(li)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, ot...)
+	}
+	return out, err
+}
+
+func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
+	l := len(in)
+	if l != 1 && l != 2 {
+		return out, errors.New("invalid number of arguments")
+	}
+	if in[l-1].Id != lang.String {
+		return out, fmt.Errorf("invalid argument %v", in[0])
+	}
+	pp := in[l-1].Str
+	n := ""
+	if l == 1 {
+		d, f := path.Split(pp)
+		if ok, _ := path.Match(f, "v[0-9]*"); d != "" && ok {
+			n = path.Base(d)
+		} else {
+			n = f
+		}
+		p.symbols[n] = &symbol{kind: symPkg, pkgPath: pp, index: unsetAddr}
+		return out, err
+	}
+	// TODO: handle custom name. Handle processing source / binary packages.
+
+	return out, err
 }
 
 func (p *Parser) ParseType(in Tokens) (out Tokens, err error) {

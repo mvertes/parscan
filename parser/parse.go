@@ -67,10 +67,10 @@ func (p *Parser) ParseStmts(in Tokens) (out Tokens, err error) {
 }
 
 func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
-	log.Println("ParseStmt in:", in, len(in))
 	if len(in) == 0 {
 		return nil, nil
 	}
+	log.Println("ParseStmt in:", in)
 	switch t := in[0]; t.Id {
 	case lang.Break:
 		return p.ParseBreak(in)
@@ -82,12 +82,14 @@ func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
 		return p.ParseFor(in)
 	case lang.Func:
 		return p.ParseFunc(in)
-	case lang.Defer, lang.Go, lang.Fallthrough, lang.Import, lang.Select:
+	case lang.Defer, lang.Go, lang.Fallthrough, lang.Select:
 		return out, fmt.Errorf("not yet implemented: %v", t.Id)
 	case lang.Goto:
 		return p.ParseGoto(in)
 	case lang.If:
 		return p.ParseIf(in)
+	case lang.Import:
+		return p.ParseImport(in)
 	case lang.Package:
 		// TODO: support packages
 		return out, err

@@ -17,18 +17,20 @@ const (
 	symConst                // a Go constant
 	symVar                  // a Go variable, located in the VM memory
 	symFunc                 // a Go function, located in the VM code
+	symPkg                  // a Go package
 )
 
 const unsetAddr = -65535
 
 type symbol struct {
-	kind  symKind
-	index int            // address of symbol in frame
-	Type  *vm.Type       //
-	value vm.Value       //
-	cval  constant.Value //
-	local bool           // if true address is relative to local frame, otherwise global
-	used  bool           //
+	kind    symKind
+	index   int            // address of symbol in frame
+	pkgPath string         //
+	Type    *vm.Type       //
+	value   vm.Value       //
+	cval    constant.Value //
+	local   bool           // if true address is relative to local frame, otherwise global
+	used    bool           //
 }
 
 func symtype(s *symbol) *vm.Type {
@@ -79,5 +81,7 @@ func initUniverse() map[string]*symbol {
 		"false": {index: unsetAddr, value: vm.ValueOf(false), Type: vm.TypeOf(false)},
 
 		"println": {index: unsetAddr, value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })},
+
+		"fmt": {kind: symPkg, index: unsetAddr, pkgPath: "fmt"},
 	}
 }

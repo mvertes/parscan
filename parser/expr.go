@@ -83,17 +83,7 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 			// func call: push args and func address then call
 			out = append(out, t)
 			vl++
-			if t2 := in[i-1]; t2.Id == lang.Ident {
-				if s, sc, ok := p.getSym(t2.Str, p.scope); ok {
-					log.Println("callExpr:", t2.Str, p.scope, s, ok, sc)
-					if s.kind == symValue {
-						// Store the number of input parameters in the token Beg field.
-						ops = append(ops, scanner.Token{Id: lang.CallX, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
-						break
-					}
-				}
-			}
-			ops = append(ops, scanner.Token{Id: lang.Call, Pos: t.Pos})
+			ops = append(ops, scanner.Token{Id: lang.Call, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
 		case lang.BracketBlock:
 			out = append(out, t)
 			vl++
