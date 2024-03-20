@@ -81,7 +81,5 @@ func initUniverse() map[string]*symbol {
 		"false": {index: unsetAddr, value: vm.ValueOf(false), Type: vm.TypeOf(false)},
 
 		"println": {index: unsetAddr, value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })},
-
-		"fmt": {kind: symPkg, index: unsetAddr, pkgPath: "fmt"},
 	}
 }
