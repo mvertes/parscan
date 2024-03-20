@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"strconv"
 
 	"github.com/mvertes/parscan/lang"
@@ -328,18 +329,104 @@ type entry struct {
 	*symbol
 }
 
-func (c *Compiler) PrintData() {
-	dict := map[int]entry{}
-	for name, sym := range c.symbols {
-		if !sym.used || sym.local || sym.kind == symLabel {
-			continue
-		}
-		dict[sym.index] = entry{name, sym}
+func (e entry) String() string {
+	if e.symbol != nil {
+		return fmt.Sprintf("name: %s,local: %t, i: %d, k: %d, t: %s, v: %v",
+			e.name,
+			e.symbol.local,
+			e.symbol.index,
+			e.symbol.kind,
+			e.symbol.Type,
+			e.symbol.value,
+		)
 	}
+
+	return e.name
+}
+
+func (c *Compiler) PrintData() {
+	dict := c.symbolsByIndex()
+
 	fmt.Fprintln(os.Stderr, "# Data:")
 	for i, d := range c.Data {
 		fmt.Fprintf(os.Stderr, "%4d %T %v %v\n", i, d.Data.Interface(), d.Data, dict[i])
 	}
+}
+
+func (c *Compiler) symbolsByIndex() map[int]entry {
+	dict := map[int]entry{}
+	for name, sym := range c.symbols {
+		if sym.index == unsetAddr {
+			continue
+		}
+		dict[sym.index] = entry{name, sym}
+	}
+
+	return dict
+}
+
+type Dump struct {
+	Values []*DumpValue
+}
+
+type DumpValue struct {
+	Index int
+	Name  string
+	Kind  int
+	Type  string
+	Value any
+}
+
+// Dump gets the execution state of global variables.
+func (c *Compiler) Dump() *Dump {
+	var dv []*DumpValue
+	dict := c.symbolsByIndex()
+	for i, d := range c.Data {
+		e := dict[i]
+		dv = append(dv, &DumpValue{
+			Index: e.index,
+			Name:  e.name,
+			Kind:  int(e.kind),
+			Type:  e.Type.Name,
+			Value: d.Data.Interface(),
+		})
+	}
+
+	return &Dump{Values: dv}
+}
+
+// ApplyDump sets previously saved dump, restoring the state of global variables.
+func (c *Compiler) ApplyDump(d *Dump) error {
+	dict := c.symbolsByIndex()
+	for _, dv := range d.Values {
+		// do all the checks to be sure we are applying the correct values
+		e, ok := dict[dv.Index]
+		if !ok {
+			return fmt.Errorf("entry not found on index %d", dv.Index)
+		}
+
+		if dv.Name != e.name ||
+			dv.Type != e.Type.Name ||
+			dv.Kind != int(e.kind) {
+			return fmt.Errorf("entry with index %d does not match with provided entry. "+
+				"dumpValue: %s, %s, %d. memoryValue: %s, %s, %d",
+				dv.Index,
+				dv.Name, dv.Type, dv.Kind,
+				e.name, e.Type, e.kind)
+		}
+
+		if dv.Index >= len(c.Data) {
+			return fmt.Errorf("index (%d) bigger than memory (%d)", dv.Index, len(c.Data))
+		}
+
+		if !c.Data[dv.Index].Data.CanSet() {
+			return fmt.Errorf("value %v cannot be set", dv.Value)
+		}
+
+		c.Data[dv.Index].Data.Set(reflect.ValueOf(dv.Value))
+	}
+
+	return nil
 }
 
 func (c *Compiler) typeSym(t *vm.Type) *symbol {
