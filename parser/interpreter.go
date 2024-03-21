@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"reflect"
+
 	"github.com/mvertes/parscan/scanner"
 	"github.com/mvertes/parscan/vm"
 )
@@ -16,7 +18,7 @@ func NewInterpreter(s *scanner.Scanner) *Interpreter {
 	return &Interpreter{NewCompiler(s), &vm.Machine{}}
 }
 
-func (i *Interpreter) Eval(src string) (res any, err error) {
+func (i *Interpreter) Eval(src string) (res reflect.Value, err error) {
 	codeOffset := len(i.Code)
 	dataOffset := 0
 	if codeOffset > 0 {

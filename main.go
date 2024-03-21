@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"reflect"
 
 	"github.com/mvertes/parscan/lang/golang"
 	"github.com/mvertes/parscan/parser"
@@ -15,7 +16,7 @@ import (
 )
 
 type Interpreter interface {
-	Eval(string) (any, error)
+	Eval(string) (reflect.Value, error)
 }
 
 func main() {
@@ -44,7 +45,7 @@ func repl(interp Interpreter, in io.Reader) (err error) {
 		text += liner.Text()
 		res, err := interp.Eval(text + "\n")
 		if err == nil {
-			if res != nil {
+			if !res.IsNil() {
 				fmt.Println(": ", res)
 			}
 			text, prompt = "", "> "
