@@ -130,7 +130,7 @@ def"`,
 	tok: `Ident"f" ParenBlock"(4)" Semicolon Return Semicolon `,
 }, { // #28
 	src: "f(3).\nfield",
-	tok: `Ident"f" ParenBlock"(3)" Period Ident"field" Semicolon `,
+	tok: `Ident"f" ParenBlock"(3)" Period"." Ident"field" Semicolon `,
 }, { // #29
 	src: "\n\n\tif i < 1 {return 0}",
 	tok: `If Ident"i" Less Int"1" BraceBlock"{return 0}" Semicolon `,

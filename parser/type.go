@@ -115,7 +115,6 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		var fields []*vm.Type
 		for _, lt := range in.Split(lang.Semicolon) {
 			types, names, err := p.parseParamTypes(lt, parseTypeType)
-			fmt.Println("### Names:", names, types)
 			if err != nil {
 				return nil, err
 			}

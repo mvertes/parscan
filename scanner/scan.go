@@ -40,7 +40,8 @@ func (t *Token) Name() string {
 
 func (t *Token) String() string {
 	s := t.Id.String()
-	if t.Id.IsLiteral() || t.Id.IsBlock() || t.Id == lang.Ident || t.Id == lang.Comment {
+	if t.Id.IsLiteral() || t.Id.IsBlock() || t.Id == lang.Ident || t.Id == lang.Comment ||
+		t.Id == lang.Period || t.Id == lang.Label || t.Id == lang.Goto {
 		s += strconv.Quote(t.Str)
 	}
 	return s

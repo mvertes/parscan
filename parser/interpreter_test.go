@@ -211,7 +211,7 @@ func TestStruct(t *testing.T) {
 }
 
 func TestType(t *testing.T) {
-	src0 := `type(
+	src0 := `type (
 	I int
 	S string
 )
@@ -237,5 +237,21 @@ func TestVar(t *testing.T) {
 	a, b int = 4+1, 3
 	c = 8
 ); a+b+c`, res: "16"},
+	})
+}
+
+func TestImport(t *testing.T) {
+	src0 := `import (
+	"fmt"
+)
+`
+	run(t, []etest{
+		{src: "fmt.Println(4)", err: "symbol not found: fmt"},
+		{src: `import "xxx"`, err: "package not found: xxx"},
+		{src: `import "fmt"; fmt.Println(4)`, res: "<nil>"},
+		{src: src0 + "fmt.Println(4)", res: "<nil>"},
+		{src: `func main() {import "fmt"; fmt.Println("hello")}`, err: "unexpected import"},
+		{src: `import m "fmt"; m.Println(4)`, res: "<nil>"},
+		{src: `import . "fmt"; Println(4)`, res: "<nil>"},
 	})
 }

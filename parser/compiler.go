@@ -86,7 +86,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.Not)
 
 		case lang.Plus:
-			// Nothing to do.
+			// Unary '+' is idempotent. Nothing to do.
 
 		case lang.Addr:
 			push(&symbol{Type: vm.PointerTo(pop().Type)})
@@ -109,16 +109,22 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.Lower)
 
 		case lang.Call:
-			typ := pop().Type
-			// TODO: pop input types (careful with variadic function)
-			for i := 0; i < typ.Rtype.NumOut(); i++ {
-				push(&symbol{Type: typ.Out(i)})
+			s := pop()
+			if s.kind != symValue {
+				typ := s.Type
+				// TODO: pop input types (careful with variadic function).
+				for i := 0; i < typ.Rtype.NumOut(); i++ {
+					push(&symbol{Type: typ.Out(i)})
+				}
+				emit(int64(t.Pos), vm.Call)
+				break
 			}
-			emit(int64(t.Pos), vm.Call)
+			push(s)
+			fallthrough // A symValue must be called through callX.
 
 		case lang.CallX:
 			rtyp := pop().value.Data.Type()
-			// TODO: pop input types (careful with variadic function)
+			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
 				push(&symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
 			}
@@ -128,7 +134,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.Grow, int64(t.Beg))
 
 		case lang.Define:
-			// TODO: support assignment to local, composite objects
+			// TODO: support assignment to local, composite objects.
 			st := tokens[i-1]
 			l := len(c.Data)
 			typ := pop().Type
@@ -186,6 +192,9 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				return fmt.Errorf("symbol not found: %s", t.Str)
 			}
 			push(s)
+			if s.kind == symPkg {
+				break
+			}
 			if s.local {
 				emit(int64(t.Pos), vm.Fdup, int64(s.index))
 			} else {
@@ -256,11 +265,37 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.Jump, i)
 
 		case lang.Period:
-			if f, ok := pop().Type.Rtype.FieldByName("X" + t.Str[1:]); ok {
-				emit(append([]int64{int64(t.Pos), vm.Field}, slint64(f.Index)...)...)
-				break
+			s := pop()
+			switch s.kind {
+			case symPkg:
+				p, ok := packages[s.pkgPath]
+				if !ok {
+					return fmt.Errorf("package not found: %s", s.pkgPath)
+				}
+				v, ok := p[t.Str[1:]]
+				if !ok {
+					return fmt.Errorf("symbol not found in package %s: %s", s.pkgPath, t.Str[1:])
+				}
+				name := s.pkgPath + t.Str
+				var l int
+				sym, _, ok := c.getSym(name, "")
+				if ok {
+					l = sym.index
+				} else {
+					l = len(c.Data)
+					c.Data = append(c.Data, v)
+					c.addSym(l, name, v, symValue, v.Type, false)
+					sym = c.symbols[name]
+				}
+				push(sym)
+				emit(int64(t.Pos), vm.Dup, int64(l))
+			default:
+				if f, ok := s.Type.Rtype.FieldByName("X" + t.Str[1:]); ok {
+					emit(append([]int64{int64(t.Pos), vm.Field}, slint64(f.Index)...)...)
+					break
+				}
+				return fmt.Errorf("field or method not found: %s", t.Str[1:])
 			}
-			return fmt.Errorf("field or method not found: %s", t.Str[1:])
 
 		case lang.Return:
 			emit(int64(t.Pos), vm.Return, int64(t.Beg), int64(t.End))
