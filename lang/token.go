@@ -9,15 +9,15 @@ const (
 	Comment
 	Ident
 
-	// Literal values
+	// Literal values.
 	Char
 	Float
 	Imag
 	Int
 	String
 
-	// Binary operators (except indicated)
-	// Arithmetic and bitwise binary operators
+	// Binary operators (except indicated).
+	// Arithmetic and bitwise binary operators.
 	Add    // +
 	Sub    // -
 	Mul    // *
@@ -31,7 +31,7 @@ const (
 	AndNot // &^
 	Period // .
 
-	// Binary operators returning a boolean
+	// Binary operators returning a boolean.
 	Equal        // ==
 	Greater      // >
 	GreaterEqual // >=
@@ -41,7 +41,7 @@ const (
 	Lor          // ||
 	NotEqual     // !=
 
-	// Assigment operators (arithmetic and bitwise)
+	// Assigment operators (arithmetic and bitwise).
 	Define       // :=
 	Assign       // =
 	AddAssign    // +=
@@ -58,7 +58,7 @@ const (
 	Inc          // ++
 	Dec          // --
 
-	// Unary operations
+	// Unary operations.
 	Plus     // unary +
 	Minus    // unary -
 	Addr     // unary &
@@ -69,17 +69,17 @@ const (
 	Not      // unary !
 	Tilde    // unary ~ (underlying type)
 
-	// Separators (punctuation)
+	// Separators (punctuation).
 	Comma     // ,
 	Semicolon // ;
 	Colon     // :
 
-	// Block tokens
+	// Block tokens.
 	ParenBlock   // (..)
 	BracketBlock // [..]
 	BraceBlock   // {..}
 
-	// Reserved keywords
+	// Reserved keywords.
 	Break
 	Case
 	Chan
@@ -106,7 +106,7 @@ const (
 	Type
 	Var
 
-	// Internal virtual machine tokens (no corresponding keyword)
+	// Internal virtual machine tokens (no corresponding keyword).
 	Call
 	CallX
 	EqualSet
@@ -119,7 +119,7 @@ const (
 	New
 )
 
-// TODO: define UnaryOp per language
+// TODO: define UnaryOp per language.
 var UnaryOp = map[TokenId]TokenId{
 	Add:   Plus,    // +
 	And:   Addr,    // &

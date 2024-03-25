@@ -11,7 +11,7 @@ const debug = true
 
 // Byte-code instruction set.
 const (
-	// instruction effect on stack: values consumed -- values produced
+	// Instruction effect on stack: values consumed -- values produced.
 	Nop          = iota // --
 	Add                 // n1 n2 -- sum ; sum = n1+n2
 	Addr                // a -- &a ;
@@ -229,7 +229,7 @@ func (m *Machine) Run() (err error) {
 		case Pop:
 			mem = mem[:sp-int(op[2])]
 		case Push:
-			//mem = append(mem, reflect.ValueOf(int(op[2])))
+			// mem = append(mem, reflect.ValueOf(int(op[2])))
 			mem = append(mem, NewValue(TypeOf(0)))
 			mem[sp].Data.SetInt(op[2])
 		case Grow:
@@ -268,12 +268,14 @@ func (m *Machine) Push(v ...Value) (l int) {
 	m.mem = append(m.mem, v...)
 	return l
 }
+
 func (m *Machine) Pop() (v Value) {
 	l := len(m.mem) - 1
 	v = m.mem[l]
 	m.mem = m.mem[:l]
 	return v
 }
+
 func (m *Machine) Top() (v Value) {
 	if l := len(m.mem); l > 0 {
 		v = m.mem[l-1]
