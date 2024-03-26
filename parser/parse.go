@@ -238,7 +238,8 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 
 	out = Tokens{
 		{Id: lang.Goto, Str: fname + "_end"}, // Skip function definition.
-		{Id: lang.Label, Pos: in[0].Pos, Str: fname}}
+		{Id: lang.Label, Pos: in[0].Pos, Str: fname},
+	}
 
 	bi := in.Index(lang.BraceBlock)
 	if bi < 0 {
@@ -261,7 +262,7 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	}
 	out = append(out, toks...)
 	if out[len(out)-1].Id != lang.Return {
-		// Ensure that a return statment is always added at end of function.
+		// Ensure that a return statement is always added at end of function.
 		// TODO: detect missing or wrong returns.
 		x, err := p.ParseReturn(nil)
 		if err != nil {

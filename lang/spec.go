@@ -34,7 +34,7 @@ type Spec struct {
 	Num_       bool                 // true if a number can contain _ character
 }
 
-// HasInit stores if a statement may contain a simple init statement
+// HasInit stores if a statement may contain a simple init statement.
 var HasInit = map[TokenId]bool{
 	Case:   true,
 	For:    true,

@@ -1,0 +1,9 @@
+linters:
+  enable:
+    - gocritic
+    - godot
+    - gofumpt
+    - gosec
+    - misspell
+    - predeclared
+    - reassign

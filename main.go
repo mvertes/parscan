@@ -44,14 +44,15 @@ func repl(interp Interpreter, in io.Reader) (err error) {
 	for liner.Scan() {
 		text += liner.Text()
 		res, err := interp.Eval(text + "\n")
-		if err == nil {
+		switch {
+		case err == nil:
 			if !res.IsNil() {
 				fmt.Println(": ", res)
 			}
 			text, prompt = "", "> "
-		} else if errors.Is(err, scanner.ErrBlock) {
+		case errors.Is(err, scanner.ErrBlock):
 			prompt = ">> "
-		} else {
+		default:
 			fmt.Println("Error:", err)
 			text, prompt = "", "> "
 		}
@@ -64,8 +65,8 @@ func run(arg []string) (err error) {
 	rflag := flag.NewFlagSet("run", flag.ContinueOnError)
 	rflag.Usage = func() {
 		fmt.Println("Usage: parscan run [options] [path] [args]")
-		//fmt.Println("Options:")
-		//rflag.PrintDefaults()
+		// fmt.Println("Options:")
+		// rflag.PrintDefaults()
 	}
 	if err = rflag.Parse(arg); err != nil {
 		return err

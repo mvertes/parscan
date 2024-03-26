@@ -149,7 +149,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 				if len(types) == 0 {
 					return nil, nil, MissingTypeErr
 				}
-				// Type was ommitted, apply the previous one from the right.
+				// Type was omitted, apply the previous one from the right.
 				types = append([]*vm.Type{types[0]}, types...)
 				p.addSymVar(i, param, types[0], flag, local)
 				vars = append(vars, param)
