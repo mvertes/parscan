@@ -1,3 +1,4 @@
+// Package scanner provide a language independent scanner.
 package scanner
 
 import (
@@ -10,6 +11,7 @@ import (
 	"github.com/mvertes/parscan/lang"
 )
 
+// Error definitions.
 var (
 	ErrBlock   = errors.New("block not terminated")
 	ErrIllegal = errors.New("illegal token")
@@ -17,16 +19,20 @@ var (
 
 // Token defines a scanner token.
 type Token struct {
-	Id  lang.TokenId // token identificator
-	Pos int          // position in source
-	Str string       // string in source
-	Beg int          // length of begin delimiter (block, string)
-	End int          // length of end delimiter (block, string)
+	Tok lang.Token // token identificator
+	Pos int        // position in source
+	Str string     // string in source
+	Beg int        // length of begin delimiter (block, string)
+	End int        // length of end delimiter (block, string)
 }
 
-func (t *Token) Block() string  { return t.Str[t.Beg : len(t.Str)-t.End] }
+// Block return the block content of t.
+func (t *Token) Block() string { return t.Str[t.Beg : len(t.Str)-t.End] }
+
+// Prefix returns the block starting delimiter of t.
 func (t *Token) Prefix() string { return t.Str[:t.Beg] }
 
+// Name return the name of t (short string for debugging).
 func (t *Token) Name() string {
 	name := t.Str
 	if t.Beg > 1 {
@@ -39,9 +45,9 @@ func (t *Token) Name() string {
 }
 
 func (t *Token) String() string {
-	s := t.Id.String()
-	if t.Id.IsLiteral() || t.Id.IsBlock() || t.Id == lang.Ident || t.Id == lang.Comment ||
-		t.Id == lang.Period || t.Id == lang.Label || t.Id == lang.Goto {
+	s := t.Tok.String()
+	if t.Tok.IsLiteral() || t.Tok.IsBlock() || t.Tok == lang.Ident || t.Tok == lang.Comment ||
+		t.Tok == lang.Period || t.Tok == lang.Label || t.Tok == lang.Goto {
 		s += strconv.Quote(t.Str)
 	}
 	return s
@@ -54,6 +60,7 @@ type Scanner struct {
 	sdre *regexp.Regexp // string delimiters regular expression
 }
 
+// NewScanner returns a new scanner for a given language specification.
 func NewScanner(spec *lang.Spec) *Scanner {
 	sc := &Scanner{Spec: spec}
 
@@ -77,25 +84,26 @@ func NewScanner(spec *lang.Spec) *Scanner {
 	return sc
 }
 
-func (sc *Scanner) HasProp(r rune, p uint) bool {
+func (sc *Scanner) hasProp(r rune, p uint) bool {
 	if r >= lang.ASCIILen {
 		return false
 	}
 	return sc.CharProp[r]&p != 0
 }
 
-func (sc *Scanner) isOp(r rune) bool       { return sc.HasProp(r, lang.CharOp) }
-func (sc *Scanner) isSep(r rune) bool      { return sc.HasProp(r, lang.CharSep) }
-func (sc *Scanner) isLineSep(r rune) bool  { return sc.HasProp(r, lang.CharLineSep) }
-func (sc *Scanner) isGroupSep(r rune) bool { return sc.HasProp(r, lang.CharGroupSep) }
-func (sc *Scanner) isStr(r rune) bool      { return sc.HasProp(r, lang.CharStr) }
-func (sc *Scanner) isBlock(r rune) bool    { return sc.HasProp(r, lang.CharBlock) }
+func (sc *Scanner) isOp(r rune) bool       { return sc.hasProp(r, lang.CharOp) }
+func (sc *Scanner) isSep(r rune) bool      { return sc.hasProp(r, lang.CharSep) }
+func (sc *Scanner) isLineSep(r rune) bool  { return sc.hasProp(r, lang.CharLineSep) }
+func (sc *Scanner) isGroupSep(r rune) bool { return sc.hasProp(r, lang.CharGroupSep) }
+func (sc *Scanner) isStr(r rune) bool      { return sc.hasProp(r, lang.CharStr) }
+func (sc *Scanner) isBlock(r rune) bool    { return sc.hasProp(r, lang.CharBlock) }
 func (sc *Scanner) isDir(r rune) bool {
-	return !sc.HasProp(r, lang.CharOp|lang.CharSep|lang.CharLineSep|lang.CharGroupSep|lang.CharStr|lang.CharBlock)
+	return !sc.hasProp(r, lang.CharOp|lang.CharSep|lang.CharLineSep|lang.CharGroupSep|lang.CharStr|lang.CharBlock)
 }
 
 func isNum(r rune) bool { return '0' <= r && r <= '9' }
 
+// Scan performs a lexical analysis on src and returns tokens or an error.
 func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 	offset := 0
 	s := strings.TrimSpace(src)
@@ -104,18 +112,18 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", loc(src, offset+t.Pos), err)
 		}
-		if t.Id == lang.Illegal && t.Str == "" {
+		if t.Tok == lang.Illegal && t.Str == "" {
 			break
 		}
 		skip := false
 		if len(tokens) > 0 && t.Str == "\n" {
 			// Check for automatic semi-colon insertion after newline.
 			last := tokens[len(tokens)-1]
-			if last.Id.IsKeyword() && sc.TokenProps[last.Str].SkipSemi ||
-				last.Id.IsOperator() && !sc.TokenProps[last.Str].SkipSemi {
+			if last.Tok.IsKeyword() && sc.TokenProps[last.Str].SkipSemi ||
+				last.Tok.IsOperator() && !sc.TokenProps[last.Str].SkipSemi {
 				skip = true
 			} else {
-				t.Id = lang.Semicolon
+				t.Tok = lang.Semicolon
 				t.Str = ";"
 			}
 		}
@@ -133,9 +141,9 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 		if last.Str == ";" {
 			return tokens, nil
 		}
-		if !(last.Id == lang.Ident && sc.TokenProps[last.Str].SkipSemi ||
-			last.Id.IsOperator() && !sc.TokenProps[last.Str].SkipSemi) {
-			tokens = append(tokens, Token{Id: lang.Semicolon, Str: ";"})
+		if !(last.Tok == lang.Ident && sc.TokenProps[last.Str].SkipSemi ||
+			last.Tok.IsOperator() && !sc.TokenProps[last.Str].SkipSemi) {
+			tokens = append(tokens, Token{Tok: lang.Semicolon, Str: ";"})
 		}
 	}
 	return tokens, nil
@@ -171,7 +179,7 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 			return Token{}, nil
 		case sc.isGroupSep(r):
 			// TODO: handle group separators.
-			return Token{Id: sc.TokenProps[string(r)].TokenId, Pos: p + i, Str: string(r)}, nil
+			return Token{Tok: sc.TokenProps[string(r)].Token, Pos: p + i, Str: string(r)}, nil
 		case sc.isLineSep(r):
 			return Token{Pos: p + i, Str: "\n"}, nil
 		case sc.isStr(r):
@@ -179,23 +187,23 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 			if !ok {
 				err = ErrBlock
 			}
-			return Token{Id: lang.String, Pos: p + i, Str: s, Beg: 1, End: 1}, err
+			return Token{Tok: lang.String, Pos: p + i, Str: s, Beg: 1, End: 1}, err
 		case sc.isBlock(r):
 			b, ok := sc.getBlock(src[i:], 1)
 			if !ok {
 				err = ErrBlock
 			}
 			tok := Token{Pos: p + i, Str: b, Beg: 1, End: 1}
-			tok.Id = sc.TokenProps[tok.Name()].TokenId
+			tok.Tok = sc.TokenProps[tok.Name()].Token
 			return tok, err
 		case sc.isOp(r):
 			op, isOp := sc.getOp(src[i:])
 			if isOp {
-				id := sc.TokenProps[op].TokenId
-				if id == lang.Illegal {
+				t := sc.TokenProps[op].Token
+				if t == lang.Illegal {
 					err = fmt.Errorf("%w: %s", ErrIllegal, op)
 				}
-				return Token{Id: id, Pos: p + i, Str: op}, err
+				return Token{Tok: t, Pos: p + i, Str: op}, err
 			}
 			flag := sc.BlockProp[op]
 			if flag&lang.CharStr != 0 {
@@ -203,41 +211,41 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 				if !ok {
 					err = ErrBlock
 				}
-				return Token{Id: lang.Comment, Pos: p + i, Str: s, Beg: len(op), End: len(op)}, err
+				return Token{Tok: lang.Comment, Pos: p + i, Str: s, Beg: len(op), End: len(op)}, err
 			}
 		case isNum(r):
-			return Token{Id: lang.Int, Pos: p + i, Str: sc.getNum(src[i:])}, nil
+			return Token{Tok: lang.Int, Pos: p + i, Str: sc.getNum(src[i:])}, nil
 		default:
-			id, isId := sc.getId(src[i:])
-			if isId {
-				ident := sc.TokenProps[id].TokenId
+			t, isDefined := sc.getToken(src[i:])
+			if isDefined {
+				ident := sc.TokenProps[t].Token
 				if ident == lang.Illegal {
 					ident = lang.Ident
 				}
-				return Token{Id: ident, Pos: p + i, Str: id}, nil
+				return Token{Tok: ident, Pos: p + i, Str: t}, nil
 			}
-			flag := sc.BlockProp[id]
+			flag := sc.BlockProp[t]
 			if flag&lang.CharBlock != 0 {
-				s, ok := sc.getBlock(src[i:], len(id))
+				s, ok := sc.getBlock(src[i:], len(t))
 				if !ok {
 					err = ErrBlock
 				}
-				return Token{Pos: p + i, Str: s, Beg: len(id), End: len(id)}, err
+				return Token{Pos: p + i, Str: s, Beg: len(t), End: len(t)}, err
 			}
 		}
 	}
 	return Token{}, nil
 }
 
-func (sc *Scanner) getId(src string) (s string, isId bool) {
-	s = sc.nextId(src)
+func (sc *Scanner) getToken(src string) (s string, isDefined bool) {
+	s = sc.nextToken(src)
 	if _, match := sc.BlockProp[s]; match {
 		return s, false
 	}
 	return s, true
 }
 
-func (sc *Scanner) nextId(src string) (s string) {
+func (sc *Scanner) nextToken(src string) (s string) {
 	for i, r := range src {
 		if !sc.isDir(r) {
 			break

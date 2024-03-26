@@ -12,6 +12,7 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
+// Compiler represents the state of a compiler.
 type Compiler struct {
 	*Parser
 	vm.Code            // produced code, to fill VM with
@@ -21,6 +22,7 @@ type Compiler struct {
 	strings map[string]int // locations of strings in Data
 }
 
+// NewCompiler returns a new compiler state for a given scanner.
 func NewCompiler(scanner *scanner.Scanner) *Compiler {
 	return &Compiler{
 		Parser:  &Parser{Scanner: scanner, symbols: initUniverse(), framelen: map[string]int{}, labelCount: map[string]int{}},
@@ -29,6 +31,7 @@ func NewCompiler(scanner *scanner.Scanner) *Compiler {
 	}
 }
 
+// AddSym adds a new named value to the compiler symbol table, and returns its index in memory.
 func (c *Compiler) AddSym(name string, value vm.Value) int {
 	p := len(c.Data)
 	c.Data = append(c.Data, value)
@@ -36,6 +39,7 @@ func (c *Compiler) AddSym(name string, value vm.Value) int {
 	return p
 }
 
+// Codegen generates vm code from parsed tokens.
 func (c *Compiler) Codegen(tokens Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
 	fixList := Tokens{}  // list of tokens to fix after we gathered all necessary information
@@ -46,7 +50,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 	pop := func() *symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
 
 	for i, t := range tokens {
-		switch t.Id {
+		switch t.Tok {
 		case lang.Int:
 			n, err := strconv.Atoi(t.Str)
 			if err != nil {
@@ -145,7 +149,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 		case lang.Assign:
 			st := tokens[i-1]
-			if st.Id == lang.Period || st.Id == lang.Index {
+			if st.Tok == lang.Period || st.Tok == lang.Index {
 				emit(int64(t.Pos), vm.Vassign)
 				break
 			}
@@ -182,7 +186,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 		case lang.Ident:
 			if i < len(tokens)-1 {
-				switch t1 := tokens[i+1]; t1.Id {
+				switch t1 := tokens[i+1]; t1.Tok {
 				case lang.Define, lang.Assign, lang.Colon:
 					continue
 				}
@@ -317,9 +321,10 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 	return err
 }
 
-func arithmeticOpType(s1, s2 *symbol) *vm.Type { return symtype(s1) }
-func booleanOpType(s1, s2 *symbol) *vm.Type    { return vm.TypeOf(true) }
+func arithmeticOpType(s1, _ *symbol) *vm.Type { return symtype(s1) }
+func booleanOpType(_, _ *symbol) *vm.Type     { return vm.TypeOf(true) }
 
+// PrintCode pretty prints the generated code in compiler.
 func (c *Compiler) PrintCode() {
 	labels := map[int][]string{} // labels indexed by code location
 	data := map[int]string{}     // data indexed by frame location
@@ -379,6 +384,7 @@ func (e entry) String() string {
 	return e.name
 }
 
+// PrintData pretty prints the generated global data symbols in compiler.
 func (c *Compiler) PrintData() {
 	dict := c.symbolsByIndex()
 
@@ -400,10 +406,12 @@ func (c *Compiler) symbolsByIndex() map[int]entry {
 	return dict
 }
 
+// Dump represents the state of a data dump.
 type Dump struct {
 	Values []*DumpValue
 }
 
+// DumpValue is a value of a dump state.
 type DumpValue struct {
 	Index int
 	Name  string

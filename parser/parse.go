@@ -1,3 +1,4 @@
+// Package parser implements a parser and compiler.
 package parser
 
 import (
@@ -11,6 +12,7 @@ import (
 	"github.com/mvertes/parscan/scanner"
 )
 
+// Parser represents the state of a parser.
 type Parser struct {
 	*scanner.Scanner
 
@@ -27,28 +29,30 @@ type Parser struct {
 	clonum        int // closure instance number
 }
 
+// Scan performs lexical analysis on s and returns Tokens or an error.
 func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
 	return p.Scanner.Scan(s, endSemi)
 }
 
+// Parse performs syntax analysis on s and return Tokens or an error.
 func (p *Parser) Parse(src string) (out Tokens, err error) {
 	log.Printf("Parse src: %#v\n", src)
 	in, err := p.Scan(src, true)
 	if err != nil {
 		return out, err
 	}
-	return p.ParseStmts(in)
+	return p.parseStmts(in)
 }
 
-func (p *Parser) ParseStmts(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseStmts(in Tokens) (out Tokens, err error) {
 	for len(in) > 0 {
 		endstmt := in.Index(lang.Semicolon)
 		if endstmt == -1 {
 			return out, scanner.ErrBlock
 		}
 		// Skip over simple init statements for some tokens (if, for, ...)
-		if lang.HasInit[in[0].Id] {
-			for in[endstmt-1].Id != lang.BraceBlock {
+		if lang.HasInit[in[0].Tok] {
+			for in[endstmt-1].Tok != lang.BraceBlock {
 				e2 := in[endstmt+1:].Index(lang.Semicolon)
 				if e2 == -1 {
 					return out, scanner.ErrBlock
@@ -56,7 +60,7 @@ func (p *Parser) ParseStmts(in Tokens) (out Tokens, err error) {
 				endstmt += 1 + e2
 			}
 		}
-		o, err := p.ParseStmt(in[:endstmt])
+		o, err := p.parseStmt(in[:endstmt])
 		if err != nil {
 			return out, err
 		}
@@ -66,58 +70,58 @@ func (p *Parser) ParseStmts(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-func (p *Parser) ParseStmt(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	if len(in) == 0 {
 		return nil, nil
 	}
 	log.Println("ParseStmt in:", in)
-	switch t := in[0]; t.Id {
+	switch t := in[0]; t.Tok {
 	case lang.Break:
-		return p.ParseBreak(in)
+		return p.parseBreak(in)
 	case lang.Continue:
-		return p.ParseContinue(in)
+		return p.parseContinue(in)
 	case lang.Const:
-		return p.ParseConst(in)
+		return p.parseConst(in)
 	case lang.For:
-		return p.ParseFor(in)
+		return p.parseFor(in)
 	case lang.Func:
-		return p.ParseFunc(in)
+		return p.parseFunc(in)
 	case lang.Defer, lang.Go, lang.Fallthrough, lang.Select:
-		return out, fmt.Errorf("not yet implemented: %v", t.Id)
+		return out, fmt.Errorf("not yet implemented: %v", t.Tok)
 	case lang.Goto:
-		return p.ParseGoto(in)
+		return p.parseGoto(in)
 	case lang.If:
-		return p.ParseIf(in)
+		return p.parseIf(in)
 	case lang.Import:
-		return p.ParseImport(in)
+		return p.parseImports(in)
 	case lang.Package:
 		// TODO: support packages
 		return out, err
 	case lang.Return:
-		return p.ParseReturn(in)
+		return p.parseReturn(in)
 	case lang.Switch:
-		return p.ParseSwitch(in)
+		return p.parseSwitch(in)
 	case lang.Type:
-		return p.ParseType(in)
+		return p.parseType(in)
 	case lang.Var:
-		return p.ParseVar(in)
+		return p.parseVar(in)
 	case lang.Ident:
-		if len(in) == 2 && in[1].Id == lang.Colon {
-			return p.ParseLabel(in)
+		if len(in) == 2 && in[1].Tok == lang.Colon {
+			return p.parseLabel(in)
 		}
 		fallthrough
 	default:
-		return p.ParseExpr(in)
+		return p.parseExpr(in)
 	}
 }
 
-func (p *Parser) ParseBreak(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {
 	var label string
 	switch len(in) {
 	case 1:
 		label = p.breakLabel
 	case 2:
-		if in[1].Id != lang.Ident {
+		if in[1].Tok != lang.Ident {
 			return nil, fmt.Errorf("invalid break statement")
 		}
 		// TODO: check validity of user provided label
@@ -125,17 +129,17 @@ func (p *Parser) ParseBreak(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, fmt.Errorf("invalid break statement")
 	}
-	out = Tokens{{Id: lang.Goto, Str: label}}
+	out = Tokens{{Tok: lang.Goto, Str: label}}
 	return out, err
 }
 
-func (p *Parser) ParseContinue(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseContinue(in Tokens) (out Tokens, err error) {
 	var label string
 	switch len(in) {
 	case 1:
 		label = p.continueLabel
 	case 2:
-		if in[1].Id != lang.Ident {
+		if in[1].Tok != lang.Ident {
 			return nil, fmt.Errorf("invalid continue statement")
 		}
 		// TODO: check validity of user provided label
@@ -143,19 +147,19 @@ func (p *Parser) ParseContinue(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, fmt.Errorf("invalid continue statement")
 	}
-	out = Tokens{{Id: lang.Goto, Str: label}}
+	out = Tokens{{Tok: lang.Goto, Str: label}}
 	return out, err
 }
 
-func (p *Parser) ParseGoto(in Tokens) (out Tokens, err error) {
-	if len(in) != 2 || in[1].Id != lang.Ident {
+func (p *Parser) parseGoto(in Tokens) (out Tokens, err error) {
+	if len(in) != 2 || in[1].Tok != lang.Ident {
 		return nil, fmt.Errorf("invalid goto statement")
 	}
 	// TODO: check validity of user provided label
-	return Tokens{{Id: lang.Goto, Str: p.funcScope + "/" + in[1].Str}}, nil
+	return Tokens{{Tok: lang.Goto, Str: p.funcScope + "/" + in[1].Str}}, nil
 }
 
-func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	// TODO: detect invalid code.
 	fc := strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
@@ -177,42 +181,42 @@ func (p *Parser) ParseFor(in Tokens) (out Tokens, err error) {
 		p.popScope()
 	}()
 	if len(init) > 0 {
-		if init, err = p.ParseStmt(init); err != nil {
+		if init, err = p.parseStmt(init); err != nil {
 			return nil, err
 		}
 		out = init
 	}
-	out = append(out, scanner.Token{Id: lang.Label, Str: p.scope + "b"})
+	out = append(out, scanner.Token{Tok: lang.Label, Str: p.scope + "b"})
 	if len(cond) > 0 {
-		if cond, err = p.ParseExpr(cond); err != nil {
+		if cond, err = p.parseExpr(cond); err != nil {
 			return nil, err
 		}
 		out = append(out, cond...)
-		out = append(out, scanner.Token{Id: lang.JumpFalse, Str: p.scope + "e"})
+		out = append(out, scanner.Token{Tok: lang.JumpFalse, Str: p.scope + "e"})
 	}
 	if body, err = p.Parse(in[len(in)-1].Block()); err != nil {
 		return nil, err
 	}
 	out = append(out, body...)
 	if len(post) > 0 {
-		if post, err = p.ParseStmt(post); err != nil {
+		if post, err = p.parseStmt(post); err != nil {
 			return nil, err
 		}
 		out = append(out, post...)
 	}
 	out = append(out,
-		scanner.Token{Id: lang.Goto, Str: p.scope + "b"},
-		scanner.Token{Id: lang.Label, Str: p.scope + "e"})
+		scanner.Token{Tok: lang.Goto, Str: p.scope + "b"},
+		scanner.Token{Tok: lang.Label, Str: p.scope + "e"})
 	return out, err
 }
 
-func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	// TODO: handle anonymous functions (no function name)
 	// TODO: handle receiver (methods)
 	// TODO: handle parametric types (generics)
 	// TODO: handle variadic parameters
 	var fname string
-	if in[1].Id == lang.Ident {
+	if in[1].Tok == lang.Ident {
 		fname = in[1].Str
 	} else {
 		fname = "#f" + strconv.Itoa(p.clonum)
@@ -237,8 +241,8 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 	}()
 
 	out = Tokens{
-		{Id: lang.Goto, Str: fname + "_end"}, // Skip function definition.
-		{Id: lang.Label, Pos: in[0].Pos, Str: fname},
+		{Tok: lang.Goto, Str: fname + "_end"}, // Skip function definition.
+		{Tok: lang.Label, Pos: in[0].Pos, Str: fname},
 	}
 
 	bi := in.Index(lang.BraceBlock)
@@ -258,23 +262,23 @@ func (p *Parser) ParseFunc(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	if l := p.framelen[p.funcScope] - 1; l > 0 {
-		out = append(out, scanner.Token{Id: lang.Grow, Beg: l})
+		out = append(out, scanner.Token{Tok: lang.Grow, Beg: l})
 	}
 	out = append(out, toks...)
-	if out[len(out)-1].Id != lang.Return {
+	if out[len(out)-1].Tok != lang.Return {
 		// Ensure that a return statement is always added at end of function.
 		// TODO: detect missing or wrong returns.
-		x, err := p.ParseReturn(nil)
+		x, err := p.parseReturn(nil)
 		if err != nil {
 			return out, err
 		}
 		out = append(out, x...)
 	}
-	out = append(out, scanner.Token{Id: lang.Label, Str: fname + "_end"})
+	out = append(out, scanner.Token{Tok: lang.Label, Str: fname + "_end"})
 	return out, err
 }
 
-func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 	label := "if" + strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
 	p.pushScope(label)
@@ -283,7 +287,7 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 	// get the destination labels already computed when jumps are set.
 	for sc, i := 0, len(in)-1; i > 0; sc++ {
 		ssc := strconv.Itoa(sc)
-		if in[i].Id != lang.BraceBlock {
+		if in[i].Tok != lang.BraceBlock {
 			return nil, fmt.Errorf("expected '{', got %v", in[i])
 		}
 		pre, err := p.Parse(in[i].Block())
@@ -291,13 +295,13 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		if sc > 0 {
-			pre = append(pre, scanner.Token{Id: lang.Goto, Str: p.scope + "e0"})
+			pre = append(pre, scanner.Token{Tok: lang.Goto, Str: p.scope + "e0"})
 		}
-		pre = append(pre, scanner.Token{Id: lang.Label, Str: p.scope + "e" + ssc})
+		pre = append(pre, scanner.Token{Tok: lang.Label, Str: p.scope + "e" + ssc})
 		out = append(pre, out...)
 		i--
 
-		if in[i].Id == lang.Else { // Step over final 'else'.
+		if in[i].Tok == lang.Else { // Step over final 'else'.
 			i--
 			continue
 		}
@@ -312,26 +316,26 @@ func (p *Parser) ParseIf(in Tokens) (out Tokens, err error) {
 			cond = initcond[ii+1:]
 		}
 		if len(init) > 0 {
-			if init, err = p.ParseStmt(init); err != nil {
+			if init, err = p.parseStmt(init); err != nil {
 				return nil, err
 			}
 			pre = append(pre, init...)
 		}
-		if cond, err = p.ParseExpr(cond); err != nil {
+		if cond, err = p.parseExpr(cond); err != nil {
 			return nil, err
 		}
 		pre = append(pre, cond...)
-		pre = append(pre, scanner.Token{Id: lang.JumpFalse, Str: p.scope + "e" + ssc})
+		pre = append(pre, scanner.Token{Tok: lang.JumpFalse, Str: p.scope + "e" + ssc})
 		out = append(pre, out...)
 		i = ifp
-		if i > 1 && in[i].Id == lang.If && in[i-1].Id == lang.Else { // Step over 'else if'.
+		if i > 1 && in[i].Tok == lang.If && in[i-1].Tok == lang.Else { // Step over 'else if'.
 			i -= 2
 		}
 	}
 	return out, err
 }
 
-func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 	var init, cond, clauses Tokens
 	initcond := in[1 : len(in)-1]
 	if ii := initcond.Index(lang.Semicolon); ii < 0 {
@@ -350,14 +354,14 @@ func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
 		p.popScope()
 	}()
 	if len(init) > 0 {
-		if init, err = p.ParseStmt(init); err != nil {
+		if init, err = p.parseStmt(init); err != nil {
 			return nil, err
 		}
 		out = init
 	}
 	condSwitch := false
 	if len(cond) > 0 {
-		if cond, err = p.ParseExpr(cond); err != nil {
+		if cond, err = p.parseExpr(cond); err != nil {
 			return nil, err
 		}
 		out = append(out, cond...)
@@ -369,7 +373,7 @@ func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
 	// Make sure that the default clause is the last.
 	lsc := len(sc) - 1
 	for i, cl := range sc {
-		if cl[1].Id == lang.Colon && i != lsc {
+		if cl[1].Tok == lang.Colon && i != lsc {
 			sc[i], sc[lsc] = sc[lsc], sc[i]
 			break
 		}
@@ -377,30 +381,30 @@ func (p *Parser) ParseSwitch(in Tokens) (out Tokens, err error) {
 	// Process each clause.
 	nc := len(sc) - 1
 	for i, cl := range sc {
-		co, err := p.ParseCaseClause(cl, i, nc, condSwitch)
+		co, err := p.parseCaseClause(cl, i, nc, condSwitch)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, co...)
 	}
-	out = append(out, scanner.Token{Id: lang.Label, Str: p.breakLabel})
+	out = append(out, scanner.Token{Tok: lang.Label, Str: p.breakLabel})
 	return out, err
 }
 
-func (p *Parser) ParseCaseClause(in Tokens, index, max int, condSwitch bool) (out Tokens, err error) {
-	in = append(in, scanner.Token{Id: lang.Semicolon}) // Force a ';' at the end of body clause.
+func (p *Parser) parseCaseClause(in Tokens, index, max int, condSwitch bool) (out Tokens, err error) {
+	in = append(in, scanner.Token{Tok: lang.Semicolon}) // Force a ';' at the end of body clause.
 	var conds, body Tokens
 	tl := in.Split(lang.Colon)
 	if len(tl) != 2 {
 		return nil, errors.New("invalid case clause")
 	}
 	conds = tl[0][1:]
-	if body, err = p.ParseStmts(tl[1]); err != nil {
+	if body, err = p.parseStmts(tl[1]); err != nil {
 		return out, err
 	}
 	lcond := conds.Split(lang.Comma)
 	for i, cond := range lcond {
-		if cond, err = p.ParseExpr(cond); err != nil {
+		if cond, err = p.parseExpr(cond); err != nil {
 			return out, err
 		}
 		txt := fmt.Sprintf("%sc%d.%d", p.scope, index, i)
@@ -414,33 +418,33 @@ func (p *Parser) ParseCaseClause(in Tokens, index, max int, condSwitch bool) (ou
 		} else {
 			next = fmt.Sprintf("%sc%d.%d", p.scope, index, i+1)
 		}
-		out = append(out, scanner.Token{Id: lang.Label, Str: txt})
+		out = append(out, scanner.Token{Tok: lang.Label, Str: txt})
 		if len(cond) > 0 {
 			out = append(out, cond...)
 			if condSwitch {
-				out = append(out, scanner.Token{Id: lang.EqualSet})
+				out = append(out, scanner.Token{Tok: lang.EqualSet})
 			}
-			out = append(out, scanner.Token{Id: lang.JumpFalse, Str: next})
+			out = append(out, scanner.Token{Tok: lang.JumpFalse, Str: next})
 		}
 		out = append(out, body...)
 		if i != len(lcond)-1 || index != max {
-			out = append(out, scanner.Token{Id: lang.Goto, Str: p.scope + "e"})
+			out = append(out, scanner.Token{Tok: lang.Goto, Str: p.scope + "e"})
 		}
 	}
 	return out, err
 }
 
-func (p *Parser) ParseLabel(in Tokens) (out Tokens, err error) {
-	return Tokens{{Id: lang.Label, Str: p.funcScope + "/" + in[0].Str}}, nil
+func (p *Parser) parseLabel(in Tokens) (out Tokens, err error) {
+	return Tokens{{Tok: lang.Label, Str: p.funcScope + "/" + in[0].Str}}, nil
 }
 
-func (p *Parser) ParseReturn(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 	if l := len(in); l > 1 {
-		if out, err = p.ParseExpr(in[1:]); err != nil {
+		if out, err = p.parseExpr(in[1:]); err != nil {
 			return out, err
 		}
 	} else if l == 0 {
-		in = Tokens{{Id: lang.Return}} // Implicit return in functions with no return parameters.
+		in = Tokens{{Tok: lang.Return}} // Implicit return in functions with no return parameters.
 	}
 
 	// TODO: the function symbol should be already present in the parser context.
@@ -452,7 +456,7 @@ func (p *Parser) ParseReturn(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-func (p *Parser) numItems(s string, sep lang.TokenId) int {
+func (p *Parser) numItems(s string, sep lang.Token) int {
 	tokens, err := p.Scan(s, false)
 	if err != nil {
 		return -1

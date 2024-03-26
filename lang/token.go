@@ -1,11 +1,13 @@
 package lang
 
-//go:generate stringer -type=TokenId
+//go:generate stringer -type=Token
 
-type TokenId int
+// Token represents a lexical token.
+type Token int
 
+// All known tokens for the set of supported languages.
 const (
-	Illegal TokenId = iota
+	Illegal Token = iota
 	Comment
 	Ident
 
@@ -119,8 +121,9 @@ const (
 	New
 )
 
+// UnaryOp contains the set of unary operators.
 // TODO: define UnaryOp per language.
-var UnaryOp = map[TokenId]TokenId{
+var UnaryOp = map[Token]Token{
 	Add:   Plus,    // +
 	And:   Addr,    // &
 	Not:   Not,     // !
@@ -130,11 +133,26 @@ var UnaryOp = map[TokenId]TokenId{
 	Xor:   BitComp, // ^
 }
 
-func (t TokenId) IsKeyword() bool   { return t >= Break && t <= Var }
-func (t TokenId) IsLiteral() bool   { return t >= Char && t <= String }
-func (t TokenId) IsOperator() bool  { return t >= Add && t <= Tilde }
-func (t TokenId) IsBlock() bool     { return t >= ParenBlock && t <= BraceBlock }
-func (t TokenId) IsBoolOp() bool    { return t >= Equal && t <= NotEqual || t == Not }
-func (t TokenId) IsBinaryOp() bool  { return t >= Add && t <= NotEqual }
-func (t TokenId) IsUnaryOp() bool   { return t >= Plus && t <= Tilde }
-func (t TokenId) IsLogicalOp() bool { return t == Land || t == Lor }
+// IsKeyword returns true if t is a keyword.
+func (t Token) IsKeyword() bool { return t >= Break && t <= Var }
+
+// IsLiteral returns true if t is a literal value.
+func (t Token) IsLiteral() bool { return t >= Char && t <= String }
+
+// IsOperator returns true if t is an operator.
+func (t Token) IsOperator() bool { return t >= Add && t <= Tilde }
+
+// IsBlock returns true if t is a block kind of token.
+func (t Token) IsBlock() bool { return t >= ParenBlock && t <= BraceBlock }
+
+// IsBoolOp returns true if t is boolean operator.
+func (t Token) IsBoolOp() bool { return t >= Equal && t <= NotEqual || t == Not }
+
+// IsBinaryOp returns true if t is a binary operator (takes 2 operands).
+func (t Token) IsBinaryOp() bool { return t >= Add && t <= NotEqual }
+
+// IsUnaryOp returns true if t is an unary operator (takes 1 operand).
+func (t Token) IsUnaryOp() bool { return t >= Plus && t <= Tilde }
+
+// IsLogicalOp returns true if t is a logical operator.
+func (t Token) IsLogicalOp() bool { return t == Land || t == Lor }

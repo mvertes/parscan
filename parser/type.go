@@ -18,17 +18,18 @@ const (
 	parseTypeType
 )
 
+// Type parsing error definitions.
 var (
-	InvalidTypeErr        = errors.New("invalid type")
-	MissingTypeErr        = errors.New("missing type")
-	SyntaxErr             = errors.New("syntax error")
-	TypeNotImplementedErr = errors.New("not implemented")
+	ErrInvalidType        = errors.New("invalid type")
+	ErrMissingType        = errors.New("missing type")
+	ErrSyntax             = errors.New("syntax error")
+	ErrTypeNotImplemented = errors.New("not implemented")
 )
 
 // ParseTypeExpr parses a list of tokens defining a type expresssion and returns
 // the corresponding runtime type or an error.
 func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
-	switch in[0].Id {
+	switch in[0].Tok {
 	case lang.BracketBlock:
 		typ, err := p.ParseTypeExpr(in[1:])
 		if err != nil {
@@ -65,11 +66,11 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		var out Tokens
 		var indexArgs int
 		switch l, in1 := len(in), in[1]; {
-		case l >= 4 && in1.Id == lang.ParenBlock && in[2].Id == lang.Ident:
+		case l >= 4 && in1.Tok == lang.ParenBlock && in[2].Tok == lang.Ident:
 			indexArgs, out = 3, in[4:]
-		case l >= 3 && in1.Id == lang.Ident:
+		case l >= 3 && in1.Tok == lang.Ident:
 			indexArgs, out = 2, in[3:]
-		case l >= 2 && in1.Id == lang.ParenBlock:
+		case l >= 2 && in1.Tok == lang.ParenBlock:
 			indexArgs, out = 1, in[2:]
 		default:
 			return nil, fmt.Errorf("invalid func signature")
@@ -86,7 +87,7 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 			return nil, err
 		}
 		// Output parameters may be empty, or enclosed or not by parenthesis.
-		if len(out) == 1 && out[0].Id == lang.ParenBlock {
+		if len(out) == 1 && out[0].Tok == lang.ParenBlock {
 			if out, err = p.Scan(out[0].Block(), false); err != nil {
 				return nil, err
 			}
@@ -101,13 +102,13 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		// TODO: selector expression (pkg.type)
 		s, _, ok := p.getSym(in[0].Str, p.scope)
 		if !ok || s.kind != symType {
-			return nil, fmt.Errorf("%w: %s", InvalidTypeErr, in[0].Str)
+			return nil, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
 		return s.Type, nil
 
 	case lang.Struct:
-		if len(in) != 2 || in[1].Id != lang.BraceBlock {
-			return nil, fmt.Errorf("%w: %v", SyntaxErr, in)
+		if len(in) != 2 || in[1].Tok != lang.BraceBlock {
+			return nil, fmt.Errorf("%w: %v", ErrSyntax, in)
 		}
 		if in, err = p.Scan(in[1].Block(), false); err != nil {
 			return nil, err
@@ -126,7 +127,7 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		return vm.StructOf(fields), nil
 
 	default:
-		return nil, fmt.Errorf("%w: %v", TypeNotImplementedErr, in[0].Name())
+		return nil, fmt.Errorf("%w: %v", ErrTypeNotImplemented, in[0].Name())
 	}
 }
 
@@ -147,7 +148,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 			t = t[1:]
 			if len(t) == 0 {
 				if len(types) == 0 {
-					return nil, nil, MissingTypeErr
+					return nil, nil, ErrMissingType
 				}
 				// Type was omitted, apply the previous one from the right.
 				types = append([]*vm.Type{types[0]}, types...)
@@ -189,7 +190,7 @@ func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, 
 
 // hasFirstParam returns true if the first token of a list is a parameter name.
 func (p *Parser) hasFirstParam(in Tokens) bool {
-	if in[0].Id != lang.Ident {
+	if in[0].Tok != lang.Ident {
 		return false
 	}
 	s, _, ok := p.getSym(in[0].Str, p.scope)

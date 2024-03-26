@@ -9,33 +9,33 @@ import (
 	"github.com/mvertes/parscan/scanner"
 )
 
-func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 	log.Println("ParseExpr in:", in)
 	var ops, selectors Tokens
 	var vl int
-	var selectorId string
+	var selectorIndex string
 	//
 	// Process tokens from last to first, the goal is to reorder the tokens in
 	// a stack machine processing order, so it can be directly interpreted.
 	//
-	if len(in) > 1 && in[0].Id == lang.Func {
+	if len(in) > 1 && in[0].Tok == lang.Func {
 		// Function as value (i.e closure).
-		if out, err = p.ParseFunc(in); err != nil {
+		if out, err = p.parseFunc(in); err != nil {
 			return out, err
 		}
 		// Get function label and use it as a symbol ident.
 		fid := out[1]
-		fid.Id = lang.Ident
+		fid.Tok = lang.Ident
 		out = append(out, fid)
 		return out, err
 	}
 	for i := len(in) - 1; i >= 0; i-- {
 		t := in[i]
 		// temporary assumptions: binary operators, returning 1 value
-		switch t.Id {
+		switch t.Tok {
 		case lang.Ident:
-			if i > 0 && in[i-1].Id == lang.Period {
-				selectorId = t.Str
+			if i > 0 && in[i-1].Tok == lang.Period {
+				selectorIndex = t.Str
 				continue
 			}
 			// resolve symbol if not a selector rhs.
@@ -48,16 +48,16 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 			out = append(out, t)
 			vl++
 		case lang.Period:
-			t.Str += selectorId
+			t.Str += selectorIndex
 			selectors = append(Tokens{t}, selectors...)
 			continue
 		case lang.Int, lang.String:
 			out = append(out, t)
 			vl++
 		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Land, lang.Lor, lang.Shl, lang.Shr, lang.Not, lang.And:
-			if i == 0 || in[i-1].Id.IsOperator() {
+			if i == 0 || in[i-1].Tok.IsOperator() {
 				// An operator preceded by an operator or no token is unary.
-				t.Id = lang.UnaryOp[t.Id]
+				t.Tok = lang.UnaryOp[t.Tok]
 				j := len(out) - 1
 				l := out[j]
 				if p.precedence(l) > 0 {
@@ -73,7 +73,7 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 		case lang.ParenBlock:
 			// If the previous token is an arithmetic, logic or assign operator then
 			// this parenthesis block is an enclosed expr, otherwise a call expr.
-			if i == 0 || in[i-1].Id.IsOperator() {
+			if i == 0 || in[i-1].Tok.IsOperator() {
 				out = append(out, t)
 				vl++
 				break
@@ -83,15 +83,15 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 			// func call: push args and func address then call
 			out = append(out, t)
 			vl++
-			ops = append(ops, scanner.Token{Id: lang.Call, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
+			ops = append(ops, scanner.Token{Tok: lang.Call, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
 		case lang.BracketBlock:
 			out = append(out, t)
 			vl++
-			ops = append(ops, scanner.Token{Id: lang.Index, Pos: t.Pos})
+			ops = append(ops, scanner.Token{Tok: lang.Index, Pos: t.Pos})
 		case lang.Comment:
 			return out, nil
 		default:
-			return nil, fmt.Errorf("expression not supported yet: %v: %q", t.Id, t.Str)
+			return nil, fmt.Errorf("expression not supported yet: %v: %q", t.Tok, t.Str)
 		}
 		if len(selectors) > 0 {
 			out = append(out, selectors...)
@@ -115,13 +115,13 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 
 	log.Println("ParseExpr out:", out, "vl:", vl, "ops:", ops)
 	// A logical operator (&&, ||) involves additional control flow operations.
-	if out, err = p.ParseLogical(out); err != nil {
+	if out, err = p.parseLogical(out); err != nil {
 		return out, err
 	}
-	if l := len(out) - 1; l >= 0 && (out[l].Id == lang.Define || out[l].Id == lang.Assign) {
+	if l := len(out) - 1; l >= 0 && (out[l].Tok == lang.Define || out[l].Tok == lang.Assign) {
 		// Handle the assignment of a logical expression.
 		s1 := p.subExprLen(out[:l])
-		head, err := p.ParseLogical(out[:l-s1])
+		head, err := p.parseLogical(out[:l-s1])
 		if err != nil {
 			return out, err
 		}
@@ -132,9 +132,9 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 	for i := len(out) - 1; i >= 0; i-- {
 		t := out[i]
 		var toks Tokens
-		switch t.Id {
+		switch t.Tok {
 		case lang.ParenBlock, lang.BracketBlock:
-			if toks, err = p.ParseExprStr(t.Block()); err != nil {
+			if toks, err = p.parseExprStr(t.Block()); err != nil {
 				return out, err
 			}
 		default:
@@ -151,13 +151,13 @@ func (p *Parser) ParseExpr(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-func (p *Parser) ParseExprStr(s string) (tokens Tokens, err error) {
+func (p *Parser) parseExprStr(s string) (tokens Tokens, err error) {
 	if tokens, err = p.Scan(s, false); err != nil {
 		return
 	}
 	var result Tokens
 	for _, sub := range tokens.Split(lang.Comma) {
-		toks, err := p.ParseExpr(sub)
+		toks, err := p.parseExpr(sub)
 		if err != nil {
 			return result, err
 		}
@@ -166,34 +166,34 @@ func (p *Parser) ParseExprStr(s string) (tokens Tokens, err error) {
 	return result, err
 }
 
-// ParseLogical handles logical expressions with control flow (&& and ||) by
+// parseLogical handles logical expressions with control flow (&& and ||) by
 // ensuring the left hand side is evaluated unconditionally first, then the
 // right hand side can be skipped or not by inserting a conditional jump and label.
 // If the last token is not a logical operator then the function is idempotent.
-func (p *Parser) ParseLogical(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseLogical(in Tokens) (out Tokens, err error) {
 	l := len(in) - 1
-	if l < 0 || !in[l].Id.IsLogicalOp() {
+	if l < 0 || !in[l].Tok.IsLogicalOp() {
 		return in, nil
 	}
 	xp := strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
 	rhsIndex := p.subExprLen(in[:l])
-	lhs, err := p.ParseLogical(in[l-rhsIndex : l])
+	lhs, err := p.parseLogical(in[l-rhsIndex : l])
 	if err != nil {
 		return out, err
 	}
-	rhs, err := p.ParseLogical(in[:l-rhsIndex])
+	rhs, err := p.parseLogical(in[:l-rhsIndex])
 	if err != nil {
 		return out, err
 	}
 	out = append(out, lhs...)
-	if in[l].Id == lang.Lor {
-		out = append(out, scanner.Token{Id: lang.JumpSetTrue, Str: p.scope + "x" + xp})
+	if in[l].Tok == lang.Lor {
+		out = append(out, scanner.Token{Tok: lang.JumpSetTrue, Str: p.scope + "x" + xp})
 	} else {
-		out = append(out, scanner.Token{Id: lang.JumpSetFalse, Str: p.scope + "x" + xp})
+		out = append(out, scanner.Token{Tok: lang.JumpSetFalse, Str: p.scope + "x" + xp})
 	}
 	out = append(out, rhs...)
-	out = append(out, scanner.Token{Id: lang.Label, Str: p.scope + "x" + xp})
+	out = append(out, scanner.Token{Tok: lang.Label, Str: p.scope + "x" + xp})
 	return out, err
 }
 
@@ -201,7 +201,7 @@ func (p *Parser) ParseLogical(in Tokens) (out Tokens, err error) {
 func (p *Parser) subExprLen(in Tokens) int {
 	l := len(in) - 1
 	last := in[l]
-	switch last.Id {
+	switch last.Tok {
 	case lang.Int, lang.Float, lang.String, lang.Char, lang.Ident, lang.ParenBlock, lang.BracketBlock:
 		return 1
 	case lang.Call:
@@ -209,11 +209,11 @@ func (p *Parser) subExprLen(in Tokens) int {
 		return 1 + s1 + p.subExprLen(in[:l-s1])
 		// TODO: add selector and index operators when ready
 	}
-	if last.Id.IsBinaryOp() {
+	if last.Tok.IsBinaryOp() {
 		s1 := p.subExprLen(in[:l])
 		return 1 + s1 + p.subExprLen(in[:l-s1])
 	}
-	if last.Id.IsUnaryOp() {
+	if last.Tok.IsUnaryOp() {
 		return 1 + p.subExprLen(in[:l])
 	}
 	return 0 // should not occur. TODO: diplay some error here.
