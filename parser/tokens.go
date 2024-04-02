@@ -5,6 +5,7 @@ import (
 	"github.com/mvertes/parscan/scanner"
 )
 
+// Tokens represents slice of tokens.
 type Tokens []scanner.Token
 
 func (toks Tokens) String() (s string) {
@@ -14,27 +15,30 @@ func (toks Tokens) String() (s string) {
 	return s
 }
 
-func (toks Tokens) Index(id lang.TokenId) int {
+// Index returns the index in toks of the first matching tok, or -1.
+func (toks Tokens) Index(tok lang.Token) int {
 	for i, t := range toks {
-		if t.Id == id {
+		if t.Tok == tok {
 			return i
 		}
 	}
 	return -1
 }
 
-func (toks Tokens) LastIndex(id lang.TokenId) int {
+// LastIndex returns the index in toks of the last matching tok, or -1.
+func (toks Tokens) LastIndex(tok lang.Token) int {
 	for i := len(toks) - 1; i >= 0; i-- {
-		if toks[i].Id == id {
+		if toks[i].Tok == tok {
 			return i
 		}
 	}
 	return -1
 }
 
-func (toks Tokens) Split(id lang.TokenId) (result []Tokens) {
+// Split returns a slice of token arrays, separated by tok.
+func (toks Tokens) Split(tok lang.Token) (result []Tokens) {
 	for {
-		i := toks.Index(id)
+		i := toks.Index(tok)
 		if i < 0 {
 			return append(result, toks)
 		}
@@ -43,9 +47,10 @@ func (toks Tokens) Split(id lang.TokenId) (result []Tokens) {
 	}
 }
 
-func (toks Tokens) SplitStart(id lang.TokenId) (result []Tokens) {
+// SplitStart is similar to Split, except the first token in toks is skipped.
+func (toks Tokens) SplitStart(tok lang.Token) (result []Tokens) {
 	for {
-		i := toks[1:].Index(id)
+		i := toks[1:].Index(tok)
 		if i < 0 {
 			return append(result, toks)
 		}

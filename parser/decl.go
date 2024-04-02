@@ -15,11 +15,11 @@ import (
 
 var nilValue = vm.ValueOf(nil)
 
-func (p *Parser) ParseConst(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseConst(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
 		return out, errors.New("missing expression")
 	}
-	if in[1].Id != lang.ParenBlock {
+	if in[1].Tok != lang.ParenBlock {
 		return p.parseConstLine(in[1:])
 	}
 	if in, err = p.Scan(in[1].Block(), false); err != nil {
@@ -53,7 +53,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 	}
 	var vars []string
 	if _, vars, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
-		if errors.Is(err, MissingTypeErr) {
+		if errors.Is(err, ErrMissingType) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
 				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
@@ -68,7 +68,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		values = nil
 	}
 	for i, v := range values {
-		if v, err = p.ParseExpr(v); err != nil {
+		if v, err = p.parseExpr(v); err != nil {
 			return out, err
 		}
 		cval, _, err := p.evalConstExpr(v)
@@ -95,7 +95,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 		return nil, 0, errors.New("missing argument")
 	}
 	t := in[l]
-	id := t.Id
+	id := t.Tok
 	switch {
 	case id.IsBinaryOp():
 		op1, l1, err := p.evalConstExpr(in[:l])
@@ -163,7 +163,7 @@ func constValue(c constant.Value) any {
 	return nil
 }
 
-var gotok = map[lang.TokenId]token.Token{
+var gotok = map[lang.Token]token.Token{
 	lang.Char:         token.CHAR,
 	lang.Imag:         token.IMAG,
 	lang.Int:          token.INT,
@@ -191,14 +191,14 @@ var gotok = map[lang.TokenId]token.Token{
 	lang.Not:          token.NOT,
 }
 
-func (p *Parser) ParseImport(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseImports(in Tokens) (out Tokens, err error) {
 	if p.fname != "" {
 		return out, errors.New("unexpected import")
 	}
 	if len(in) < 2 {
 		return out, errors.New("missing expression")
 	}
-	if in[1].Id != lang.ParenBlock {
+	if in[1].Tok != lang.ParenBlock {
 		return p.parseImportLine(in[1:])
 	}
 	if in, err = p.Scan(in[1].Block(), false); err != nil {
@@ -219,7 +219,7 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	if l != 1 && l != 2 {
 		return out, errors.New("invalid number of arguments")
 	}
-	if in[l-1].Id != lang.String {
+	if in[l-1].Tok != lang.String {
 		return out, fmt.Errorf("invalid argument %v", in[0])
 	}
 	pp := in[l-1].Block()
@@ -248,11 +248,11 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-func (p *Parser) ParseType(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseType(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
-		return out, MissingTypeErr
+		return out, ErrMissingType
 	}
-	if in[1].Id != lang.ParenBlock {
+	if in[1].Tok != lang.ParenBlock {
 		return p.parseTypeLine(in[1:])
 	}
 	if in, err = p.Scan(in[1].Block(), false); err != nil {
@@ -270,12 +270,12 @@ func (p *Parser) ParseType(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
-		return out, MissingTypeErr
+		return out, ErrMissingType
 	}
-	if in[0].Id != lang.Ident {
+	if in[0].Tok != lang.Ident {
 		return out, errors.New("not an ident")
 	}
-	isAlias := in[1].Id == lang.Assign
+	isAlias := in[1].Tok == lang.Assign
 	toks := in[1:]
 	if isAlias {
 		toks = toks[1:]
@@ -288,11 +288,11 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-func (p *Parser) ParseVar(in Tokens) (out Tokens, err error) {
+func (p *Parser) parseVar(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
 		return out, errors.New("missing expression")
 	}
-	if in[1].Id != lang.ParenBlock {
+	if in[1].Tok != lang.ParenBlock {
 		return p.parseVarLine(in[1:])
 	}
 	if in, err = p.Scan(in[1].Block(), false); err != nil {
@@ -316,7 +316,7 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 	}
 	var vars []string
 	if _, vars, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
-		if errors.Is(err, MissingTypeErr) {
+		if errors.Is(err, ErrMissingType) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
 				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
@@ -336,13 +336,13 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		values = nil
 	}
 	for i, v := range values {
-		if v, err = p.ParseExpr(v); err != nil {
+		if v, err = p.parseExpr(v); err != nil {
 			return out, err
 		}
 		out = append(out, v...)
 		out = append(out,
-			scanner.Token{Id: lang.Ident, Str: vars[i]},
-			scanner.Token{Id: lang.Assign})
+			scanner.Token{Tok: lang.Ident, Str: vars[i]},
+			scanner.Token{Tok: lang.Assign})
 	}
 	return out, err
 }

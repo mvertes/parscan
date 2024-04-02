@@ -40,6 +40,7 @@ func symtype(s *symbol) *vm.Type {
 	return vm.TypeOf(s.value)
 }
 
+// AddSym add a new named value at memory position i in the parser symbol table.
 func (p *Parser) AddSym(i int, name string, v vm.Value) {
 	p.addSym(i, name, v, symValue, nil, false)
 }

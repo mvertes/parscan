@@ -9,15 +9,18 @@ import (
 
 const debug = true
 
+// Interpreter represents the state of an interpreter.
 type Interpreter struct {
 	*Compiler
 	*vm.Machine
 }
 
+// NewInterpreter returns a new interpreter state.
 func NewInterpreter(s *scanner.Scanner) *Interpreter {
 	return &Interpreter{NewCompiler(s), &vm.Machine{}}
 }
 
+// Eval interprets a src program and return the last produced value if any, or an error.
 func (i *Interpreter) Eval(src string) (res reflect.Value, err error) {
 	codeOffset := len(i.Code)
 	dataOffset := 0
