@@ -26,12 +26,10 @@ var (
 	ErrTypeNotImplemented = errors.New("not implemented")
 )
 
-// ParseTypeExpr parses a list of tokens defining a type expresssion and returns
-// the corresponding runtime type or an error.
-func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
+func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 	switch in[0].Tok {
 	case lang.BracketBlock:
-		typ, err := p.ParseTypeExpr(in[1:])
+		typ, err := p.parseTypeExpr(in[1:])
 		if err != nil {
 			return nil, err
 		}
@@ -53,7 +51,7 @@ func (p *Parser) ParseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		return vm.SliceOf(typ), nil
 
 	case lang.Mul:
-		typ, err := p.ParseTypeExpr(in[1:])
+		typ, err := p.parseTypeExpr(in[1:])
 		if err != nil {
 			return nil, err
 		}
@@ -157,7 +155,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 				continue
 			}
 		}
-		typ, err := p.ParseTypeExpr(t)
+		typ, err := p.parseTypeExpr(t)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -195,4 +193,18 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 	}
 	s, _, ok := p.getSym(in[0].Str, p.scope)
 	return !ok || s.kind != symType
+}
+
+// typeStartIndex returns the index of the start of type expression in tokens, or -1.
+func (p *Parser) typeStartIndex(in Tokens) int {
+	index := len(in) - 1
+	for i := index; i >= 0; i-- {
+		switch in[i].Tok {
+		case lang.Ident, lang.Struct, lang.Map, lang.Func, lang.Interface, lang.Mul, lang.BraceBlock, lang.BracketBlock, lang.ParenBlock:
+			index = i
+		default:
+			return index
+		}
+	}
+	return -1
 }

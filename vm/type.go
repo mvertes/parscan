@@ -10,10 +10,19 @@ type Type struct {
 	Rtype reflect.Type
 }
 
+func (t *Type) String() string {
+	if t.Name != "" {
+		return t.Name
+	}
+	return t.Rtype.String()
+}
+
+// Elem returns a type's element type.
 func (t *Type) Elem() *Type {
 	return &Type{Rtype: t.Rtype.Elem()}
 }
 
+// Out returns the type's i'th output parameter.
 func (t *Type) Out(i int) *Type {
 	return &Type{Rtype: t.Rtype.Out(i)}
 }
@@ -43,18 +52,22 @@ func ValueOf(v any) Value {
 	return Value{Data: reflect.ValueOf(v)}
 }
 
+// PointerTo returns the pointer type with element t.
 func PointerTo(t *Type) *Type {
 	return &Type{Rtype: reflect.PointerTo(t.Rtype)}
 }
 
-func ArrayOf(size int, t *Type) *Type {
-	return &Type{Rtype: reflect.ArrayOf(size, t.Rtype)}
+// ArrayOf returns the array type with the given length and element type.
+func ArrayOf(length int, t *Type) *Type {
+	return &Type{Rtype: reflect.ArrayOf(length, t.Rtype)}
 }
 
+// SliceOf returns the slice type with the given element type.
 func SliceOf(t *Type) *Type {
 	return &Type{Rtype: reflect.SliceOf(t.Rtype)}
 }
 
+// FuncOf returns the function type with the given argument and result types.
 func FuncOf(arg, ret []*Type, variadic bool) *Type {
 	a := make([]reflect.Type, len(arg))
 	for i, e := range arg {
@@ -67,6 +80,7 @@ func FuncOf(arg, ret []*Type, variadic bool) *Type {
 	return &Type{Rtype: reflect.FuncOf(a, r, variadic)}
 }
 
+// StructOf returns the struct type with the given field types.
 func StructOf(fields []*Type) *Type {
 	rf := make([]reflect.StructField, len(fields))
 	for i, f := range fields {

@@ -111,6 +111,7 @@ const (
 	// Internal virtual machine tokens (no corresponding keyword).
 	Call
 	CallX
+	Composite
 	EqualSet
 	Grow
 	Index
