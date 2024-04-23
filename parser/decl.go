@@ -280,10 +280,11 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	if isAlias {
 		toks = toks[1:]
 	}
-	typ, err := p.ParseTypeExpr(toks)
+	typ, err := p.parseTypeExpr(toks)
 	if err != nil {
 		return out, err
 	}
+	typ.Name = in[0].Str
 	p.addSym(unsetAddr, in[0].Str, vm.NewValue(typ), symType, typ, p.funcScope != "")
 	return out, err
 }

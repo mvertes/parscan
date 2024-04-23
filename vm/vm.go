@@ -1,3 +1,4 @@
+// Package vm implement a stack based virtual machine.
 package vm
 
 import (
@@ -85,6 +86,7 @@ var strop = [...]string{ // for VM tracing.
 	Vassign:      "Vassign",
 }
 
+// Code represents the virtual machine byte code.
 type Code [][]int64
 
 // Machine represents a virtual machine.
@@ -256,19 +258,24 @@ func (m *Machine) Run() (err error) {
 	}
 }
 
+// PushCode adds instructions to the machine code.
 func (m *Machine) PushCode(code ...[]int64) (p int) {
 	p = len(m.code)
 	m.code = append(m.code, code...)
 	return p
 }
 
+// SetIP sets the value of machine instruction pointer to given index.
 func (m *Machine) SetIP(ip int) { m.ip = ip }
+
+// Push pushes data values on top of machine memory stack.
 func (m *Machine) Push(v ...Value) (l int) {
 	l = len(m.mem)
 	m.mem = append(m.mem, v...)
 	return l
 }
 
+// Pop removes and returns the value on the top of machine stack.
 func (m *Machine) Pop() (v Value) {
 	l := len(m.mem) - 1
 	v = m.mem[l]
@@ -276,6 +283,7 @@ func (m *Machine) Pop() (v Value) {
 	return v
 }
 
+// Top returns (but not remove)  the value on the top of machine stack.
 func (m *Machine) Top() (v Value) {
 	if l := len(m.mem); l > 0 {
 		v = m.mem[l-1]
@@ -283,12 +291,14 @@ func (m *Machine) Top() (v Value) {
 	return v
 }
 
+// PopExit removes the last machine code instruction if is Exit.
 func (m *Machine) PopExit() {
 	if l := len(m.code); l > 0 && m.code[l-1][1] == Exit {
 		m.code = m.code[:l-1]
 	}
 }
 
+// CodeString returns the string representation of a machine code instruction.
 func CodeString(op []int64) string {
 	switch len(op) {
 	case 2:
@@ -317,6 +327,7 @@ func slint(a []int64) []int {
 	return r
 }
 
+// Vstring returns the string repreentation of a list of values.
 func Vstring(lv []Value) string {
 	s := "["
 	for _, v := range lv {

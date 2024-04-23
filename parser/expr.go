@@ -7,10 +7,11 @@ import (
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/vm"
 )
 
 func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
-	log.Println("ParseExpr in:", in)
+	log.Println("parseExpr in:", in)
 	var ops, selectors Tokens
 	var vl int
 	var selectorIndex string
@@ -84,6 +85,24 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 			out = append(out, t)
 			vl++
 			ops = append(ops, scanner.Token{Tok: lang.Call, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
+		case lang.BraceBlock:
+			// the block can be a func body or a composite type content.
+			// In both cases it is preceded by a type definition. We must determine the starting token of type def,
+			// parse the type def, and substitute the type def by a single ident.
+			// TODO: handle implicit type in composite expression.
+			ti := p.typeStartIndex(in[:len(in)-1])
+			if ti == -1 {
+				return out, ErrInvalidType
+			}
+			typ, err := p.parseTypeExpr(in[ti : len(in)-1])
+			if err != nil {
+				return out, ErrInvalidType
+			}
+			p.addSym(unsetAddr, typ.String(), vm.NewValue(typ), symType, typ, p.funcScope != "")
+			out = append(out, t, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typ.String()})
+			i = ti
+			vl += 2
+			ops = append(ops, scanner.Token{Tok: lang.Composite, Pos: t.Pos})
 		case lang.BracketBlock:
 			out = append(out, t)
 			vl++
@@ -113,7 +132,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 	}
 	out = append(out, ops...)
 
-	log.Println("ParseExpr out:", out, "vl:", vl, "ops:", ops)
+	log.Println("parseExpr out:", out, "vl:", vl, "ops:", ops)
 	// A logical operator (&&, ||) involves additional control flow operations.
 	if out, err = p.parseLogical(out); err != nil {
 		return out, err
@@ -133,7 +152,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 		t := out[i]
 		var toks Tokens
 		switch t.Tok {
-		case lang.ParenBlock, lang.BracketBlock:
+		case lang.ParenBlock, lang.BracketBlock, lang.BraceBlock:
 			if toks, err = p.parseExprStr(t.Block()); err != nil {
 				return out, err
 			}

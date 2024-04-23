@@ -134,6 +134,9 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			}
 			emit(int64(t.Pos), vm.CallX, int64(t.Beg))
 
+		case lang.Composite:
+			log.Println("COMPOSITE")
+
 		case lang.Grow:
 			emit(int64(t.Pos), vm.Grow, int64(t.Beg))
 

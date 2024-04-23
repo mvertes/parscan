@@ -74,7 +74,7 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	if len(in) == 0 {
 		return nil, nil
 	}
-	log.Println("ParseStmt in:", in)
+	log.Println("parseStmt in:", in)
 	switch t := in[0]; t.Tok {
 	case lang.Break:
 		return p.parseBreak(in)
@@ -249,7 +249,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if bi < 0 {
 		return out, fmt.Errorf("no function body")
 	}
-	typ, err := p.ParseTypeExpr(in[:bi])
+	typ, err := p.parseTypeExpr(in[:bi])
 	if err != nil {
 		return out, err
 	}
