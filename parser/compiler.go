@@ -61,13 +61,14 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 		case lang.String:
 			s := t.Block()
+			v := vm.Value{Data: reflect.ValueOf(s), Type: vm.TypeOf(s)}
 			i, ok := c.strings[s]
 			if !ok {
 				i = len(c.Data)
-				c.Data = append(c.Data, vm.ValueOf(s))
+				c.Data = append(c.Data, v)
 				c.strings[s] = i
 			}
-			push(&symbol{kind: symConst, value: vm.ValueOf(s)})
+			push(&symbol{kind: symConst, value: v})
 			emit(int64(t.Pos), vm.Dup, int64(i))
 
 		case lang.Add:
@@ -144,7 +145,11 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			// TODO: support assignment to local, composite objects.
 			st := tokens[i-1]
 			l := len(c.Data)
-			typ := pop().Type
+			d := pop()
+			typ := d.Type
+			if typ == nil {
+				typ = d.value.Type
+			}
 			v := vm.NewValue(typ)
 			c.addSym(l, st.Str, v, symVar, typ, false)
 			c.Data = append(c.Data, v)
@@ -160,7 +165,11 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			if !ok {
 				return fmt.Errorf("symbol not found: %s", st.Str)
 			}
-			typ := pop().Type
+			d := pop()
+			typ := d.Type
+			if typ == nil {
+				typ = d.value.Type
+			}
 			if s.Type == nil {
 				s.Type = typ
 				s.value = vm.NewValue(typ)
