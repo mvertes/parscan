@@ -110,7 +110,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 		case lang.Comment:
 			return out, nil
 		default:
-			return nil, fmt.Errorf("expression not supported yet: %v: %q", t.Tok, t.Str)
+			return nil, fmt.Errorf("invalid expression: %v: %q", t.Tok, t.Str)
 		}
 		if len(selectors) > 0 {
 			out = append(out, selectors...)

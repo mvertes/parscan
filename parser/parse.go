@@ -36,11 +36,11 @@ func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
 
 // Parse performs syntax analysis on s and return Tokens or an error.
 func (p *Parser) Parse(src string) (out Tokens, err error) {
-	log.Printf("Parse src: %#v\n", src)
 	in, err := p.Scan(src, true)
 	if err != nil {
 		return out, err
 	}
+	log.Printf("Parse src: %#v\n", src)
 	return p.parseStmts(in)
 }
 
