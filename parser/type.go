@@ -20,10 +20,12 @@ const (
 
 // Type parsing error definitions.
 var (
-	ErrInvalidType        = errors.New("invalid type")
-	ErrMissingType        = errors.New("missing type")
-	ErrSyntax             = errors.New("syntax error")
-	ErrTypeNotImplemented = errors.New("not implemented")
+	ErrFuncType       = errors.New("invalid function type")
+	ErrInvalidType    = errors.New("invalid type")
+	ErrMissingType    = errors.New("missing type")
+	ErrSize           = errors.New("invalid size")
+	ErrSyntax         = errors.New("syntax error")
+	ErrNotImplemented = errors.New("not implemented")
 )
 
 func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
@@ -44,7 +46,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 			}
 			size, ok := constValue(cval).(int)
 			if !ok {
-				return nil, fmt.Errorf("invalid size")
+				return nil, ErrSize
 			}
 			return vm.ArrayOf(size, typ), nil
 		}
@@ -71,7 +73,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		case l >= 2 && in1.Tok == lang.ParenBlock:
 			indexArgs, out = 1, in[2:]
 		default:
-			return nil, fmt.Errorf("invalid func signature")
+			return nil, ErrFuncType
 		}
 
 		// We can now parse function input and output parameter types.
@@ -125,7 +127,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		return vm.StructOf(fields), nil
 
 	default:
-		return nil, fmt.Errorf("%w: %v", ErrTypeNotImplemented, in[0].Name())
+		return nil, fmt.Errorf("%w: %v", ErrNotImplemented, in[0].Name())
 	}
 }
 

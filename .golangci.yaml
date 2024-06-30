@@ -5,6 +5,9 @@ linters:
     - gofumpt
     - gosec
     - misspell
+    - perfsprint
+    - prealloc
     - predeclared
     - reassign
     - revive
+    - unconvert
