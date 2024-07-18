@@ -34,14 +34,13 @@ func (t *Token) Prefix() string { return t.Str[:t.Beg] }
 
 // Name return the name of t (short string for debugging).
 func (t *Token) Name() string {
-	name := t.Str
+	if len(t.Str) == 0 {
+		return ""
+	}
 	if t.Beg > 1 {
-		return name[:t.Beg] + ".."
+		return t.Str[:t.Beg] + ".."
 	}
-	if t.Beg > 0 {
-		return name[:t.Beg] + ".." + name[len(name)-t.End:]
-	}
-	return name
+	return t.Str[:t.Beg] + ".." + t.Str[len(t.Str)-t.End:]
 }
 
 func (t *Token) String() string {

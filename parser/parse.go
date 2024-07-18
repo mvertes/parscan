@@ -29,6 +29,15 @@ type Parser struct {
 	clonum        int // closure instance number
 }
 
+// Parser errors.
+var (
+	ErrBody     = errors.New("missign body")
+	ErrBreak    = errors.New("invalid break statement")
+	ErrContinue = errors.New("invalid continue statement")
+	ErrFor      = errors.New("invalid for statement")
+	ErrGoto     = errors.New("invalid goto statement")
+)
+
 // Scan performs lexical analysis on s and returns Tokens or an error.
 func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
 	return p.Scanner.Scan(s, endSemi)
@@ -36,11 +45,11 @@ func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
 
 // Parse performs syntax analysis on s and return Tokens or an error.
 func (p *Parser) Parse(src string) (out Tokens, err error) {
-	log.Printf("Parse src: %#v\n", src)
 	in, err := p.Scan(src, true)
 	if err != nil {
 		return out, err
 	}
+	log.Printf("Parse src: %#v\n", src)
 	return p.parseStmts(in)
 }
 
@@ -122,12 +131,12 @@ func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {
 		label = p.breakLabel
 	case 2:
 		if in[1].Tok != lang.Ident {
-			return nil, fmt.Errorf("invalid break statement")
+			return nil, ErrBreak
 		}
 		// TODO: check validity of user provided label
 		label = in[1].Str
 	default:
-		return nil, fmt.Errorf("invalid break statement")
+		return nil, ErrBreak
 	}
 	out = Tokens{{Tok: lang.Goto, Str: label}}
 	return out, err
@@ -140,12 +149,12 @@ func (p *Parser) parseContinue(in Tokens) (out Tokens, err error) {
 		label = p.continueLabel
 	case 2:
 		if in[1].Tok != lang.Ident {
-			return nil, fmt.Errorf("invalid continue statement")
+			return nil, ErrContinue
 		}
 		// TODO: check validity of user provided label
 		label = in[1].Str
 	default:
-		return nil, fmt.Errorf("invalid continue statement")
+		return nil, ErrContinue
 	}
 	out = Tokens{{Tok: lang.Goto, Str: label}}
 	return out, err
@@ -153,7 +162,7 @@ func (p *Parser) parseContinue(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseGoto(in Tokens) (out Tokens, err error) {
 	if len(in) != 2 || in[1].Tok != lang.Ident {
-		return nil, fmt.Errorf("invalid goto statement")
+		return nil, ErrGoto
 	}
 	// TODO: check validity of user provided label
 	return Tokens{{Tok: lang.Goto, Str: p.funcScope + "/" + in[1].Str}}, nil
@@ -171,7 +180,7 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	case 3:
 		init, cond, post = pre[0], pre[1], pre[2]
 	default:
-		return nil, fmt.Errorf("invalild for statement")
+		return nil, ErrFor
 	}
 	breakLabel, continueLabel := p.breakLabel, p.continueLabel
 	p.pushScope("for" + fc)
@@ -247,7 +256,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 
 	bi := in.Index(lang.BraceBlock)
 	if bi < 0 {
-		return out, fmt.Errorf("no function body")
+		return out, ErrBody
 	}
 	typ, err := p.parseTypeExpr(in[:bi])
 	if err != nil {

@@ -46,7 +46,7 @@ func repl(interp Interpreter, in io.Reader) (err error) {
 		res, err := interp.Eval(text + "\n")
 		switch {
 		case err == nil:
-			if !res.IsNil() {
+			if res.IsValid() {
 				fmt.Println(": ", res)
 			}
 			text, prompt = "", "> "

@@ -69,6 +69,7 @@ func TestExpr(t *testing.T) {
 		{src: "-2 + 5", res: "3"},
 		{src: "5 + -2", res: "3"},
 		{src: "!false", res: "true"},
+		{src: `a := "hello"`, res: "hello"},
 	})
 }
 
@@ -233,6 +234,7 @@ func TestVar(t *testing.T) {
 		{src: "var a, b int = 2, 5; a+b", res: "7"},
 		{src: "var x = 5; x", res: "5"},
 		{src: "var a = 1; func f() int { var a, b int = 3, 4; return a+b}; a+f()", res: "8"},
+		{src: `var a = "hello"; a`, res: "hello"},
 		{src: `var (
 	a, b int = 4+1, 3
 	c = 8
