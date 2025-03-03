@@ -126,7 +126,6 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		return p.parseImports(in)
 	case lang.Package:
 		return p.parsePackage(in)
-		return out, err
 	case lang.Return:
 		return p.parseReturn(in)
 	case lang.Switch:
@@ -421,7 +420,7 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-func (p *Parser) parseCaseClause(in Tokens, index, max int, condSwitch bool) (out Tokens, err error) {
+func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch bool) (out Tokens, err error) {
 	in = append(in, scanner.Token{Tok: lang.Semicolon}) // Force a ';' at the end of body clause.
 	var conds, body Tokens
 	tl := in.Split(lang.Colon)
@@ -440,7 +439,7 @@ func (p *Parser) parseCaseClause(in Tokens, index, max int, condSwitch bool) (ou
 		txt := fmt.Sprintf("%sc%d.%d", p.scope, index, i)
 		next := ""
 		if i == len(lcond)-1 { // End of cond: next, go to next clause or exit
-			if index < max {
+			if index < maximum {
 				next = fmt.Sprintf("%sc%d.%d", p.scope, index+1, 0)
 			} else {
 				next = p.scope + "e"
@@ -457,7 +456,7 @@ func (p *Parser) parseCaseClause(in Tokens, index, max int, condSwitch bool) (ou
 			out = append(out, scanner.Token{Tok: lang.JumpFalse, Str: next})
 		}
 		out = append(out, body...)
-		if i != len(lcond)-1 || index != max {
+		if i != len(lcond)-1 || index != maximum {
 			out = append(out, scanner.Token{Tok: lang.Goto, Str: p.scope + "e"})
 		}
 	}
