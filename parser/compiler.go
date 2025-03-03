@@ -25,7 +25,7 @@ type Compiler struct {
 // NewCompiler returns a new compiler state for a given scanner.
 func NewCompiler(scanner *scanner.Scanner) *Compiler {
 	return &Compiler{
-		Parser:  &Parser{Scanner: scanner, symbols: initUniverse(), framelen: map[string]int{}, labelCount: map[string]int{}},
+		Parser:  NewParser(scanner, true),
 		Entry:   -1,
 		strings: map[string]int{},
 	}
@@ -56,7 +56,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			if err != nil {
 				return err
 			}
-			push(&symbol{kind: symConst, value: vm.ValueOf(n), Type: vm.TypeOf(0)})
+			push(&symbol{kind: symConst, value: vm.ValueOf(n), typ: vm.TypeOf(0)})
 			emit(int64(t.Pos), vm.Push, int64(n))
 
 		case lang.String:
@@ -72,15 +72,15 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(t.Pos), vm.Dup, int64(i))
 
 		case lang.Add:
-			push(&symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol{typ: arithmeticOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Add)
 
 		case lang.Mul:
-			push(&symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol{typ: arithmeticOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Mul)
 
 		case lang.Sub:
-			push(&symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol{typ: arithmeticOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Sub)
 
 		case lang.Minus:
@@ -94,32 +94,32 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			// Unary '+' is idempotent. Nothing to do.
 
 		case lang.Addr:
-			push(&symbol{Type: vm.PointerTo(pop().Type)})
+			push(&symbol{typ: vm.PointerTo(pop().typ)})
 			emit(int64(t.Pos), vm.Addr)
 
 		case lang.Deref:
-			push(&symbol{Type: pop().Type.Elem()})
+			push(&symbol{typ: pop().typ.Elem()})
 			emit(int64(t.Pos), vm.Deref)
 
 		case lang.Index:
-			push(&symbol{Type: pop().Type.Elem()})
+			push(&symbol{typ: pop().typ.Elem()})
 			emit(int64(t.Pos), vm.Index)
 
 		case lang.Greater:
-			push(&symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol{typ: booleanOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Greater)
 
 		case lang.Less:
-			push(&symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol{typ: booleanOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Lower)
 
 		case lang.Call:
 			s := pop()
 			if s.kind != symValue {
-				typ := s.Type
+				typ := s.typ
 				// TODO: pop input types (careful with variadic function).
 				for i := 0; i < typ.Rtype.NumOut(); i++ {
-					push(&symbol{Type: typ.Out(i)})
+					push(&symbol{typ: typ.Out(i)})
 				}
 				emit(int64(t.Pos), vm.Call)
 				break
@@ -131,7 +131,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			rtyp := pop().value.Data.Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
-				push(&symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
+				push(&symbol{typ: &vm.Type{Rtype: rtyp.Out(i)}})
 			}
 			emit(int64(t.Pos), vm.CallX, int64(t.Beg))
 
@@ -146,7 +146,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			st := tokens[i-1]
 			l := len(c.Data)
 			d := pop()
-			typ := d.Type
+			typ := d.typ
 			if typ == nil {
 				typ = d.value.Type
 			}
@@ -166,17 +166,17 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				return fmt.Errorf("symbol not found: %s", st.Str)
 			}
 			d := pop()
-			typ := d.Type
+			typ := d.typ
 			if typ == nil {
 				typ = d.value.Type
 			}
-			if s.Type == nil {
-				s.Type = typ
+			if s.typ == nil {
+				s.typ = typ
 				s.value = vm.NewValue(typ)
 			}
 			if s.local {
 				if !s.used {
-					emit(int64(st.Pos), vm.New, int64(s.index), int64(c.typeSym(s.Type).index))
+					emit(int64(st.Pos), vm.New, int64(s.index), int64(c.typeSym(s.typ).index))
 					s.used = true
 				}
 				emit(int64(st.Pos), vm.Fassign, int64(s.index))
@@ -189,11 +189,11 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			emit(int64(st.Pos), vm.Assign, int64(s.index))
 
 		case lang.Equal:
-			push(&symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol{typ: booleanOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.Equal)
 
 		case lang.EqualSet:
-			push(&symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol{typ: booleanOpType(pop(), pop())})
 			emit(int64(t.Pos), vm.EqualSet)
 
 		case lang.Ident:
@@ -306,7 +306,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				push(sym)
 				emit(int64(t.Pos), vm.Dup, int64(l))
 			default:
-				if f, ok := s.Type.Rtype.FieldByName("X" + t.Str[1:]); ok {
+				if f, ok := s.typ.Rtype.FieldByName(t.Str[1:]); ok {
 					emit(append([]int64{int64(t.Pos), vm.Field}, slint64(f.Index)...)...)
 					break
 				}
@@ -388,7 +388,7 @@ func (e entry) String() string {
 			e.symbol.local,
 			e.symbol.index,
 			e.symbol.kind,
-			e.symbol.Type,
+			e.symbol.typ,
 			e.symbol.value,
 		)
 	}
@@ -448,7 +448,7 @@ func (c *Compiler) Dump() *Dump {
 			Index: e.index,
 			Name:  e.name,
 			Kind:  int(e.kind),
-			Type:  e.Type.Name,
+			Type:  e.typ.Name,
 			Value: d.Data.Interface(),
 		}
 	}
@@ -467,13 +467,13 @@ func (c *Compiler) ApplyDump(d *Dump) error {
 		}
 
 		if dv.Name != e.name ||
-			dv.Type != e.Type.Name ||
+			dv.Type != e.typ.Name ||
 			dv.Kind != int(e.kind) {
 			return fmt.Errorf("entry with index %d does not match with provided entry. "+
 				"dumpValue: %s, %s, %d. memoryValue: %s, %s, %d",
 				dv.Index,
 				dv.Name, dv.Type, dv.Kind,
-				e.name, e.Type, e.kind)
+				e.name, e.typ, e.kind)
 		}
 
 		if dv.Index >= len(c.Data) {
@@ -493,7 +493,7 @@ func (c *Compiler) ApplyDump(d *Dump) error {
 func (c *Compiler) typeSym(t *vm.Type) *symbol {
 	tsym, ok := c.symbols[t.Rtype.String()]
 	if !ok {
-		tsym = &symbol{index: unsetAddr, kind: symType, Type: t}
+		tsym = &symbol{index: unsetAddr, kind: symType, typ: t}
 		c.symbols[t.Rtype.String()] = tsym
 	}
 	if tsym.index == unsetAddr {

@@ -248,6 +248,20 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
+func (p *Parser) parsePackage(in Tokens) (out Tokens, err error) {
+	if len(in) != 2 {
+		return out, errors.New("invalid number of arguments")
+	}
+	if in[1].Tok != lang.Ident {
+		return out, errors.New("not an ident")
+	}
+	if p.pkgName != "" {
+		return out, errors.New("package already set")
+	}
+	p.pkgName = in[1].Str
+	return out, err
+}
+
 func (p *Parser) parseType(in Tokens) (out Tokens, err error) {
 	if len(in) < 2 {
 		return out, ErrMissingType

@@ -20,6 +20,8 @@ type Parser struct {
 	function *symbol
 	scope    string
 	fname    string
+	pkgName  string // current package name
+	noPkg    bool   // true if package statement is not mandatory (test, repl).
 
 	funcScope     string
 	framelen      map[string]int // length of function frames indexed by funcScope
@@ -37,6 +39,17 @@ var (
 	ErrFor      = errors.New("invalid for statement")
 	ErrGoto     = errors.New("invalid goto statement")
 )
+
+// NewParser returns a new parser.
+func NewParser(scanner *scanner.Scanner, noPkg bool) *Parser {
+	return &Parser{
+		Scanner:    scanner,
+		noPkg:      noPkg,
+		symbols:    initUniverse(),
+		framelen:   map[string]int{},
+		labelCount: map[string]int{},
+	}
+}
 
 // Scan performs lexical analysis on s and returns Tokens or an error.
 func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
@@ -84,6 +97,14 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		return nil, nil
 	}
 	log.Println("parseStmt in:", in)
+	// Preliminary: make sure that a pkgName is defined (or about to be).
+	if in[0].Tok != lang.Package && p.pkgName == "" {
+		if !p.noPkg {
+			return out, errors.New("no package defined")
+		}
+		p.pkgName = "main"
+	}
+
 	switch t := in[0]; t.Tok {
 	case lang.Break:
 		return p.parseBreak(in)
@@ -104,7 +125,7 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	case lang.Import:
 		return p.parseImports(in)
 	case lang.Package:
-		// TODO: support packages
+		return p.parsePackage(in)
 		return out, err
 	case lang.Return:
 		return p.parseReturn(in)
@@ -263,7 +284,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	s.kind = symFunc
-	s.Type = typ
+	s.typ = typ
 	p.function = s
 
 	toks, err := p.Parse(in[len(in)-1].Block())
@@ -459,8 +480,8 @@ func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 	// TODO: the function symbol should be already present in the parser context.
 	// otherwise no way to handle anonymous func.
 	s := p.function
-	in[0].Beg = s.Type.Rtype.NumOut()
-	in[0].End = s.Type.Rtype.NumIn()
+	in[0].Beg = s.typ.Rtype.NumOut()
+	in[0].End = s.typ.Rtype.NumIn()
 	out = append(out, in[0])
 	return out, err
 }

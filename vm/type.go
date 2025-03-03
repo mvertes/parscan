@@ -6,12 +6,16 @@ import "reflect"
 
 // Type is the representation of a runtime type.
 type Type struct {
-	Name  string
-	Rtype reflect.Type
+	PkgPath string
+	Name    string
+	Rtype   reflect.Type
 }
 
 func (t *Type) String() string {
 	if t.Name != "" {
+		if t.PkgPath != "" {
+			return t.PkgPath + "." + t.Name
+		}
 		return t.Name
 	}
 	return t.Rtype.String()
@@ -84,7 +88,8 @@ func FuncOf(arg, ret []*Type, variadic bool) *Type {
 func StructOf(fields []*Type) *Type {
 	rf := make([]reflect.StructField, len(fields))
 	for i, f := range fields {
-		rf[i].Name = "X" + f.Name
+		rf[i].Name = f.Name
+		rf[i].PkgPath = f.PkgPath
 		rf[i].Type = f.Rtype
 	}
 	return &Type{Rtype: reflect.StructOf(rf)}

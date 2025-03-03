@@ -26,7 +26,7 @@ type symbol struct {
 	kind    symKind
 	index   int            // address of symbol in frame
 	pkgPath string         //
-	Type    *vm.Type       //
+	typ     *vm.Type       //
 	value   vm.Value       //
 	cval    constant.Value //
 	local   bool           // if true address is relative to local frame, otherwise global
@@ -34,8 +34,8 @@ type symbol struct {
 }
 
 func symtype(s *symbol) *vm.Type {
-	if s.Type != nil {
-		return s.Type
+	if s.typ != nil {
+		return s.typ
 	}
 	return vm.TypeOf(s.value)
 }
@@ -47,7 +47,7 @@ func (p *Parser) AddSym(i int, name string, v vm.Value) {
 
 func (p *Parser) addSym(i int, name string, v vm.Value, k symKind, t *vm.Type, local bool) {
 	name = strings.TrimPrefix(name, "/")
-	p.symbols[name] = &symbol{kind: k, index: i, local: local, value: v, Type: t}
+	p.symbols[name] = &symbol{kind: k, index: i, local: local, value: v, typ: t}
 }
 
 // getSym searches for an existing symbol starting from the deepest scope.
@@ -70,16 +70,16 @@ func (p *Parser) getSym(name, scope string) (sym *symbol, sc string, ok bool) {
 
 func initUniverse() map[string]*symbol {
 	return map[string]*symbol{
-		"any":    {kind: symType, index: unsetAddr, Type: vm.TypeOf((*any)(nil)).Elem()},
-		"bool":   {kind: symType, index: unsetAddr, Type: vm.TypeOf((*bool)(nil)).Elem()},
-		"error":  {kind: symType, index: unsetAddr, Type: vm.TypeOf((*error)(nil)).Elem()},
-		"int":    {kind: symType, index: unsetAddr, Type: vm.TypeOf((*int)(nil)).Elem()},
-		"string": {kind: symType, index: unsetAddr, Type: vm.TypeOf((*string)(nil)).Elem()},
+		"any":    {kind: symType, index: unsetAddr, typ: vm.TypeOf((*any)(nil)).Elem()},
+		"bool":   {kind: symType, index: unsetAddr, typ: vm.TypeOf((*bool)(nil)).Elem()},
+		"error":  {kind: symType, index: unsetAddr, typ: vm.TypeOf((*error)(nil)).Elem()},
+		"int":    {kind: symType, index: unsetAddr, typ: vm.TypeOf((*int)(nil)).Elem()},
+		"string": {kind: symType, index: unsetAddr, typ: vm.TypeOf((*string)(nil)).Elem()},
 
 		"nil":   {index: unsetAddr},
 		"iota":  {kind: symConst, index: unsetAddr},
-		"true":  {index: unsetAddr, value: vm.ValueOf(true), Type: vm.TypeOf(true)},
-		"false": {index: unsetAddr, value: vm.ValueOf(false), Type: vm.TypeOf(false)},
+		"true":  {index: unsetAddr, value: vm.ValueOf(true), typ: vm.TypeOf(true)},
+		"false": {index: unsetAddr, value: vm.ValueOf(false), typ: vm.TypeOf(false)},
 
 		"println": {index: unsetAddr, value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })},
 	}

@@ -6,6 +6,7 @@ import (
 	"log"     // for tracing only
 	"reflect" // for optional CallX only
 	"strconv" // for tracing only
+	"unsafe"  // to allow setting unexported struct fields
 )
 
 const debug = true
@@ -184,7 +185,12 @@ func (m *Machine) Run() (err error) {
 		case Fdup:
 			mem = append(mem, mem[int(op[2])+fp-1])
 		case Field:
-			mem[sp-1].Data = mem[sp-1].Data.FieldByIndex(slint(op[2:]))
+			fv := mem[sp-1].Data.FieldByIndex(slint(op[2:]))
+			if !fv.CanSet() {
+				// Normally private fields can not bet set via reflect. Override this limitation.
+				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
+			}
+			mem[sp-1].Data = fv
 		case Jump:
 			ip += int(op[2])
 			continue

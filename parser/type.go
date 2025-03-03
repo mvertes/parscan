@@ -104,7 +104,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		if !ok || s.kind != symType {
 			return nil, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
-		return s.Type, nil
+		return s.typ, nil
 
 	case lang.Struct:
 		if len(in) != 2 || in[1].Tok != lang.BraceBlock {
@@ -120,7 +120,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 				return nil, err
 			}
 			for i, name := range names {
-				fields = append(fields, &vm.Type{Name: name, Rtype: types[i].Rtype})
+				fields = append(fields, &vm.Type{Name: name, PkgPath: p.pkgName, Rtype: types[i].Rtype})
 				// TODO: handle embedded fields
 			}
 		}
