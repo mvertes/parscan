@@ -58,7 +58,7 @@ func repl(interp Interpreter, in io.Reader) (err error) {
 		}
 		fmt.Print(prompt)
 	}
-	return
+	return err
 }
 
 func run(arg []string) (err error) {

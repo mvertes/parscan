@@ -172,7 +172,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseExprStr(s string) (tokens Tokens, err error) {
 	if tokens, err = p.Scan(s, false); err != nil {
-		return
+		return tokens, err
 	}
 	var result Tokens
 	for _, sub := range tokens.Split(lang.Comma) {

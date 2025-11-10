@@ -1,8 +1,8 @@
+version: "2"
 linters:
   enable:
     - gocritic
     - godot
-    - gofumpt
     - gosec
     - misspell
     - perfsprint
@@ -11,3 +11,23 @@ linters:
     - reassign
     - revive
     - unconvert
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofumpt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -385,11 +385,11 @@ func (e entry) String() string {
 	if e.symbol != nil {
 		return fmt.Sprintf("name: %s,local: %t, i: %d, k: %d, t: %s, v: %v",
 			e.name,
-			e.symbol.local,
-			e.symbol.index,
-			e.symbol.kind,
-			e.symbol.typ,
-			e.symbol.value,
+			e.local,
+			e.index,
+			e.kind,
+			e.typ,
+			e.value,
 		)
 	}
 

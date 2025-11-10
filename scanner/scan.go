@@ -134,17 +134,20 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 			tokens = append(tokens, t)
 		}
 	}
+
 	// Optional insertion of semi-colon at the end of the token stream.
 	if semiEOF && len(tokens) > 0 {
 		last := tokens[len(tokens)-1]
 		if last.Str == ";" {
 			return tokens, nil
 		}
-		if !(last.Tok == lang.Ident && sc.TokenProps[last.Str].SkipSemi ||
-			last.Tok.IsOperator() && !sc.TokenProps[last.Str].SkipSemi) {
-			tokens = append(tokens, Token{Tok: lang.Semicolon, Str: ";"})
+		if last.Tok == lang.Ident && sc.TokenProps[last.Str].SkipSemi ||
+			last.Tok.IsOperator() && !sc.TokenProps[last.Str].SkipSemi {
+			return tokens, nil
 		}
+		tokens = append(tokens, Token{Tok: lang.Semicolon, Str: ";"})
 	}
+
 	return tokens, nil
 }
 
