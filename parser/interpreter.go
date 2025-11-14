@@ -40,9 +40,9 @@ func (i *Interpreter) Eval(src string) (res reflect.Value, err error) {
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
 	if s, ok := i.symbols["main"]; ok {
-		i.PushCode([]int64{0, vm.Calli, i.Data[s.index].Data.Int()})
+		i.PushCode(vm.Instruction{Op: vm.Calli, Arg: []int{int(i.Data[s.index].Data.Int())}})
 	}
-	i.PushCode([]int64{0, vm.Exit})
+	i.PushCode(vm.Instruction{Op: vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
 	if debug {
 		i.PrintData()

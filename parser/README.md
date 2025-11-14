@@ -112,5 +112,5 @@ Other items:
 - [ ] build constraints (arch, sys, etc)
 - [ ] test command (running go test / benchmark / example files)
 - [ ] skipping / including test files
-- [ ] test coverage
+- [x] test coverage
 - [ ] fuzzy tests for scanner, vm, ...
