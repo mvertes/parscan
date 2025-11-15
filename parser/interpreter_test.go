@@ -262,6 +262,6 @@ func TestComposite(t *testing.T) {
 	run(t, []etest{
 		{src: "type T struct{}; t := T{}; t", res: "{}"},
 		{src: "t := struct{}{}; t", res: "{}"},
-		//		{src: "type T struct{N int}; t := T{2}; t", res: "{2}"},
+		{src: `type T struct{N int; S string}; t := T{2, "foo"}; t`, res: `{2, "foo"}`},
 	})
 }
