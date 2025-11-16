@@ -66,18 +66,22 @@ func NewScanner(spec *lang.Spec) *Scanner {
 	// TODO: Mark unset ASCII char other than alphanum illegal
 
 	// Build a regular expression to match all string start delimiters at once.
-	re := "("
+	var sb strings.Builder
+	sb.WriteString("(")
+	// re := "("
 	for s, p := range sc.BlockProp {
 		if p&lang.CharStr == 0 {
 			continue
 		}
 		// TODO: sort keys in decreasing length order.
 		for _, b := range []byte(s) {
-			re += fmt.Sprintf("\\x%02x", b)
+			// re += fmt.Sprintf("\\x%02x", b)
+			sb.WriteString(fmt.Sprintf("\\x%02x", b))
 		}
-		re += "|"
+		sb.WriteString("|")
+		// re += "|"
 	}
-	re = strings.TrimSuffix(re, "|") + ")$"
+	re := strings.TrimSuffix(sb.String(), "|") + ")$"
 	sc.sdre = regexp.MustCompile(re)
 
 	return sc

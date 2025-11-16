@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"strings"
+
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scanner"
 )
@@ -9,9 +11,11 @@ import (
 type Tokens []scanner.Token
 
 func (toks Tokens) String() (s string) {
+	var sb strings.Builder
 	for _, t := range toks {
-		s += t.String() + " "
+		sb.WriteString(t.String() + " ")
 	}
+	s += sb.String()
 	return s
 }
 

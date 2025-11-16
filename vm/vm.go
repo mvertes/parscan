@@ -5,7 +5,8 @@ import (
 	"fmt"     // for tracing only
 	"log"     // for tracing only
 	"reflect" // for optional CallX only
-	"unsafe"  // to allow setting unexported struct fields
+	"strings"
+	"unsafe" // to allow setting unexported struct fields
 )
 
 const debug = true
@@ -65,9 +66,11 @@ type Instruction struct {
 
 func (i Instruction) String() (s string) {
 	s = i.Op.String()
+	var sb strings.Builder
 	for _, a := range i.Arg {
-		s += fmt.Sprintf(" %v", a)
+		sb.WriteString(fmt.Sprintf(" %v", a))
 	}
+	s += sb.String()
 	return s
 }
 

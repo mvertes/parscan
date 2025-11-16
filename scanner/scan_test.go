@@ -2,6 +2,7 @@ package scanner_test
 
 import (
 	"log"
+	"strings"
 	"testing"
 
 	"github.com/mvertes/parscan/lang/golang"
@@ -35,9 +36,11 @@ func TestScan(t *testing.T) {
 }
 
 func tokStr(tokens []scanner.Token) (s string) {
+	var sb strings.Builder
 	for _, t := range tokens {
-		s += t.String() + " "
+		sb.WriteString(t.String() + " ")
 	}
+	s += sb.String()
 	return s
 }
 
