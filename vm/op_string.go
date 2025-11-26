@@ -42,11 +42,12 @@ func _() {
 	_ = x[Return-31]
 	_ = x[Sub-32]
 	_ = x[Subi-33]
+	_ = x[Swap-34]
 }
 
-const _Op_name = "NopAddAddrAssignFassignVassignCallCalliCallXDerefDupFdupEqualEqualSetExitFieldGreaterGrowIndexJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLowerLoweriMulNewNotPopPushReturnSubSubi"
+const _Op_name = "NopAddAddrAssignFassignVassignCallCalliCallXDerefDupFdupEqualEqualSetExitFieldGreaterGrowIndexJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLowerLoweriMulNewNotPopPushReturnSubSubiSwap"
 
-var _Op_index = [...]uint8{0, 3, 6, 10, 16, 23, 30, 34, 39, 44, 49, 52, 56, 61, 69, 73, 78, 85, 89, 94, 98, 106, 115, 126, 138, 143, 149, 152, 155, 158, 161, 165, 171, 174, 178}
+var _Op_index = [...]uint8{0, 3, 6, 10, 16, 23, 30, 34, 39, 44, 49, 52, 56, 61, 69, 73, 78, 85, 89, 94, 98, 106, 115, 126, 138, 143, 149, 152, 155, 158, 161, 165, 171, 174, 178, 182}
 
 func (i Op) String() string {
 	idx := int(i) - 0

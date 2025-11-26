@@ -20,6 +20,8 @@ const (
 	symPkg                  // a Go package
 )
 
+//go:generate stringer -type=symKind
+
 const unsetAddr = -65535
 
 type symbol struct {

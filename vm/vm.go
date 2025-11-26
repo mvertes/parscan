@@ -55,6 +55,7 @@ const (
 	Return                 // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
 	Sub                    // n1 n2 -- diff ; diff = n1 - n2
 	Subi                   // n1 -- diff ; diff = n1 - $1
+	Swap                   // --
 )
 
 // Instruction represents a virtual machine bytecode instruction.
@@ -65,7 +66,7 @@ type Instruction struct {
 }
 
 func (i Instruction) String() (s string) {
-	s = i.Op.String()
+	s = fmt.Sprintf("%4d: %v", i.Pos, i.Op)
 	var sb strings.Builder
 	for _, a := range i.Arg {
 		sb.WriteString(fmt.Sprintf(" %v", a))
@@ -226,6 +227,8 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-1]
 		case Subi:
 			mem[sp-1] = ValueOf(int(mem[sp-1].Data.Int()) - c.Arg[0])
+		case Swap:
+			mem[sp-2], mem[sp-1] = mem[sp-1], mem[sp-2]
 		case Index:
 			mem[sp-2].Data = mem[sp-1].Data.Index(int(mem[sp-2].Data.Int()))
 			mem = mem[:sp-1]

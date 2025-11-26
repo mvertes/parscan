@@ -68,18 +68,15 @@ func NewScanner(spec *lang.Spec) *Scanner {
 	// Build a regular expression to match all string start delimiters at once.
 	var sb strings.Builder
 	sb.WriteString("(")
-	// re := "("
 	for s, p := range sc.BlockProp {
 		if p&lang.CharStr == 0 {
 			continue
 		}
 		// TODO: sort keys in decreasing length order.
 		for _, b := range []byte(s) {
-			// re += fmt.Sprintf("\\x%02x", b)
 			sb.WriteString(fmt.Sprintf("\\x%02x", b))
 		}
 		sb.WriteString("|")
-		// re += "|"
 	}
 	re := strings.TrimSuffix(sb.String(), "|") + ")$"
 	sc.sdre = regexp.MustCompile(re)

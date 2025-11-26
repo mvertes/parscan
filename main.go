@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/mvertes/parscan/lang/golang"
 	"github.com/mvertes/parscan/parser"
@@ -62,12 +63,14 @@ func repl(interp Interpreter, in io.Reader) (err error) {
 }
 
 func run(arg []string) (err error) {
+	var str string
 	rflag := flag.NewFlagSet("run", flag.ContinueOnError)
 	rflag.Usage = func() {
 		fmt.Println("Usage: parscan run [options] [path] [args]")
-		// fmt.Println("Options:")
-		// rflag.PrintDefaults()
+		fmt.Println("Options:")
+		rflag.PrintDefaults()
 	}
+	rflag.StringVar(&str, "e", "", "string to eval")
 	if err = rflag.Parse(arg); err != nil {
 		return err
 	}
@@ -75,12 +78,19 @@ func run(arg []string) (err error) {
 
 	interp := parser.NewInterpreter(scanner.NewScanner(golang.GoSpec))
 
-	in := os.Stdin
+	var in io.Reader
+	if str != "" {
+		in = strings.NewReader(str)
+	} else {
+		in = os.Stdin
+	}
 	if len(args) > 0 {
 		if in, err = os.Open(arg[0]); err != nil {
 			return err
 		}
-		defer in.Close()
+		if i2, ok := in.(io.ReadCloser); ok {
+			defer i2.Close()
+		}
 	}
 
 	if isatty(in) {
