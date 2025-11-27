@@ -11,8 +11,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/mvertes/parscan/interpreter"
 	"github.com/mvertes/parscan/lang/golang"
-	"github.com/mvertes/parscan/parser"
 	"github.com/mvertes/parscan/scanner"
 )
 
@@ -76,7 +76,7 @@ func run(arg []string) (err error) {
 	}
 	args := rflag.Args()
 
-	interp := parser.NewInterpreter(scanner.NewScanner(golang.GoSpec))
+	intpr := interpreter.NewInterpreter(scanner.NewScanner(golang.GoSpec))
 
 	var in io.Reader
 	if str != "" {
@@ -94,13 +94,13 @@ func run(arg []string) (err error) {
 	}
 
 	if isatty(in) {
-		return repl(interp, in)
+		return repl(intpr, in)
 	}
 
 	buf, err := io.ReadAll(in)
 	if err != nil {
 		return err
 	}
-	_, err = interp.Eval(string(buf))
+	_, err = intpr.Eval(string(buf))
 	return err
 }

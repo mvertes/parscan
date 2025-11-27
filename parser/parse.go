@@ -16,8 +16,8 @@ import (
 type Parser struct {
 	*scanner.Scanner
 
-	symbols  map[string]*symbol
-	function *symbol
+	Symbols  map[string]*Symbol
+	function *Symbol
 	scope    string
 	fname    string
 	pkgName  string // current package name
@@ -45,7 +45,7 @@ func NewParser(scanner *scanner.Scanner, noPkg bool) *Parser {
 	return &Parser{
 		Scanner:    scanner,
 		noPkg:      noPkg,
-		symbols:    initUniverse(),
+		Symbols:    initUniverse(),
 		framelen:   map[string]int{},
 		labelCount: map[string]int{},
 	}
@@ -255,10 +255,10 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	p.fname = fname
 	ofunc := p.function
 	funcScope := p.funcScope
-	s, _, ok := p.getSym(fname, p.scope)
+	s, _, ok := p.GetSym(fname, p.scope)
 	if !ok {
-		s = &symbol{used: true}
-		p.symbols[p.scope+fname] = s
+		s = &Symbol{Used: true}
+		p.Symbols[p.scope+fname] = s
 	}
 	p.pushScope(fname)
 	p.funcScope = p.scope
@@ -282,8 +282,8 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if err != nil {
 		return out, err
 	}
-	s.kind = symFunc
-	s.typ = typ
+	s.Kind = SymFunc
+	s.Type = typ
 	p.function = s
 
 	toks, err := p.Parse(in[len(in)-1].Block())
@@ -479,8 +479,8 @@ func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 	// TODO: the function symbol should be already present in the parser context.
 	// otherwise no way to handle anonymous func.
 	s := p.function
-	in[0].Beg = s.typ.Rtype.NumOut()
-	in[0].End = s.typ.Rtype.NumIn()
+	in[0].Beg = s.Type.Rtype.NumOut()
+	in[0].End = s.Type.Rtype.NumIn()
 	out = append(out, in[0])
 	return out, err
 }

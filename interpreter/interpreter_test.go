@@ -1,12 +1,12 @@
-package parser_test
+package interpreter_test
 
 import (
 	"fmt"
 	"log"
 	"testing"
 
+	"github.com/mvertes/parscan/interpreter"
 	"github.com/mvertes/parscan/lang/golang"
-	"github.com/mvertes/parscan/parser"
 	"github.com/mvertes/parscan/scanner"
 )
 
@@ -27,7 +27,7 @@ func gen(test etest) func(*testing.T) {
 		if test.skip {
 			t.Skip()
 		}
-		interp := parser.NewInterpreter(GoScanner)
+		interp := interpreter.NewInterpreter(GoScanner)
 		errStr := ""
 		r, e := interp.Eval(test.src)
 		t.Log(r, e)

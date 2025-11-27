@@ -1,4 +1,4 @@
-package parser
+package compiler
 
 import (
 	"fmt"
@@ -10,13 +10,14 @@ import (
 	"strconv"
 
 	"github.com/mvertes/parscan/lang"
+	"github.com/mvertes/parscan/parser"
 	"github.com/mvertes/parscan/scanner"
 	"github.com/mvertes/parscan/vm"
 )
 
 // Compiler represents the state of a compiler.
 type Compiler struct {
-	*Parser
+	*parser.Parser
 	vm.Code            // produced code, to fill VM with
 	Data    []vm.Value // produced data, will be at the bottom of VM stack
 	Entry   int        // offset in Code to start execution from (skip function defintions)
@@ -27,7 +28,7 @@ type Compiler struct {
 // NewCompiler returns a new compiler state for a given scanner.
 func NewCompiler(scanner *scanner.Scanner) *Compiler {
 	return &Compiler{
-		Parser:  NewParser(scanner, true),
+		Parser:  parser.NewParser(scanner, true),
 		Entry:   -1,
 		strings: map[string]int{},
 	}
@@ -37,23 +38,23 @@ func NewCompiler(scanner *scanner.Scanner) *Compiler {
 func (c *Compiler) AddSym(name string, value vm.Value) int {
 	p := len(c.Data)
 	c.Data = append(c.Data, value)
-	c.Parser.AddSym(p, name, value)
+	c.AddSymbol(p, name, value, parser.SymValue, nil, false)
 	return p
 }
 
 // Codegen generates vm code from parsed tokens.
-func (c *Compiler) Codegen(tokens Tokens) (err error) {
+func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
-	fixList := Tokens{}  // list of tokens to fix after we gathered all necessary information
-	stack := []*symbol{} // for symbolic evaluation, type checking, etc
+	fixList := parser.Tokens{}  // list of tokens to fix after all necessary information is gathered
+	stack := []*parser.Symbol{} // for symbolic evaluation, type checking, etc
 
 	emit := func(t scanner.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
 		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 		c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
 	}
-	push := func(s *symbol) { stack = append(stack, s) }
-	pop := func() *symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
+	push := func(s *parser.Symbol) { stack = append(stack, s) }
+	pop := func() *parser.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
 
 	for i, t := range tokens {
 		switch t.Tok {
@@ -62,7 +63,7 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			if err != nil {
 				return err
 			}
-			push(&symbol{kind: symConst, value: vm.ValueOf(n), typ: vm.TypeOf(0)})
+			push(&parser.Symbol{Kind: parser.SymConst, Value: vm.ValueOf(n), Type: vm.TypeOf(0)})
 			emit(t, vm.Push, n)
 
 		case lang.String:
@@ -74,19 +75,19 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				c.Data = append(c.Data, v)
 				c.strings[s] = i
 			}
-			push(&symbol{kind: symConst, value: v})
+			push(&parser.Symbol{Kind: parser.SymConst, Value: v})
 			emit(t, vm.Dup, i)
 
 		case lang.Add:
-			push(&symbol{typ: arithmeticOpType(pop(), pop())})
+			push(&parser.Symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Add)
 
 		case lang.Mul:
-			push(&symbol{typ: arithmeticOpType(pop(), pop())})
+			push(&parser.Symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Mul)
 
 		case lang.Sub:
-			push(&symbol{typ: arithmeticOpType(pop(), pop())})
+			push(&parser.Symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Sub)
 
 		case lang.Minus:
@@ -100,32 +101,32 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			// Unary '+' is idempotent. Nothing to do.
 
 		case lang.Addr:
-			push(&symbol{typ: vm.PointerTo(pop().typ)})
+			push(&parser.Symbol{Type: vm.PointerTo(pop().Type)})
 			emit(t, vm.Addr)
 
 		case lang.Deref:
-			push(&symbol{typ: pop().typ.Elem()})
+			push(&parser.Symbol{Type: pop().Type.Elem()})
 			emit(t, vm.Deref)
 
 		case lang.Index:
-			push(&symbol{typ: pop().typ.Elem()})
+			push(&parser.Symbol{Type: pop().Type.Elem()})
 			emit(t, vm.Index)
 
 		case lang.Greater:
-			push(&symbol{typ: booleanOpType(pop(), pop())})
+			push(&parser.Symbol{Type: booleanOpType(pop(), pop())})
 			emit(t, vm.Greater)
 
 		case lang.Less:
-			push(&symbol{typ: booleanOpType(pop(), pop())})
+			push(&parser.Symbol{Type: booleanOpType(pop(), pop())})
 			emit(t, vm.Lower)
 
 		case lang.Call:
 			s := pop()
-			if s.kind != symValue {
-				typ := s.typ
+			if s.Kind != parser.SymValue {
+				typ := s.Type
 				// TODO: pop input types (careful with variadic function).
 				for i := 0; i < typ.Rtype.NumOut(); i++ {
-					push(&symbol{typ: typ.Out(i)})
+					push(&parser.Symbol{Type: typ.Out(i)})
 				}
 				emit(t, vm.Call)
 				break
@@ -134,10 +135,10 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			fallthrough // A symValue must be called through callX.
 
 		case lang.CallX:
-			rtyp := pop().value.Data.Type()
+			rtyp := pop().Value.Data.Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
-				push(&symbol{typ: &vm.Type{Rtype: rtyp.Out(i)}})
+				push(&parser.Symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
 			}
 			emit(t, vm.CallX, t.Beg)
 
@@ -168,12 +169,12 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 			st := tokens[i-1]
 			l := len(c.Data)
 			d := pop()
-			typ := d.typ
+			typ := d.Type
 			if typ == nil {
-				typ = d.value.Type
+				typ = d.Value.Type
 			}
 			v := vm.NewValue(typ)
-			c.addSym(l, st.Str, v, symVar, typ, false)
+			c.AddSymbol(l, st.Str, v, parser.SymVar, typ, false)
 			c.Data = append(c.Data, v)
 			emit(t, vm.Assign, l)
 
@@ -183,39 +184,39 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 				emit(t, vm.Vassign)
 				break
 			}
-			s, ok := c.symbols[st.Str]
+			s, ok := c.Symbols[st.Str]
 			if !ok {
 				return fmt.Errorf("symbol not found: %s", st.Str)
 			}
 			d := pop()
-			typ := d.typ
+			typ := d.Type
 			if typ == nil {
-				typ = d.value.Type
+				typ = d.Value.Type
 			}
-			if s.typ == nil {
-				s.typ = typ
-				s.value = vm.NewValue(typ)
+			if s.Type == nil {
+				s.Type = typ
+				s.Value = vm.NewValue(typ)
 			}
-			if s.local {
-				if !s.used {
-					emit(st, vm.New, s.index, c.typeSym(s.typ).index)
-					s.used = true
+			if s.Local {
+				if !s.Used {
+					emit(st, vm.New, s.Index, c.typeSym(s.Type).Index)
+					s.Used = true
 				}
-				emit(st, vm.Fassign, s.index)
+				emit(st, vm.Fassign, s.Index)
 				break
 			}
-			if s.index == unsetAddr {
-				s.index = len(c.Data)
-				c.Data = append(c.Data, s.value)
+			if s.Index == parser.UnsetAddr {
+				s.Index = len(c.Data)
+				c.Data = append(c.Data, s.Value)
 			}
-			emit(st, vm.Assign, s.index)
+			emit(st, vm.Assign, s.Index)
 
 		case lang.Equal:
-			push(&symbol{typ: booleanOpType(pop(), pop())})
+			push(&parser.Symbol{Type: booleanOpType(pop(), pop())})
 			emit(t, vm.Equal)
 
 		case lang.EqualSet:
-			push(&symbol{typ: booleanOpType(pop(), pop())})
+			push(&parser.Symbol{Type: booleanOpType(pop(), pop())})
 			emit(t, vm.EqualSet)
 
 		case lang.Ident:
@@ -225,111 +226,110 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 					continue
 				}
 			}
-			s, ok := c.symbols[t.Str]
+			s, ok := c.Symbols[t.Str]
 			if !ok {
 				return fmt.Errorf("symbol not found: %s", t.Str)
 			}
 			push(s)
-			if s.kind == symPkg {
+			if s.Kind == parser.SymPkg {
 				break
 			}
-			if s.local {
-				emit(t, vm.Fdup, s.index)
+			if s.Local {
+				emit(t, vm.Fdup, s.Index)
 			} else {
-				if s.index == unsetAddr {
-					s.index = len(c.Data)
-					c.Data = append(c.Data, s.value)
+				if s.Index == parser.UnsetAddr {
+					s.Index = len(c.Data)
+					c.Data = append(c.Data, s.Value)
 				}
-				log.Println(t, ": emit(", t.Pos, vm.Dup, s.index, ")")
-				emit(t, vm.Dup, s.index)
+				emit(t, vm.Dup, s.Index)
 			}
 
 		case lang.Label:
 			lc := len(c.Code)
-			s, ok := c.symbols[t.Str]
+			s, ok := c.Symbols[t.Str]
 			if ok {
-				s.value = vm.ValueOf(lc)
-				if s.kind == symFunc {
+				s.Value = vm.ValueOf(lc)
+				if s.Kind == parser.SymFunc {
 					// label is a function entry point, register its code address in data.
-					s.index = len(c.Data)
-					c.Data = append(c.Data, s.value)
+					s.Index = len(c.Data)
+					c.Data = append(c.Data, s.Value)
 				} else {
-					c.Data[s.index] = s.value
+					c.Data[s.Index] = s.Value
 				}
 			} else {
-				c.symbols[t.Str] = &symbol{kind: symLabel, value: vm.ValueOf(lc)}
+				c.Symbols[t.Str] = &parser.Symbol{Kind: parser.SymLabel, Value: vm.ValueOf(lc)}
 			}
 
 		case lang.JumpFalse:
 			var i int
-			if s, ok := c.symbols[t.Str]; !ok {
+			if s, ok := c.Symbols[t.Str]; !ok {
 				// t.Beg contains the position in code which needs to be fixed.
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.value.Data.Int()) - len(c.Code)
+				i = int(s.Value.Data.Int()) - len(c.Code)
 			}
 			emit(t, vm.JumpFalse, i)
 
 		case lang.JumpSetFalse:
 			var i int
-			if s, ok := c.symbols[t.Str]; !ok {
+			if s, ok := c.Symbols[t.Str]; !ok {
 				// t.Beg contains the position in code which needs to be fixed.
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.value.Data.Int()) - len(c.Code)
+				i = int(s.Value.Data.Int()) - len(c.Code)
 			}
 			emit(t, vm.JumpSetFalse, i)
 
 		case lang.JumpSetTrue:
 			var i int
-			if s, ok := c.symbols[t.Str]; !ok {
+			if s, ok := c.Symbols[t.Str]; !ok {
 				// t.Beg contains the position in code which needs to be fixed.
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.value.Data.Int()) - len(c.Code)
+				i = int(s.Value.Data.Int()) - len(c.Code)
 			}
 			emit(t, vm.JumpSetTrue, i)
 
 		case lang.Goto:
 			var i int
-			if s, ok := c.symbols[t.Str]; !ok {
+			if s, ok := c.Symbols[t.Str]; !ok {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.value.Data.Int()) - len(c.Code)
+				i = int(s.Value.Data.Int()) - len(c.Code)
 			}
 			emit(t, vm.Jump, i)
 
 		case lang.Period:
 			s := pop()
-			switch s.kind {
-			case symPkg:
-				p, ok := packages[s.pkgPath]
+			switch s.Kind {
+			case parser.SymPkg:
+				p, ok := parser.Packages[s.PkgPath]
 				if !ok {
-					return fmt.Errorf("package not found: %s", s.pkgPath)
+					return fmt.Errorf("package not found: %s", s.PkgPath)
 				}
 				v, ok := p[t.Str[1:]]
 				if !ok {
-					return fmt.Errorf("symbol not found in package %s: %s", s.pkgPath, t.Str[1:])
+					return fmt.Errorf("symbol not found in package %s: %s", s.PkgPath, t.Str[1:])
 				}
-				name := s.pkgPath + t.Str
+				name := s.PkgPath + t.Str
 				var l int
-				sym, _, ok := c.getSym(name, "")
+				sym, _, ok := c.GetSym(name, "")
 				if ok {
-					l = sym.index
+					l = sym.Index
 				} else {
 					l = len(c.Data)
 					c.Data = append(c.Data, v)
-					c.addSym(l, name, v, symValue, v.Type, false)
-					sym = c.symbols[name]
+					c.AddSymbol(l, name, v, parser.SymValue, v.Type, false)
+					sym = c.Symbols[name]
 				}
 				push(sym)
 				emit(t, vm.Dup, l)
 			default:
-				if f, ok := s.typ.Rtype.FieldByName(t.Str[1:]); ok {
+				if f, ok := s.Type.Rtype.FieldByName(t.Str[1:]); ok {
 					emit(t, vm.Field, f.Index...)
 					break
 				}
@@ -346,31 +346,29 @@ func (c *Compiler) Codegen(tokens Tokens) (err error) {
 
 	// Finally we fix unresolved labels for jump destinations.
 	for _, t := range fixList {
-		s, ok := c.symbols[t.Str]
+		s, ok := c.Symbols[t.Str]
 		if !ok {
 			return fmt.Errorf("label not found: %q", t.Str)
 		}
-		c.Code[t.Beg].Arg[0] = int(s.value.Data.Int()) - t.Beg
-
+		c.Code[t.Beg].Arg[0] = int(s.Value.Data.Int()) - t.Beg
 	}
 	return err
 }
+func arithmeticOpType(s1, _ *parser.Symbol) *vm.Type { return parser.SymbolType(s1) }
+func booleanOpType(_, _ *parser.Symbol) *vm.Type     { return vm.TypeOf(true) }
 
-func arithmeticOpType(s1, _ *symbol) *vm.Type { return symtype(s1) }
-func booleanOpType(_, _ *symbol) *vm.Type     { return vm.TypeOf(true) }
-
-// PrintCode pretty prints the generated code in compiler.
+// PrintCode pretty prints the generated code.
 func (c *Compiler) PrintCode() {
 	labels := map[int][]string{} // labels indexed by code location
 	data := map[int]string{}     // data indexed by frame location
 
-	for name, sym := range c.symbols {
-		if sym.kind == symLabel || sym.kind == symFunc {
-			i := int(sym.value.Data.Int())
+	for name, sym := range c.Symbols {
+		if sym.Kind == parser.SymLabel || sym.Kind == parser.SymFunc {
+			i := int(sym.Value.Data.Int())
 			labels[i] = append(labels[i], name)
 		}
-		if sym.used {
-			data[sym.index] = name
+		if sym.Used {
+			data[sym.Index] = name
 		}
 	}
 
@@ -401,18 +399,18 @@ func (c *Compiler) PrintCode() {
 
 type entry struct {
 	name string
-	*symbol
+	*parser.Symbol
 }
 
 func (e entry) String() string {
-	if e.symbol != nil {
+	if e.Symbol != nil {
 		return fmt.Sprintf("name: %s,local: %t, i: %d, k: %d, t: %s, v: %v",
 			e.name,
-			e.local,
-			e.index,
-			e.kind,
-			e.typ,
-			e.value,
+			e.Local,
+			e.Index,
+			e.Kind,
+			e.Type,
+			e.Value,
 		)
 	}
 	return e.name
@@ -430,11 +428,11 @@ func (c *Compiler) PrintData() {
 
 func (c *Compiler) symbolsByIndex() map[int]entry {
 	dict := map[int]entry{}
-	for name, sym := range c.symbols {
-		if sym.index == unsetAddr {
+	for name, sym := range c.Symbols {
+		if sym.Index == parser.UnsetAddr {
 			continue
 		}
-		dict[sym.index] = entry{name, sym}
+		dict[sym.Index] = entry{name, sym}
 	}
 	return dict
 }
@@ -466,10 +464,10 @@ func (c *Compiler) Dump() *Dump {
 	for i, d := range c.Data {
 		e := dict[i]
 		dv[i] = &DumpValue{
-			Index: e.index,
+			Index: e.Index,
 			Name:  e.name,
-			Kind:  int(e.kind),
-			Type:  e.typ.Name,
+			Kind:  int(e.Kind),
+			Type:  e.Type.Name,
 			Value: d.Data.Interface(),
 		}
 	}
@@ -487,13 +485,13 @@ func (c *Compiler) ApplyDump(d *Dump) error {
 		}
 
 		if dv.Name != e.name ||
-			dv.Type != e.typ.Name ||
-			dv.Kind != int(e.kind) {
+			dv.Type != e.Type.Name ||
+			dv.Kind != int(e.Kind) {
 			return fmt.Errorf("entry with index %d does not match with provided entry. "+
 				"dumpValue: %s, %s, %d. memoryValue: %s, %s, %d",
 				dv.Index,
 				dv.Name, dv.Type, dv.Kind,
-				e.name, e.typ, e.kind)
+				e.name, e.Type, e.Kind)
 		}
 
 		if dv.Index >= len(c.Data) {
@@ -509,14 +507,14 @@ func (c *Compiler) ApplyDump(d *Dump) error {
 	return nil
 }
 
-func (c *Compiler) typeSym(t *vm.Type) *symbol {
-	tsym, ok := c.symbols[t.Rtype.String()]
+func (c *Compiler) typeSym(t *vm.Type) *parser.Symbol {
+	tsym, ok := c.Symbols[t.Rtype.String()]
 	if !ok {
-		tsym = &symbol{index: unsetAddr, kind: symType, typ: t}
-		c.symbols[t.Rtype.String()] = tsym
+		tsym = &parser.Symbol{Index: parser.UnsetAddr, Kind: parser.SymType, Type: t}
+		c.Symbols[t.Rtype.String()] = tsym
 	}
-	if tsym.index == unsetAddr {
-		tsym.index = len(c.Data)
+	if tsym.Index == parser.UnsetAddr {
+		tsym.Index = len(c.Data)
 		c.Data = append(c.Data, vm.NewValue(t))
 	}
 	return tsym

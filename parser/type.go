@@ -100,11 +100,11 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 
 	case lang.Ident:
 		// TODO: selector expression (pkg.type)
-		s, _, ok := p.getSym(in[0].Str, p.scope)
-		if !ok || s.kind != symType {
+		s, _, ok := p.GetSym(in[0].Str, p.scope)
+		if !ok || s.Kind != SymType {
 			return nil, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
-		return s.typ, nil
+		return s.Type, nil
 
 	case lang.Struct:
 		if len(in) != 2 || in[1].Tok != lang.BraceBlock {
@@ -174,16 +174,16 @@ func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, 
 	zv := vm.NewValue(typ)
 	switch flag {
 	case parseTypeIn:
-		p.addSym(-index-2, name, zv, symVar, typ, true)
+		p.AddSymbol(-index-2, name, zv, SymVar, typ, true)
 	case parseTypeOut:
-		p.addSym(p.framelen[p.funcScope], name, zv, symVar, typ, true)
+		p.AddSymbol(p.framelen[p.funcScope], name, zv, SymVar, typ, true)
 		p.framelen[p.funcScope]++
 	case parseTypeVar:
 		if !local {
-			p.addSym(unsetAddr, name, zv, symVar, typ, local)
+			p.AddSymbol(UnsetAddr, name, zv, SymVar, typ, local)
 			break
 		}
-		p.addSym(p.framelen[p.funcScope], name, zv, symVar, typ, local)
+		p.AddSymbol(p.framelen[p.funcScope], name, zv, SymVar, typ, local)
 		p.framelen[p.funcScope]++
 	}
 }
@@ -193,8 +193,8 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 	if in[0].Tok != lang.Ident {
 		return false
 	}
-	s, _, ok := p.getSym(in[0].Str, p.scope)
-	return !ok || s.kind != symType
+	s, _, ok := p.GetSym(in[0].Str, p.scope)
+	return !ok || s.Kind != SymType
 }
 
 // typeStartIndex returns the index of the start of type expression in tokens, or -1.

@@ -8,54 +8,54 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
-type symKind int
+type SymKind int
 
 const (
-	symValue symKind = iota // a Go value defined in the runtime
-	symType                 // a Go type
-	symLabel                // a label indication a position in the VM code
-	symConst                // a Go constant
-	symVar                  // a Go variable, located in the VM memory
-	symFunc                 // a Go function, located in the VM code
-	symPkg                  // a Go package
+	SymValue SymKind = iota // a value defined in the runtime
+	SymType                 // a type
+	SymLabel                // a label indication a position in the VM code
+	SymConst                // a constant
+	SymVar                  // a variable, located in the VM memory
+	SymFunc                 // a function, located in the VM code
+	SymPkg                  // a package
 )
 
-//go:generate stringer -type=symKind
+//go:generate stringer -type=SymKind
 
-const unsetAddr = -65535
+const UnsetAddr = -65535
 
-type symbol struct {
-	kind    symKind
-	index   int            // address of symbol in frame
-	pkgPath string         //
-	typ     *vm.Type       //
-	value   vm.Value       //
-	cval    constant.Value //
-	local   bool           // if true address is relative to local frame, otherwise global
-	used    bool           //
+type Symbol struct {
+	Kind    SymKind
+	Index   int            // address of symbol in frame
+	PkgPath string         //
+	Type    *vm.Type       //
+	Value   vm.Value       //
+	Cval    constant.Value //
+	Local   bool           // if true address is relative to local frame, otherwise global
+	Used    bool           //
 }
 
-func symtype(s *symbol) *vm.Type {
-	if s.typ != nil {
-		return s.typ
+func SymbolType(s *Symbol) *vm.Type {
+	if s.Type != nil {
+		return s.Type
 	}
-	return vm.TypeOf(s.value)
+	return vm.TypeOf(s.Value)
 }
 
 // AddSym add a new named value at memory position i in the parser symbol table.
-func (p *Parser) AddSym(i int, name string, v vm.Value) {
-	p.addSym(i, name, v, symValue, nil, false)
-}
+// func (p *Parser) AddSym(i int, name string, v vm.Value) {
+// 	p.addSym(i, name, v, SymValue, nil, false)
+// }
 
-func (p *Parser) addSym(i int, name string, v vm.Value, k symKind, t *vm.Type, local bool) {
+func (p *Parser) AddSymbol(i int, name string, v vm.Value, k SymKind, t *vm.Type, local bool) {
 	name = strings.TrimPrefix(name, "/")
-	p.symbols[name] = &symbol{kind: k, index: i, local: local, value: v, typ: t}
+	p.Symbols[name] = &Symbol{Kind: k, Index: i, Local: local, Value: v, Type: t}
 }
 
-// getSym searches for an existing symbol starting from the deepest scope.
-func (p *Parser) getSym(name, scope string) (sym *symbol, sc string, ok bool) {
+// GetSym searches for an existing symbol starting from the deepest scope.
+func (p *Parser) GetSym(name, scope string) (sym *Symbol, sc string, ok bool) {
 	for {
-		if sym, ok = p.symbols[scope+"/"+name]; ok {
+		if sym, ok = p.Symbols[scope+"/"+name]; ok {
 			return sym, scope, ok
 		}
 		i := strings.LastIndex(scope, "/")
@@ -66,23 +66,23 @@ func (p *Parser) getSym(name, scope string) (sym *symbol, sc string, ok bool) {
 			break
 		}
 	}
-	sym, ok = p.symbols[name]
+	sym, ok = p.Symbols[name]
 	return sym, scope, ok
 }
 
-func initUniverse() map[string]*symbol {
-	return map[string]*symbol{
-		"any":    {kind: symType, index: unsetAddr, typ: vm.TypeOf((*any)(nil)).Elem()},
-		"bool":   {kind: symType, index: unsetAddr, typ: vm.TypeOf((*bool)(nil)).Elem()},
-		"error":  {kind: symType, index: unsetAddr, typ: vm.TypeOf((*error)(nil)).Elem()},
-		"int":    {kind: symType, index: unsetAddr, typ: vm.TypeOf((*int)(nil)).Elem()},
-		"string": {kind: symType, index: unsetAddr, typ: vm.TypeOf((*string)(nil)).Elem()},
+func initUniverse() map[string]*Symbol {
+	return map[string]*Symbol{
+		"any":    {Kind: SymType, Index: UnsetAddr, Type: vm.TypeOf((*any)(nil)).Elem()},
+		"bool":   {Kind: SymType, Index: UnsetAddr, Type: vm.TypeOf((*bool)(nil)).Elem()},
+		"error":  {Kind: SymType, Index: UnsetAddr, Type: vm.TypeOf((*error)(nil)).Elem()},
+		"int":    {Kind: SymType, Index: UnsetAddr, Type: vm.TypeOf((*int)(nil)).Elem()},
+		"string": {Kind: SymType, Index: UnsetAddr, Type: vm.TypeOf((*string)(nil)).Elem()},
 
-		"nil":   {index: unsetAddr},
-		"iota":  {kind: symConst, index: unsetAddr},
-		"true":  {index: unsetAddr, value: vm.ValueOf(true), typ: vm.TypeOf(true)},
-		"false": {index: unsetAddr, value: vm.ValueOf(false), typ: vm.TypeOf(false)},
+		"nil":   {Index: UnsetAddr},
+		"iota":  {Kind: SymConst, Index: UnsetAddr},
+		"true":  {Index: UnsetAddr, Value: vm.ValueOf(true), Type: vm.TypeOf(true)},
+		"false": {Index: UnsetAddr, Value: vm.ValueOf(false), Type: vm.TypeOf(false)},
 
-		"println": {index: unsetAddr, value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })},
+		"println": {Index: UnsetAddr, Value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })},
 	}
 }

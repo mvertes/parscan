@@ -6,7 +6,7 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
-var packages = map[string]map[string]vm.Value{
+var Packages = map[string]map[string]vm.Value{
 	"fmt": fmtPkg,
 }
 

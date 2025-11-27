@@ -40,7 +40,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 				continue
 			}
 			// resolve symbol if not a selector rhs.
-			_, sc, ok := p.getSym(t.Str, p.scope)
+			_, sc, ok := p.GetSym(t.Str, p.scope)
 			if ok {
 				if sc != "" {
 					t.Str = sc + "/" + t.Str
@@ -98,7 +98,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 			if err != nil {
 				return out, ErrInvalidType
 			}
-			p.addSym(unsetAddr, typ.String(), vm.NewValue(typ), symType, typ, p.funcScope != "")
+			p.AddSymbol(UnsetAddr, typ.String(), vm.NewValue(typ), SymType, typ, p.funcScope != "")
 			out = append(out, t, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typ.String()})
 			i = ti
 			vl += 2

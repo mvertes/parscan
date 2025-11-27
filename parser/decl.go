@@ -26,7 +26,7 @@ func (p *Parser) parseConst(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	var cnt int64
-	p.symbols["iota"].cval = constant.Make(cnt)
+	p.Symbols["iota"].Cval = constant.Make(cnt)
 	var prev Tokens
 	for i, lt := range in.Split(lang.Semicolon) {
 		if i > 0 && len(lt) == 1 {
@@ -39,7 +39,7 @@ func (p *Parser) parseConst(in Tokens) (out Tokens, err error) {
 		out = append(out, ot...)
 		prev = lt[1:]
 		cnt++
-		p.symbols["iota"].cval = constant.Make(cnt)
+		p.Symbols["iota"].Cval = constant.Make(cnt)
 	}
 	return out, err
 }
@@ -57,7 +57,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
 				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
-				p.addSym(unsetAddr, name, nilValue, symConst, nil, false)
+				p.AddSymbol(UnsetAddr, name, nilValue, SymConst, nil, false)
 			}
 		} else {
 			return out, err
@@ -76,13 +76,13 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			return out, err
 		}
 		name := strings.TrimPrefix(p.scope+"/"+vars[i], "/")
-		p.symbols[name] = &symbol{
-			kind:  symConst,
-			index: unsetAddr,
-			cval:  cval,
-			value: vm.ValueOf(constValue(cval)),
-			local: p.funcScope != "",
-			used:  true,
+		p.Symbols[name] = &Symbol{
+			Kind:  SymConst,
+			Index: UnsetAddr,
+			Cval:  cval,
+			Value: vm.ValueOf(constValue(cval)),
+			Local: p.funcScope != "",
+			Used:  true,
 		}
 		// TODO: type conversion when applicable.
 	}
@@ -131,14 +131,14 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 	case id.IsLiteral():
 		return constant.MakeFromLiteral(t.Str, gotok[id], 0), 1, err
 	case id == lang.Ident:
-		s, _, ok := p.getSym(t.Str, p.scope)
+		s, _, ok := p.GetSym(t.Str, p.scope)
 		if !ok {
 			return nil, 0, errors.New("symbol not found")
 		}
-		if s.kind != symConst {
+		if s.Kind != SymConst {
 			return nil, 0, errors.New("symbol is not a constant")
 		}
-		return s.cval, 1, err
+		return s.Cval, 1, err
 	case id == lang.Call:
 		// TODO: implement support for type conversions and builtin calls.
 		panic("not implemented yet")
@@ -223,7 +223,7 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 		return out, fmt.Errorf("invalid argument %v", in[0])
 	}
 	pp := in[l-1].Block()
-	pkg, ok := packages[pp]
+	pkg, ok := Packages[pp]
 	if !ok {
 		// TODO: try to import source package from here.
 		return out, fmt.Errorf("package not found: %s", pp)
@@ -240,10 +240,10 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	if n == "." {
 		// Import package symbols in the current scope.
 		for k, v := range pkg {
-			p.symbols[k] = &symbol{index: unsetAddr, pkgPath: pp, value: v}
+			p.Symbols[k] = &Symbol{Index: UnsetAddr, PkgPath: pp, Value: v}
 		}
 	} else {
-		p.symbols[n] = &symbol{kind: symPkg, pkgPath: pp, index: unsetAddr}
+		p.Symbols[n] = &Symbol{Kind: SymPkg, PkgPath: pp, Index: UnsetAddr}
 	}
 	return out, err
 }
@@ -299,7 +299,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	typ.Name = in[0].Str
-	p.addSym(unsetAddr, in[0].Str, vm.NewValue(typ), symType, typ, p.funcScope != "")
+	p.AddSymbol(UnsetAddr, in[0].Str, vm.NewValue(typ), SymType, typ, p.funcScope != "")
 	return out, err
 }
 
@@ -336,10 +336,10 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 				vars = append(vars, lt[0].Str)
 				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
 				if p.funcScope == "" {
-					p.addSym(unsetAddr, name, nilValue, symVar, nil, false)
+					p.AddSymbol(UnsetAddr, name, nilValue, SymVar, nil, false)
 					continue
 				}
-				p.addSym(p.framelen[p.funcScope], name, nilValue, symVar, nil, false)
+				p.AddSymbol(p.framelen[p.funcScope], name, nilValue, SymVar, nil, false)
 				p.framelen[p.funcScope]++
 			}
 		} else {

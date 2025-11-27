@@ -1,8 +1,9 @@
-package parser
+package interpreter
 
 import (
 	"reflect"
 
+	"github.com/mvertes/parscan/compiler"
 	"github.com/mvertes/parscan/scanner"
 	"github.com/mvertes/parscan/vm"
 )
@@ -11,13 +12,13 @@ const debug = true
 
 // Interpreter represents the state of an interpreter.
 type Interpreter struct {
-	*Compiler
+	*compiler.Compiler
 	*vm.Machine
 }
 
 // NewInterpreter returns a new interpreter state.
 func NewInterpreter(s *scanner.Scanner) *Interpreter {
-	return &Interpreter{NewCompiler(s), &vm.Machine{}}
+	return &Interpreter{compiler.NewCompiler(s), &vm.Machine{}}
 }
 
 // Eval interprets a src program and return the last produced value if any, or an error.
@@ -39,8 +40,8 @@ func (i *Interpreter) Eval(src string) (res reflect.Value, err error) {
 	}
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
-	if s, ok := i.symbols["main"]; ok {
-		i.PushCode(vm.Instruction{Op: vm.Calli, Arg: []int{int(i.Data[s.index].Data.Int())}})
+	if s, ok := i.Symbols["main"]; ok {
+		i.PushCode(vm.Instruction{Op: vm.Calli, Arg: []int{int(i.Data[s.Index].Data.Int())}})
 	}
 	i.PushCode(vm.Instruction{Op: vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
