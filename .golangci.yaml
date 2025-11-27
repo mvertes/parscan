@@ -14,10 +14,10 @@ linters:
   exclusions:
     generated: lax
     presets:
-      - comments
       - common-false-positives
       - legacy
       - std-error-handling
+      - comments
     paths:
       - third_party$
       - builtin$

@@ -4,11 +4,12 @@ import (
 	"testing"
 
 	"github.com/mvertes/parscan/interpreter"
+	"github.com/mvertes/parscan/lang/golang"
 )
 
 func TestDump(t *testing.T) {
 	initProgram := "var a int = 2+1; a"
-	interp := interpreter.NewInterpreter(GoScanner)
+	interp := interpreter.NewInterpreter(golang.GoSpec)
 	r, e := interp.Eval(initProgram)
 	t.Log(r, e)
 	if e != nil {
@@ -24,7 +25,7 @@ func TestDump(t *testing.T) {
 	d := interp.Dump()
 	t.Log(d)
 
-	interp = interpreter.NewInterpreter(GoScanner)
+	interp = interpreter.NewInterpreter(golang.GoSpec)
 	r, e = interp.Eval(initProgram)
 	t.Log(r, e)
 	if e != nil {

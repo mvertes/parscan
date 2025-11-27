@@ -41,9 +41,9 @@ var (
 )
 
 // NewParser returns a new parser.
-func NewParser(scanner *scanner.Scanner, noPkg bool) *Parser {
+func NewParser(spec *lang.Spec, noPkg bool) *Parser {
 	return &Parser{
-		Scanner:    scanner,
+		Scanner:    scanner.NewScanner(spec),
 		noPkg:      noPkg,
 		Symbols:    initUniverse(),
 		framelen:   map[string]int{},

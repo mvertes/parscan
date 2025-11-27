@@ -26,9 +26,9 @@ type Compiler struct {
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
-func NewCompiler(scanner *scanner.Scanner) *Compiler {
+func NewCompiler(spec *lang.Spec) *Compiler {
 	return &Compiler{
-		Parser:  parser.NewParser(scanner, true),
+		Parser:  parser.NewParser(spec, true),
 		Entry:   -1,
 		strings: map[string]int{},
 	}

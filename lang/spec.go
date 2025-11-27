@@ -28,7 +28,7 @@ type TokenProp struct {
 	Precedence int  // operator precedence
 }
 
-// Spec represents the token specification for scanning.
+// Spec represents the language specification for scanning.
 type Spec struct {
 	CharProp   [ASCIILen]uint       // special Character properties
 	End        map[string]string    // end delimiters, indexed by start

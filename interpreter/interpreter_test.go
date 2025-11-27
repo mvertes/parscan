@@ -7,7 +7,6 @@ import (
 
 	"github.com/mvertes/parscan/interpreter"
 	"github.com/mvertes/parscan/lang/golang"
-	"github.com/mvertes/parscan/scanner"
 )
 
 type etest struct {
@@ -15,19 +14,17 @@ type etest struct {
 	skip          bool
 }
 
-var GoScanner *scanner.Scanner
-
 func init() {
 	log.SetFlags(log.Lshortfile)
-	GoScanner = scanner.NewScanner(golang.GoSpec)
 }
 
 func gen(test etest) func(*testing.T) {
 	return func(t *testing.T) {
+		t.Parallel()
 		if test.skip {
 			t.Skip()
 		}
-		interp := interpreter.NewInterpreter(GoScanner)
+		interp := interpreter.NewInterpreter(golang.GoSpec)
 		errStr := ""
 		r, e := interp.Eval(test.src)
 		t.Log(r, e)

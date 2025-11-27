@@ -4,25 +4,25 @@ import (
 	"reflect"
 
 	"github.com/mvertes/parscan/compiler"
-	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/vm"
 )
 
 const debug = true
 
-// Interpreter represents the state of an interpreter.
-type Interpreter struct {
+// Interp represents the state of an interpreter.
+type Interp struct {
 	*compiler.Compiler
 	*vm.Machine
 }
 
-// NewInterpreter returns a new interpreter state.
-func NewInterpreter(s *scanner.Scanner) *Interpreter {
-	return &Interpreter{compiler.NewCompiler(s), &vm.Machine{}}
+// NewInterpreter returns a new interpreter.
+func NewInterpreter(s *lang.Spec) *Interp {
+	return &Interp{compiler.NewCompiler(s), &vm.Machine{}}
 }
 
-// Eval interprets a src program and return the last produced value if any, or an error.
-func (i *Interpreter) Eval(src string) (res reflect.Value, err error) {
+// Eval evaluates code string and return the last produced value if any, or an error.
+func (i *Interp) Eval(src string) (res reflect.Value, err error) {
 	codeOffset := len(i.Code)
 	dataOffset := 0
 	if codeOffset > 0 {
