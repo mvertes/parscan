@@ -11,10 +11,8 @@ import (
 
 const debug = true
 
-type (
-	Op  int // Op is a VM opcode (bytecode instruction).
-	Pos int // Pos is the source code position of instruction
-)
+// Op is a VM opcode (bytecode instruction).
+type Op int
 
 //go:generate stringer -type=Op
 
@@ -57,6 +55,9 @@ const (
 	Subi                   // n1 -- diff ; diff = n1 - $1
 	Swap                   // --
 )
+
+// Pos is the source code position of instruction.
+type Pos int
 
 // Instruction represents a virtual machine bytecode instruction.
 type Instruction struct {

@@ -4,30 +4,20 @@ linters:
     - gocritic
     - godot
     - gosec
+    - ineffassign
     - misspell
+    - modernize
     - perfsprint
     - prealloc
     - predeclared
     - reassign
     - revive
+    - staticcheck
     - unconvert
+    - unused
   exclusions:
-    generated: lax
     presets:
       - common-false-positives
-      - legacy
-      - std-error-handling
-      - comments
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
 formatters:
   enable:
     - gofumpt
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$

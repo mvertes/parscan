@@ -1,3 +1,4 @@
+// Package compiler implements a compiler targeting the vm.
 package compiler
 
 import (

@@ -42,7 +42,6 @@ func gen(test etest) func(*testing.T) {
 
 func run(t *testing.T, tests []etest) {
 	for _, test := range tests {
-		test := test
 		t.Run("", gen(test))
 	}
 }

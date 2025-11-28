@@ -1,3 +1,4 @@
+// Package interpreter implements an interpreter.
 package interpreter
 
 import (

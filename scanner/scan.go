@@ -155,10 +155,7 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 func loc(s string, p int) string {
 	s = s[:p]
 	l := strings.Count(s, "\n")
-	li := strings.LastIndex(s, "\n")
-	if li < 0 {
-		li = 0
-	}
+	li := max(strings.LastIndex(s, "\n"), 0)
 	return fmt.Sprintf("%d:%d", 1+l, 1+len(s)-li)
 }
 

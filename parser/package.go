@@ -6,6 +6,7 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
+// Packages contains binary package references.
 var Packages = map[string]map[string]vm.Value{
 	"fmt": fmtPkg,
 }

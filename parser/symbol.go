@@ -8,8 +8,10 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
+// SymKind represents the symbol kind.
 type SymKind int
 
+// Symbol kinds.
 const (
 	SymValue SymKind = iota // a value defined in the runtime
 	SymType                 // a type
@@ -22,8 +24,10 @@ const (
 
 //go:generate stringer -type=SymKind
 
+// UnsetAddr denotes an unset symbol index (vs 0).
 const UnsetAddr = -65535
 
+// Symbol structure used in parser and compiler.
 type Symbol struct {
 	Kind    SymKind
 	Index   int            // address of symbol in frame
@@ -35,6 +39,7 @@ type Symbol struct {
 	Used    bool           //
 }
 
+// SymbolType returns the VM type of a symbol.
 func SymbolType(s *Symbol) *vm.Type {
 	if s.Type != nil {
 		return s.Type
@@ -42,11 +47,7 @@ func SymbolType(s *Symbol) *vm.Type {
 	return vm.TypeOf(s.Value)
 }
 
-// AddSym add a new named value at memory position i in the parser symbol table.
-// func (p *Parser) AddSym(i int, name string, v vm.Value) {
-// 	p.addSym(i, name, v, SymValue, nil, false)
-// }
-
+// AddSymbol adds a new named value at memory position i in the parser symbol table.
 func (p *Parser) AddSymbol(i int, name string, v vm.Value, k SymKind, t *vm.Type, local bool) {
 	name = strings.TrimPrefix(name, "/")
 	p.Symbols[name] = &Symbol{Kind: k, Index: i, Local: local, Value: v, Type: t}
