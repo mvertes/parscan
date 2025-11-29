@@ -33,8 +33,8 @@ func (t *Type) Out(i int) *Type {
 
 // Value is the representation of a runtime value.
 type Value struct {
-	Type *Type
-	Data reflect.Value
+	*Type
+	reflect.Value
 }
 
 // NewValue returns an addressable zero value for the specified type.
@@ -42,7 +42,7 @@ func NewValue(typ *Type) Value {
 	if typ.Rtype.Kind() == reflect.Func {
 		typ = TypeOf(0) // Function value is its index in the code segment.
 	}
-	return Value{Type: typ, Data: reflect.New(typ.Rtype).Elem()}
+	return Value{Type: typ, Value: reflect.New(typ.Rtype).Elem()}
 }
 
 // TypeOf returns the runtime type of v.
@@ -53,7 +53,7 @@ func TypeOf(v any) *Type {
 
 // ValueOf returns the runtime value of v.
 func ValueOf(v any) Value {
-	return Value{Data: reflect.ValueOf(v)}
+	return Value{Value: reflect.ValueOf(v)}
 }
 
 // PointerTo returns the pointer type with element t.

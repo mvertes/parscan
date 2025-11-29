@@ -103,21 +103,21 @@ func (m *Machine) Run() (err error) {
 		ic++
 		switch c.Op {
 		case Add:
-			mem[sp-2] = ValueOf(int(mem[sp-2].Data.Int() + mem[sp-1].Data.Int()))
+			mem[sp-2] = ValueOf(int(mem[sp-2].Int() + mem[sp-1].Int()))
 			mem = mem[:sp-1]
 		case Mul:
-			mem[sp-2] = ValueOf(int(mem[sp-2].Data.Int() * mem[sp-1].Data.Int()))
+			mem[sp-2] = ValueOf(int(mem[sp-2].Int() * mem[sp-1].Int()))
 			mem = mem[:sp-1]
 		case Addr:
-			mem[sp-1].Data = mem[sp-1].Data.Addr()
+			mem[sp-1].Value = mem[sp-1].Addr()
 		case Assign:
-			mem[c.Arg[0]].Data.Set(mem[sp-1].Data)
+			mem[c.Arg[0]].Set(mem[sp-1].Value)
 			mem = mem[:sp-1]
 		case Fassign:
-			mem[fp+c.Arg[0]-1].Data.Set(mem[sp-1].Data)
+			mem[fp+c.Arg[0]-1].Set(mem[sp-1].Value)
 			mem = mem[:sp-1]
 		case Call:
-			nip := int(mem[sp-1].Data.Int())
+			nip := int(mem[sp-1].Int())
 			mem = append(mem[:sp-1], ValueOf(ip+1), ValueOf(fp))
 			ip = nip
 			fp = sp + 1
@@ -130,24 +130,24 @@ func (m *Machine) Run() (err error) {
 		case CallX: // Should be made optional.
 			in := make([]reflect.Value, c.Arg[0])
 			for i := range in {
-				in[i] = mem[sp-2-i].Data
+				in[i] = mem[sp-2-i].Value
 			}
-			f := mem[sp-1].Data
+			f := mem[sp-1].Value
 			mem = mem[:sp-c.Arg[0]-1]
 			for _, v := range f.Call(in) {
-				mem = append(mem, Value{Data: v})
+				mem = append(mem, Value{Value: v})
 			}
 		case Deref:
-			mem[sp-1].Data = mem[sp-1].Data.Elem()
+			mem[sp-1].Value = mem[sp-1].Value.Elem()
 		case Dup:
 			mem = append(mem, mem[c.Arg[0]])
 		case New:
 			mem[c.Arg[0]+fp-1] = NewValue(mem[c.Arg[1]].Type)
 		case Equal:
-			mem[sp-2] = ValueOf(mem[sp-2].Data.Equal(mem[sp-1].Data))
+			mem[sp-2] = ValueOf(mem[sp-2].Equal(mem[sp-1].Value))
 			mem = mem[:sp-1]
 		case EqualSet:
-			if mem[sp-2].Data.Equal(mem[sp-1].Data) {
+			if mem[sp-2].Equal(mem[sp-1].Value) {
 				// If equal then lhs and rhs are popped, replaced by test result, as in Equal.
 				mem[sp-2] = ValueOf(true)
 				mem = mem[:sp-1]
@@ -161,31 +161,31 @@ func (m *Machine) Run() (err error) {
 		case Fdup:
 			mem = append(mem, mem[c.Arg[0]+fp-1])
 		case Field:
-			fv := mem[sp-1].Data.FieldByIndex(c.Arg)
+			fv := mem[sp-1].FieldByIndex(c.Arg)
 			if !fv.CanSet() {
 				// Normally private fields can not bet set via reflect. Override this limitation.
 				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
 			}
-			mem[sp-1].Data = fv
+			mem[sp-1].Value = fv
 		case Jump:
 			ip += c.Arg[0]
 			continue
 		case JumpTrue:
-			cond := mem[sp-1].Data.Bool()
+			cond := mem[sp-1].Bool()
 			mem = mem[:sp-1]
 			if cond {
 				ip += c.Arg[0]
 				continue
 			}
 		case JumpFalse:
-			cond := mem[sp-1].Data.Bool()
+			cond := mem[sp-1].Bool()
 			mem = mem[:sp-1]
 			if !cond {
 				ip += c.Arg[0]
 				continue
 			}
 		case JumpSetTrue:
-			cond := mem[sp-1].Data.Bool()
+			cond := mem[sp-1].Bool()
 			if cond {
 				ip += c.Arg[0]
 				// Note that the stack is not modified if cond is true.
@@ -193,7 +193,7 @@ func (m *Machine) Run() (err error) {
 			}
 			mem = mem[:sp-1]
 		case JumpSetFalse:
-			cond := mem[sp-1].Data.Bool()
+			cond := mem[sp-1].Bool()
 			if !cond {
 				ip += c.Arg[0]
 				// Note that the stack is not modified if cond is false.
@@ -201,40 +201,40 @@ func (m *Machine) Run() (err error) {
 			}
 			mem = mem[:sp-1]
 		case Greater:
-			mem[sp-2] = ValueOf(mem[sp-1].Data.Int() > mem[sp-2].Data.Int())
+			mem[sp-2] = ValueOf(mem[sp-1].Int() > mem[sp-2].Int())
 			mem = mem[:sp-1]
 		case Lower:
-			mem[sp-2] = ValueOf(mem[sp-1].Data.Int() < mem[sp-2].Data.Int())
+			mem[sp-2] = ValueOf(mem[sp-1].Int() < mem[sp-2].Int())
 			mem = mem[:sp-1]
 		case Loweri:
-			mem[sp-1] = ValueOf(mem[sp-1].Data.Int() < int64(c.Arg[0]))
+			mem[sp-1] = ValueOf(mem[sp-1].Int() < int64(c.Arg[0]))
 		case Not:
-			mem[sp-1] = ValueOf(!mem[sp-1].Data.Bool())
+			mem[sp-1] = ValueOf(!mem[sp-1].Bool())
 		case Pop:
 			mem = mem[:sp-c.Arg[0]]
 		case Push:
 			mem = append(mem, NewValue(TypeOf(0)))
-			mem[sp].Data.SetInt(int64(c.Arg[0]))
+			mem[sp].SetInt(int64(c.Arg[0]))
 		case Grow:
 			mem = append(mem, make([]Value, c.Arg[0])...)
 		case Return:
-			ip = int(mem[fp-2].Data.Int())
+			ip = int(mem[fp-2].Int())
 			ofp := fp
-			fp = int(mem[fp-1].Data.Int())
+			fp = int(mem[fp-1].Int())
 			mem = append(mem[:ofp-c.Arg[0]-c.Arg[1]-1], mem[sp-c.Arg[0]:]...)
 			continue
 		case Sub:
-			mem[sp-2] = ValueOf(int(mem[sp-1].Data.Int() - mem[sp-2].Data.Int()))
+			mem[sp-2] = ValueOf(int(mem[sp-1].Int() - mem[sp-2].Int()))
 			mem = mem[:sp-1]
 		case Subi:
-			mem[sp-1] = ValueOf(int(mem[sp-1].Data.Int()) - c.Arg[0])
+			mem[sp-1] = ValueOf(int(mem[sp-1].Int()) - c.Arg[0])
 		case Swap:
 			mem[sp-2], mem[sp-1] = mem[sp-1], mem[sp-2]
 		case Index:
-			mem[sp-2].Data = mem[sp-1].Data.Index(int(mem[sp-2].Data.Int()))
+			mem[sp-2].Value = mem[sp-1].Index(int(mem[sp-2].Int()))
 			mem = mem[:sp-1]
 		case Vassign:
-			mem[sp-1].Data.Set(mem[sp-2].Data)
+			mem[sp-1].Set(mem[sp-2].Value)
 			mem = mem[:sp-2]
 		}
 		ip++
@@ -288,7 +288,7 @@ func Vstring(lv []Value) string {
 		if s != "[" {
 			s += " "
 		}
-		s += fmt.Sprintf("%v", v.Data)
+		s += fmt.Sprintf("%v", v.Value)
 	}
 	return s + "]"
 }

@@ -1,4 +1,4 @@
-package interpreter
+package interp
 
 import (
 	"bufio"

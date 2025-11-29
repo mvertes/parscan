@@ -4,7 +4,7 @@ lint:
 
 # Run tests with race detector, measure coverage.
 test:
-	go test -race -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./interpreter
+	go test -race -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./interp
 	
 # Open coverage info in browser
 cover: test

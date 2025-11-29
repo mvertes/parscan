@@ -1,43 +1,43 @@
-package interpreter_test
+package interp_test
 
 import (
 	"testing"
 
-	"github.com/mvertes/parscan/interpreter"
+	"github.com/mvertes/parscan/interp"
 	"github.com/mvertes/parscan/lang/golang"
 )
 
 func TestDump(t *testing.T) {
 	initProgram := "var a int = 2+1; a"
-	interp := interpreter.NewInterpreter(golang.GoSpec)
-	r, e := interp.Eval(initProgram)
+	intp := interp.NewInterpreter(golang.GoSpec)
+	r, e := intp.Eval(initProgram)
 	t.Log(r, e)
 	if e != nil {
 		t.Fatal(e)
 	}
 
-	r, e = interp.Eval("a = 100")
+	r, e = intp.Eval("a = 100")
 	t.Log(r, e)
 	if e != nil {
 		t.Fatal(e)
 	}
 
-	d := interp.Dump()
+	d := intp.Dump()
 	t.Log(d)
 
-	interp = interpreter.NewInterpreter(golang.GoSpec)
-	r, e = interp.Eval(initProgram)
+	intp = interp.NewInterpreter(golang.GoSpec)
+	r, e = intp.Eval(initProgram)
 	t.Log(r, e)
 	if e != nil {
 		t.Fatal(e)
 	}
 
-	e = interp.ApplyDump(d)
+	e = intp.ApplyDump(d)
 	if e != nil {
 		t.Fatal(e)
 	}
 
-	r, e = interp.Eval("a = a + 1;a")
+	r, e = intp.Eval("a = a + 1;a")
 	t.Log(r, e)
 	if e != nil {
 		t.Fatal(e)

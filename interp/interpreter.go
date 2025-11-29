@@ -1,10 +1,10 @@
-// Package interpreter implements an interpreter.
-package interpreter
+// Package interp implements an interpreter.
+package interp
 
 import (
 	"reflect"
 
-	"github.com/mvertes/parscan/compiler"
+	"github.com/mvertes/parscan/comp"
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/vm"
 )
@@ -13,13 +13,13 @@ const debug = true
 
 // Interp represents the state of an interpreter.
 type Interp struct {
-	*compiler.Compiler
+	*comp.Compiler
 	*vm.Machine
 }
 
 // NewInterpreter returns a new interpreter.
 func NewInterpreter(s *lang.Spec) *Interp {
-	return &Interp{compiler.NewCompiler(s), &vm.Machine{}}
+	return &Interp{comp.NewCompiler(s), &vm.Machine{}}
 }
 
 // Eval evaluates code string and return the last produced value if any, or an error.
@@ -36,13 +36,13 @@ func (i *Interp) Eval(src string) (res reflect.Value, err error) {
 	if err != nil {
 		return res, err
 	}
-	if err = i.Codegen(t); err != nil {
+	if err = i.Generate(t); err != nil {
 		return res, err
 	}
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
 	if s, ok := i.Symbols["main"]; ok {
-		i.PushCode(vm.Instruction{Op: vm.Calli, Arg: []int{int(i.Data[s.Index].Data.Int())}})
+		i.PushCode(vm.Instruction{Op: vm.Calli, Arg: []int{int(i.Data[s.Index].Int())}})
 	}
 	i.PushCode(vm.Instruction{Op: vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
@@ -51,5 +51,5 @@ func (i *Interp) Eval(src string) (res reflect.Value, err error) {
 		i.PrintCode()
 	}
 	err = i.Run()
-	return i.Top().Data, err
+	return i.Top().Value, err
 }

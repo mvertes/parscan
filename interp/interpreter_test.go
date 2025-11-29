@@ -1,11 +1,11 @@
-package interpreter_test
+package interp_test
 
 import (
 	"fmt"
 	"log"
 	"testing"
 
-	"github.com/mvertes/parscan/interpreter"
+	"github.com/mvertes/parscan/interp"
 	"github.com/mvertes/parscan/lang/golang"
 )
 
@@ -24,9 +24,9 @@ func gen(test etest) func(*testing.T) {
 		if test.skip {
 			t.Skip()
 		}
-		interp := interpreter.NewInterpreter(golang.GoSpec)
+		intp := interp.NewInterpreter(golang.GoSpec)
 		errStr := ""
-		r, e := interp.Eval(test.src)
+		r, e := intp.Eval(test.src)
 		t.Log(r, e)
 		if e != nil {
 			errStr = e.Error()

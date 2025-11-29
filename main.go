@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/mvertes/parscan/interpreter"
+	"github.com/mvertes/parscan/interp"
 	"github.com/mvertes/parscan/lang/golang"
 )
 
@@ -32,21 +32,21 @@ func run(arg []string) error {
 	}
 	args := rflag.Args()
 
-	interp := interpreter.NewInterpreter(golang.GoSpec)
+	i := interp.NewInterpreter(golang.GoSpec)
 	if str != "" {
-		return evalStr(interp, str)
+		return evalStr(i, str)
 	}
 	if len(args) == 0 {
-		return interp.Repl(os.Stdin)
+		return i.Repl(os.Stdin)
 	}
 	buf, err := os.ReadFile(arg[0])
 	if err != nil {
 		return err
 	}
-	return evalStr(interp, string(buf))
+	return evalStr(i, string(buf))
 }
 
-func evalStr(i *interpreter.Interp, s string) error {
+func evalStr(i *interp.Interp, s string) error {
 	_, err := i.Eval(s)
 	return err
 }

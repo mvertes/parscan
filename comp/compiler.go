@@ -1,5 +1,5 @@
-// Package compiler implements a compiler targeting the vm.
-package compiler
+// Package comp implements a byte code generator targeting the vm.
+package comp
 
 import (
 	"fmt"
@@ -43,8 +43,8 @@ func (c *Compiler) AddSym(name string, value vm.Value) int {
 	return p
 }
 
-// Codegen generates vm code from parsed tokens.
-func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
+// Generate generates vm code and data from parsed tokens.
+func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
 	fixList := parser.Tokens{}  // list of tokens to fix after all necessary information is gathered
 	stack := []*parser.Symbol{} // for symbolic evaluation, type checking, etc
@@ -69,7 +69,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 
 		case lang.String:
 			s := t.Block()
-			v := vm.Value{Data: reflect.ValueOf(s), Type: vm.TypeOf(s)}
+			v := vm.Value{Type: vm.TypeOf(s), Value: reflect.ValueOf(s)}
 			i, ok := c.strings[s]
 			if !ok {
 				i = len(c.Data)
@@ -136,7 +136,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 			fallthrough // A symValue must be called through callX.
 
 		case lang.CallX:
-			rtyp := pop().Value.Data.Type()
+			rtyp := pop().Value.Value.Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
 				push(&parser.Symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
@@ -147,7 +147,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 			log.Println("COMPOSITE")
 			/*
 				d := pop()
-				switch d.typ.Rtype.Kind() {
+				switch d.Type.Rtype.Kind() {
 				case reflect.Struct:
 					// nf := d.typ.Rtype.NumField()
 					// emit(t.Pos, vm.New, d.index, c.typeSym(d.typ).index)
@@ -268,7 +268,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Data.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			emit(t, vm.JumpFalse, i)
 
@@ -279,7 +279,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Data.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			emit(t, vm.JumpSetFalse, i)
 
@@ -290,7 +290,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Data.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			emit(t, vm.JumpSetTrue, i)
 
@@ -300,7 +300,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 				t.Beg = len(c.Code)
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Data.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			emit(t, vm.Jump, i)
 
@@ -341,7 +341,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 			emit(t, vm.Return, t.Beg, t.End)
 
 		default:
-			return fmt.Errorf("Codegen: unsupported token %v", t)
+			return fmt.Errorf("generate: unsupported token %v", t)
 		}
 	}
 
@@ -351,7 +351,7 @@ func (c *Compiler) Codegen(tokens parser.Tokens) (err error) {
 		if !ok {
 			return fmt.Errorf("label not found: %q", t.Str)
 		}
-		c.Code[t.Beg].Arg[0] = int(s.Value.Data.Int()) - t.Beg
+		c.Code[t.Beg].Arg[0] = int(s.Value.Int()) - t.Beg
 	}
 	return err
 }
@@ -365,7 +365,7 @@ func (c *Compiler) PrintCode() {
 
 	for name, sym := range c.Symbols {
 		if sym.Kind == parser.SymLabel || sym.Kind == parser.SymFunc {
-			i := int(sym.Value.Data.Int())
+			i := int(sym.Value.Int())
 			labels[i] = append(labels[i], name)
 		}
 		if sym.Used {
@@ -423,7 +423,7 @@ func (c *Compiler) PrintData() {
 
 	fmt.Fprintln(os.Stderr, "# Data:")
 	for i, d := range c.Data {
-		fmt.Fprintf(os.Stderr, "%4d %T %v %v\n", i, d.Data.Interface(), d.Data, dict[i])
+		fmt.Fprintf(os.Stderr, "%4d %T %v %v\n", i, d.Interface(), d.Value, dict[i])
 	}
 }
 
@@ -469,7 +469,7 @@ func (c *Compiler) Dump() *Dump {
 			Name:  e.name,
 			Kind:  int(e.Kind),
 			Type:  e.Type.Name,
-			Value: d.Data.Interface(),
+			Value: d.Interface(),
 		}
 	}
 	return &Dump{Values: dv}
@@ -499,11 +499,11 @@ func (c *Compiler) ApplyDump(d *Dump) error {
 			return fmt.Errorf("index (%d) bigger than memory (%d)", dv.Index, len(c.Data))
 		}
 
-		if !c.Data[dv.Index].Data.CanSet() {
+		if !c.Data[dv.Index].CanSet() {
 			return fmt.Errorf("value %v cannot be set", dv.Value)
 		}
 
-		c.Data[dv.Index].Data.Set(reflect.ValueOf(dv.Value))
+		c.Data[dv.Index].Set(reflect.ValueOf(dv.Value))
 	}
 	return nil
 }
