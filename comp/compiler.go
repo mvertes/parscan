@@ -56,6 +56,15 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	}
 	push := func(s *parser.Symbol) { stack = append(stack, s) }
 	pop := func() *parser.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
+	top := func() *parser.Symbol { return stack[len(stack)-1] }
+
+	showStack := func() {
+		_, file, line, _ := runtime.Caller(1)
+		fmt.Fprintf(os.Stderr, "%s%d: showstack: %d\n", path.Base(file), line, len(stack))
+		for i, s := range stack {
+			fmt.Fprintf(os.Stderr, "%s:%d: stack[%d]: %v\n", path.Base(file), line, i, s)
+		}
+	}
 
 	for i, t := range tokens {
 		switch t.Tok {
@@ -144,23 +153,17 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.CallX, t.Beg)
 
 		case lang.Composite:
-			log.Println("COMPOSITE")
-			/*
-				d := pop()
-				switch d.Type.Rtype.Kind() {
-				case reflect.Struct:
-					// nf := d.typ.Rtype.NumField()
-					// emit(t.Pos, vm.New, d.index, c.typeSym(d.typ).index)
-					emit(t, vm.Field, 0)
-					emit(t, vm.Vassign)
-					emit(t, vm.Fdup, 2)
-					emit(t, vm.Field, 1)
-					emit(t, vm.Vassign)
-					emit(t, vm.Pop, 1)
-					// emit(t, vm.Fdup, 2)
-					// Assume an element list with no keys, one per struct field in order
+			d := top() // let the type symbol on the stack, may be required for assignment
+			switch d.Type.Rtype.Kind() {
+			case reflect.Struct:
+				emit(t, vm.Fnew, d.Index)
+				nf := d.Type.Rtype.NumField()
+				for i := 0; i < nf; i++ {
+					emit(t, vm.FieldSet, i)
 				}
-			*/
+			default:
+				return fmt.Errorf("composite kind not supported yet: %v", d.Type.Rtype.Kind())
+			}
 
 		case lang.Grow:
 			emit(t, vm.Grow, t.Beg)
@@ -169,6 +172,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			// TODO: support assignment to local, composite objects.
 			st := tokens[i-1]
 			l := len(c.Data)
+			showStack()
 			d := pop()
 			typ := d.Type
 			if typ == nil {
@@ -242,7 +246,9 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					s.Index = len(c.Data)
 					c.Data = append(c.Data, s.Value)
 				}
-				emit(t, vm.Dup, s.Index)
+				if s.Kind != parser.SymType {
+					emit(t, vm.Dup, s.Index)
+				}
 			}
 
 		case lang.Label:
@@ -389,7 +395,7 @@ func (c *Compiler) PrintCode() {
 				extra = "// " + d
 			}
 		}
-		fmt.Fprintf(os.Stderr, "%4d %-14v %v\n", i, l, extra)
+		fmt.Fprintf(os.Stderr, "%4d %-18v %v\n", i, l, extra)
 	}
 
 	for _, label := range labels[len(c.Code)] {
@@ -403,19 +409,7 @@ type entry struct {
 	*parser.Symbol
 }
 
-func (e entry) String() string {
-	if e.Symbol != nil {
-		return fmt.Sprintf("name: %s,local: %t, i: %d, k: %d, t: %s, v: %v",
-			e.name,
-			e.Local,
-			e.Index,
-			e.Kind,
-			e.Type,
-			e.Value,
-		)
-	}
-	return e.name
-}
+func (e entry) String() string { return fmt.Sprintf("name: %s, sym: %v", e.name, e.Symbol) }
 
 // PrintData pretty prints the generated global data symbols in compiler.
 func (c *Compiler) PrintData() {

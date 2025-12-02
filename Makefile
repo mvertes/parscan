@@ -2,6 +2,9 @@
 lint:
 	golangci-lint run
 
+generate:
+	go generate ./...
+
 # Run tests with race detector, measure coverage.
 test:
 	go test -race -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./interp

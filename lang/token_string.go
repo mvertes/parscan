@@ -109,8 +109,9 @@ const _Token_name = "IllegalCommentIdentCharFloatImagIntStringAddSubMulQuoRemAnd
 var _Token_index = [...]uint16{0, 7, 14, 19, 23, 28, 32, 35, 41, 44, 47, 50, 53, 56, 59, 61, 64, 67, 70, 76, 82, 87, 94, 106, 110, 114, 123, 126, 134, 140, 146, 155, 164, 173, 182, 191, 200, 208, 217, 226, 235, 247, 250, 253, 257, 262, 266, 271, 278, 283, 291, 294, 299, 304, 313, 318, 328, 340, 350, 355, 359, 363, 368, 376, 383, 388, 392, 403, 406, 410, 412, 416, 418, 424, 433, 436, 443, 448, 454, 460, 466, 472, 476, 479, 483, 488, 497, 505, 509, 514, 523, 535, 546, 551, 554}
 
 func (i Token) String() string {
-	if i < 0 || i >= Token(len(_Token_index)-1) {
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_Token_index)-1 {
 		return "Token(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _Token_name[_Token_index[i]:_Token_index[i+1]]
+	return _Token_name[_Token_index[idx]:_Token_index[idx+1]]
 }

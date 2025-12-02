@@ -31,10 +31,12 @@ const (
 	Deref                  // x -- *x ;
 	Dup                    // addr -- value ; value = mem[addr]
 	Fdup                   // addr -- value ; value = mem[addr]
+	Fnew                   // -- x; x = new mem[$1]
 	Equal                  // n1 n2 -- cond ; cond = n1 == n2
 	EqualSet               // n1 n2 -- n1 cond ; cond = n1 == n2
 	Exit                   // -- ;
 	Field                  // s -- f ; f = s.FieldIndex($1, ...)
+	FieldSet               // s d -- s ; s.FieldIndex($1, ...) = d
 	Greater                // n1 n2 -- cond; cond = n1 > n2
 	Grow                   // -- ; sp += $1
 	Index                  // a i -- a[i] ;
@@ -98,7 +100,7 @@ func (m *Machine) Run() (err error) {
 		sp = len(mem) // stack pointer
 		c := m.code[ip]
 		if debug {
-			log.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-14v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
+			log.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-18v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
 		}
 		ic++
 		switch c.Op {
@@ -160,6 +162,8 @@ func (m *Machine) Run() (err error) {
 			return err
 		case Fdup:
 			mem = append(mem, mem[c.Arg[0]+fp-1])
+		case Fnew:
+			mem = append(mem, NewValue(mem[c.Arg[0]].Type))
 		case Field:
 			fv := mem[sp-1].FieldByIndex(c.Arg)
 			if !fv.CanSet() {
@@ -167,6 +171,15 @@ func (m *Machine) Run() (err error) {
 				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
 			}
 			mem[sp-1].Value = fv
+		case FieldSet:
+			fv := mem[sp-1].FieldByIndex(c.Arg)
+			if !fv.CanSet() {
+				// Normally private fields can not bet set via reflect. Override this limitation.
+				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
+			}
+			fv.Set(mem[sp-2].Value)
+			mem[sp-2] = mem[sp-1]
+			mem = mem[:sp-1]
 		case Jump:
 			ip += c.Arg[0]
 			continue
@@ -229,7 +242,8 @@ func (m *Machine) Run() (err error) {
 		case Subi:
 			mem[sp-1] = ValueOf(int(mem[sp-1].Int()) - c.Arg[0])
 		case Swap:
-			mem[sp-2], mem[sp-1] = mem[sp-1], mem[sp-2]
+			a, b := sp-c.Arg[0]-1, sp-c.Arg[1]-1
+			mem[a], mem[b] = mem[b], mem[a]
 		case Index:
 			mem[sp-2].Value = mem[sp-1].Index(int(mem[sp-2].Int()))
 			mem = mem[:sp-1]
