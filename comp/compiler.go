@@ -48,6 +48,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
 	fixList := parser.Tokens{}  // list of tokens to fix after all necessary information is gathered
 	stack := []*parser.Symbol{} // for symbolic evaluation, type checking, etc
+	keyList := []string{}
 
 	emit := func(t scanner.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
@@ -152,14 +153,31 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			}
 			emit(t, vm.CallX, t.Beg)
 
+		case lang.Colon:
+			// Keyed element in a literal composite expression:
+			// If the key is an ident (field name), then push it on the keystack,
+			// to be computed at compile time in Composite handling.
+			// Or generate instructions so key will be computed at runtime.
+			if tokens[i-1].Tok == lang.Ident {
+				keyList = append(keyList, tokens[i-1].Str)
+			}
+
 		case lang.Composite:
 			d := top() // let the type symbol on the stack, may be required for assignment
 			switch d.Type.Rtype.Kind() {
 			case reflect.Struct:
 				emit(t, vm.Fnew, d.Index)
-				nf := d.Type.Rtype.NumField()
-				for i := 0; i < nf; i++ {
-					emit(t, vm.FieldSet, i)
+				if len(keyList) == 0 {
+					nf := d.Type.Rtype.NumField()
+					for i := 0; i < nf; i++ {
+						emit(t, vm.FieldSet, i)
+					}
+				} else {
+					for _, fname := range keyList {
+						i := d.Type.FieldNameIndex(fname)
+						emit(t, vm.FieldSet, i...)
+					}
+					keyList = []string{}
 				}
 			default:
 				return fmt.Errorf("composite kind not supported yet: %v", d.Type.Rtype.Kind())

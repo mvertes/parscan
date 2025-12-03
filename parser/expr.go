@@ -15,6 +15,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 	var ops, selectors Tokens
 	var vl int
 	var selectorIndex string
+
 	//
 	// Process tokens from last to first, the goal is to reorder the tokens in
 	// a stack machine processing order, so it can be directly interpreted.
@@ -30,6 +31,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 		out = append(out, fid)
 		return out, err
 	}
+
 	for i := len(in) - 1; i >= 0; i-- {
 		t := in[i]
 		// temporary assumptions: binary operators, returning 1 value
@@ -48,14 +50,22 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 			}
 			out = append(out, t)
 			vl++
+
+		case lang.Colon:
+			// Make ':' a key-value operator for literal composite.
+			ops = append(ops, t)
+
 		case lang.Period:
 			t.Str += selectorIndex
 			selectors = append(Tokens{t}, selectors...)
 			continue
+
 		case lang.Int, lang.String:
 			out = append(out, t)
 			vl++
-		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Land, lang.Lor, lang.Shl, lang.Shr, lang.Not, lang.And:
+
+		case lang.Define, lang.Add, lang.Sub, lang.Assign, lang.Equal, lang.Greater, lang.Less,
+			lang.Mul, lang.Land, lang.Lor, lang.Shl, lang.Shr, lang.Not, lang.And:
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				// An operator preceded by an operator or no token is unary.
 				t.Tok = lang.UnaryOp[t.Tok]
@@ -71,6 +81,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 			if vl < 2 {
 				ops = append(ops, t)
 			}
+
 		case lang.ParenBlock:
 			// If the previous token is an arithmetic, logic or assign operator then
 			// this parenthesis block is an enclosed expr, otherwise a call expr.
@@ -85,9 +96,11 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 			out = append(out, t)
 			vl++
 			ops = append(ops, scanner.Token{Tok: lang.Call, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
+
 		case lang.BraceBlock:
 			// the block can be a func body or a composite type content.
-			// In both cases it is preceded by a type definition. We must determine the starting token of type def,
+			// In both cases it is preceded by a type definition.
+			// We must determine the starting token of type def,
 			// parse the type def, and substitute the type def by a single ident.
 			// TODO: handle implicit type in composite expression.
 			ti := p.typeStartIndex(in[:len(in)-1])
@@ -103,19 +116,24 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 			i = ti
 			vl += 2
 			ops = append(ops, scanner.Token{Tok: lang.Composite, Pos: t.Pos})
+
 		case lang.BracketBlock:
 			out = append(out, t)
 			vl++
 			ops = append(ops, scanner.Token{Tok: lang.Index, Pos: t.Pos})
+
 		case lang.Comment:
 			return out, nil
+
 		default:
 			return nil, fmt.Errorf("invalid expression: %v: %q", t.Tok, t.Str)
 		}
+
 		if len(selectors) > 0 {
 			out = append(out, selectors...)
 			selectors = nil
 		}
+
 		if lops, lout := len(ops), len(out); lops > 0 && vl > lops {
 			op := ops[lops-1]
 			ops = ops[:lops-1]
@@ -137,6 +155,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 	if out, err = p.parseLogical(out); err != nil {
 		return out, err
 	}
+
 	if l := len(out) - 1; l >= 0 && (out[l].Tok == lang.Define || out[l].Tok == lang.Assign) {
 		// Handle the assignment of a logical expression.
 		s1 := p.subExprLen(out[:l])
@@ -166,6 +185,7 @@ func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
 		out2 = append(out2, toks...)
 		out = append(out2, out[i+1:]...)
 	}
+
 	log.Println("Final out:", out)
 	return out, err
 }
@@ -174,6 +194,7 @@ func (p *Parser) parseExprStr(s string) (tokens Tokens, err error) {
 	if tokens, err = p.Scan(s, false); err != nil {
 		return tokens, err
 	}
+
 	var result Tokens
 	for _, sub := range tokens.Split(lang.Comma) {
 		toks, err := p.parseExpr(sub)
@@ -182,6 +203,7 @@ func (p *Parser) parseExprStr(s string) (tokens Tokens, err error) {
 		}
 		result = append(toks, result...)
 	}
+
 	return result, err
 }
 
@@ -194,23 +216,28 @@ func (p *Parser) parseLogical(in Tokens) (out Tokens, err error) {
 	if l < 0 || !in[l].Tok.IsLogicalOp() {
 		return in, nil
 	}
+
 	xp := strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
 	rhsIndex := p.subExprLen(in[:l])
+
 	lhs, err := p.parseLogical(in[l-rhsIndex : l])
 	if err != nil {
 		return out, err
 	}
+
 	rhs, err := p.parseLogical(in[:l-rhsIndex])
 	if err != nil {
 		return out, err
 	}
 	out = append(out, lhs...)
+
 	if in[l].Tok == lang.Lor {
 		out = append(out, scanner.Token{Tok: lang.JumpSetTrue, Str: p.scope + "x" + xp})
 	} else {
 		out = append(out, scanner.Token{Tok: lang.JumpSetFalse, Str: p.scope + "x" + xp})
 	}
+
 	out = append(out, rhs...)
 	out = append(out, scanner.Token{Tok: lang.Label, Str: p.scope + "x" + xp})
 	return out, err
@@ -220,20 +247,25 @@ func (p *Parser) parseLogical(in Tokens) (out Tokens, err error) {
 func (p *Parser) subExprLen(in Tokens) int {
 	l := len(in) - 1
 	last := in[l]
+
 	switch last.Tok {
 	case lang.Int, lang.Float, lang.String, lang.Char, lang.Ident, lang.ParenBlock, lang.BracketBlock:
 		return 1
+
 	case lang.Call:
 		s1 := p.subExprLen(in[:l])
 		return 1 + s1 + p.subExprLen(in[:l-s1])
 		// TODO: add selector and index operators when ready
 	}
+
 	if last.Tok.IsBinaryOp() {
 		s1 := p.subExprLen(in[:l])
 		return 1 + s1 + p.subExprLen(in[:l-s1])
 	}
+
 	if last.Tok.IsUnaryOp() {
 		return 1 + p.subExprLen(in[:l])
 	}
+
 	return 0 // should not occur. TODO: diplay some error here.
 }

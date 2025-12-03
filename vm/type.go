@@ -94,3 +94,13 @@ func StructOf(fields []*Type) *Type {
 	}
 	return &Type{Rtype: reflect.StructOf(rf)}
 }
+
+// FieldNameIndex returns the index of struct field name.
+func (t *Type) FieldNameIndex(name string) []int {
+	for _, f := range reflect.VisibleFields(t.Rtype) {
+		if f.Name == name {
+			return f.Index
+		}
+	}
+	return nil
+}
