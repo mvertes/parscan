@@ -13,6 +13,7 @@ import (
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/parser"
 	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
 
@@ -39,7 +40,7 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 func (c *Compiler) AddSym(name string, value vm.Value) int {
 	p := len(c.Data)
 	c.Data = append(c.Data, value)
-	c.AddSymbol(p, name, value, parser.SymValue, nil, false)
+	c.Symbols.Add(p, name, value, symbol.Value, nil, false)
 	return p
 }
 
@@ -47,7 +48,7 @@ func (c *Compiler) AddSym(name string, value vm.Value) int {
 func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
 	fixList := parser.Tokens{}  // list of tokens to fix after all necessary information is gathered
-	stack := []*parser.Symbol{} // for symbolic evaluation, type checking, etc
+	stack := []*symbol.Symbol{} // for symbolic evaluation, type checking, etc
 	keyList := []string{}
 
 	emit := func(t scanner.Token, op vm.Op, arg ...int) {
@@ -55,9 +56,9 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 		c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
 	}
-	push := func(s *parser.Symbol) { stack = append(stack, s) }
-	pop := func() *parser.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
-	top := func() *parser.Symbol { return stack[len(stack)-1] }
+	push := func(s *symbol.Symbol) { stack = append(stack, s) }
+	pop := func() *symbol.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
+	top := func() *symbol.Symbol { return stack[len(stack)-1] }
 
 	showStack := func() {
 		_, file, line, _ := runtime.Caller(1)
@@ -74,7 +75,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			if err != nil {
 				return err
 			}
-			push(&parser.Symbol{Kind: parser.SymConst, Value: vm.ValueOf(n), Type: vm.TypeOf(0)})
+			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(n), Type: vm.TypeOf(0)})
 			emit(t, vm.Push, n)
 
 		case lang.String:
@@ -86,19 +87,19 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				c.Data = append(c.Data, v)
 				c.strings[s] = i
 			}
-			push(&parser.Symbol{Kind: parser.SymConst, Value: v})
+			push(&symbol.Symbol{Kind: symbol.Const, Value: v})
 			emit(t, vm.Dup, i)
 
 		case lang.Add:
-			push(&parser.Symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol.Symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Add)
 
 		case lang.Mul:
-			push(&parser.Symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol.Symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Mul)
 
 		case lang.Sub:
-			push(&parser.Symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol.Symbol{Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Sub)
 
 		case lang.Minus:
@@ -112,32 +113,32 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			// Unary '+' is idempotent. Nothing to do.
 
 		case lang.Addr:
-			push(&parser.Symbol{Type: vm.PointerTo(pop().Type)})
+			push(&symbol.Symbol{Type: vm.PointerTo(pop().Type)})
 			emit(t, vm.Addr)
 
 		case lang.Deref:
-			push(&parser.Symbol{Type: pop().Type.Elem()})
+			push(&symbol.Symbol{Type: pop().Type.Elem()})
 			emit(t, vm.Deref)
 
 		case lang.Index:
-			push(&parser.Symbol{Type: pop().Type.Elem()})
+			push(&symbol.Symbol{Type: pop().Type.Elem()})
 			emit(t, vm.Index)
 
 		case lang.Greater:
-			push(&parser.Symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
 			emit(t, vm.Greater)
 
 		case lang.Less:
-			push(&parser.Symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
 			emit(t, vm.Lower)
 
 		case lang.Call:
 			s := pop()
-			if s.Kind != parser.SymValue {
+			if s.Kind != symbol.Value {
 				typ := s.Type
 				// TODO: pop input types (careful with variadic function).
 				for i := 0; i < typ.Rtype.NumOut(); i++ {
-					push(&parser.Symbol{Type: typ.Out(i)})
+					push(&symbol.Symbol{Type: typ.Out(i)})
 				}
 				emit(t, vm.Call)
 				break
@@ -149,7 +150,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			rtyp := pop().Value.Value.Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
-				push(&parser.Symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
+				push(&symbol.Symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
 			}
 			emit(t, vm.CallX, t.Beg)
 
@@ -174,11 +175,15 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					}
 				} else {
 					for _, fname := range keyList {
-						i := d.Type.FieldNameIndex(fname)
+						i := d.Type.FieldIndex(fname)
 						emit(t, vm.FieldSet, i...)
 					}
 					keyList = []string{}
 				}
+			case reflect.Slice:
+				emit(t, vm.Fnew, d.Index)
+				// if len(keyList) == 0 {
+				// }
 			default:
 				return fmt.Errorf("composite kind not supported yet: %v", d.Type.Rtype.Kind())
 			}
@@ -197,7 +202,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				typ = d.Value.Type
 			}
 			v := vm.NewValue(typ)
-			c.AddSymbol(l, st.Str, v, parser.SymVar, typ, false)
+			c.Symbols.Add(l, st.Str, v, symbol.Var, typ, false)
 			c.Data = append(c.Data, v)
 			emit(t, vm.Assign, l)
 
@@ -228,18 +233,18 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				emit(st, vm.Fassign, s.Index)
 				break
 			}
-			if s.Index == parser.UnsetAddr {
+			if s.Index == symbol.UnsetAddr {
 				s.Index = len(c.Data)
 				c.Data = append(c.Data, s.Value)
 			}
 			emit(st, vm.Assign, s.Index)
 
 		case lang.Equal:
-			push(&parser.Symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
 			emit(t, vm.Equal)
 
 		case lang.EqualSet:
-			push(&parser.Symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
 			emit(t, vm.EqualSet)
 
 		case lang.Ident:
@@ -254,17 +259,17 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				return fmt.Errorf("symbol not found: %s", t.Str)
 			}
 			push(s)
-			if s.Kind == parser.SymPkg {
+			if s.Kind == symbol.Pkg {
 				break
 			}
 			if s.Local {
 				emit(t, vm.Fdup, s.Index)
 			} else {
-				if s.Index == parser.UnsetAddr {
+				if s.Index == symbol.UnsetAddr {
 					s.Index = len(c.Data)
 					c.Data = append(c.Data, s.Value)
 				}
-				if s.Kind != parser.SymType {
+				if s.Kind != symbol.Type {
 					emit(t, vm.Dup, s.Index)
 				}
 			}
@@ -274,7 +279,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			s, ok := c.Symbols[t.Str]
 			if ok {
 				s.Value = vm.ValueOf(lc)
-				if s.Kind == parser.SymFunc {
+				if s.Kind == symbol.Func {
 					// label is a function entry point, register its code address in data.
 					s.Index = len(c.Data)
 					c.Data = append(c.Data, s.Value)
@@ -282,7 +287,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					c.Data[s.Index] = s.Value
 				}
 			} else {
-				c.Symbols[t.Str] = &parser.Symbol{Kind: parser.SymLabel, Value: vm.ValueOf(lc)}
+				c.Symbols[t.Str] = &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)}
 			}
 
 		case lang.JumpFalse:
@@ -331,7 +336,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.Period:
 			s := pop()
 			switch s.Kind {
-			case parser.SymPkg:
+			case symbol.Pkg:
 				p, ok := parser.Packages[s.PkgPath]
 				if !ok {
 					return fmt.Errorf("package not found: %s", s.PkgPath)
@@ -342,13 +347,13 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				}
 				name := s.PkgPath + t.Str
 				var l int
-				sym, _, ok := c.GetSym(name, "")
+				sym, _, ok := c.Symbols.Get(name, "")
 				if ok {
 					l = sym.Index
 				} else {
 					l = len(c.Data)
 					c.Data = append(c.Data, v)
-					c.AddSymbol(l, name, v, parser.SymValue, v.Type, false)
+					c.Symbols.Add(l, name, v, symbol.Value, v.Type, false)
 					sym = c.Symbols[name]
 				}
 				push(sym)
@@ -379,8 +384,8 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	}
 	return err
 }
-func arithmeticOpType(s1, _ *parser.Symbol) *vm.Type { return parser.SymbolType(s1) }
-func booleanOpType(_, _ *parser.Symbol) *vm.Type     { return vm.TypeOf(true) }
+func arithmeticOpType(s1, _ *symbol.Symbol) *vm.Type { return symbol.Vtype(s1) }
+func booleanOpType(_, _ *symbol.Symbol) *vm.Type     { return vm.TypeOf(true) }
 
 // PrintCode pretty prints the generated code.
 func (c *Compiler) PrintCode() {
@@ -388,7 +393,7 @@ func (c *Compiler) PrintCode() {
 	data := map[int]string{}     // data indexed by frame location
 
 	for name, sym := range c.Symbols {
-		if sym.Kind == parser.SymLabel || sym.Kind == parser.SymFunc {
+		if sym.Kind == symbol.Label || sym.Kind == symbol.Func {
 			i := int(sym.Value.Int())
 			labels[i] = append(labels[i], name)
 		}
@@ -413,7 +418,7 @@ func (c *Compiler) PrintCode() {
 				extra = "// " + d
 			}
 		}
-		fmt.Fprintf(os.Stderr, "%4d %-18v %v\n", i, l, extra)
+		fmt.Fprintf(os.Stderr, "%4d %v %v\n", i, l, extra)
 	}
 
 	for _, label := range labels[len(c.Code)] {
@@ -424,7 +429,7 @@ func (c *Compiler) PrintCode() {
 
 type entry struct {
 	name string
-	*parser.Symbol
+	*symbol.Symbol
 }
 
 func (e entry) String() string { return fmt.Sprintf("name: %s, sym: %v", e.name, e.Symbol) }
@@ -442,7 +447,7 @@ func (c *Compiler) PrintData() {
 func (c *Compiler) symbolsByIndex() map[int]entry {
 	dict := map[int]entry{}
 	for name, sym := range c.Symbols {
-		if sym.Index == parser.UnsetAddr {
+		if sym.Index == symbol.UnsetAddr {
 			continue
 		}
 		dict[sym.Index] = entry{name, sym}
@@ -520,13 +525,13 @@ func (c *Compiler) ApplyDump(d *Dump) error {
 	return nil
 }
 
-func (c *Compiler) typeSym(t *vm.Type) *parser.Symbol {
+func (c *Compiler) typeSym(t *vm.Type) *symbol.Symbol {
 	tsym, ok := c.Symbols[t.Rtype.String()]
 	if !ok {
-		tsym = &parser.Symbol{Index: parser.UnsetAddr, Kind: parser.SymType, Type: t}
+		tsym = &symbol.Symbol{Index: symbol.UnsetAddr, Kind: symbol.Type, Type: t}
 		c.Symbols[t.Rtype.String()] = tsym
 	}
-	if tsym.Index == parser.UnsetAddr {
+	if tsym.Index == symbol.UnsetAddr {
 		tsym.Index = len(c.Data)
 		c.Data = append(c.Data, vm.NewValue(t))
 	}

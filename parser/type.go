@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
+	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
 
@@ -100,8 +101,8 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 
 	case lang.Ident:
 		// TODO: selector expression (pkg.type)
-		s, _, ok := p.GetSym(in[0].Str, p.scope)
-		if !ok || s.Kind != SymType {
+		s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
+		if !ok || s.Kind != symbol.Type {
 			return nil, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
 		return s.Type, nil
@@ -174,16 +175,16 @@ func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, 
 	zv := vm.NewValue(typ)
 	switch flag {
 	case parseTypeIn:
-		p.AddSymbol(-index-2, name, zv, SymVar, typ, true)
+		p.Symbols.Add(-index-2, name, zv, symbol.Var, typ, true)
 	case parseTypeOut:
-		p.AddSymbol(p.framelen[p.funcScope], name, zv, SymVar, typ, true)
+		p.Symbols.Add(p.framelen[p.funcScope], name, zv, symbol.Var, typ, true)
 		p.framelen[p.funcScope]++
 	case parseTypeVar:
 		if !local {
-			p.AddSymbol(UnsetAddr, name, zv, SymVar, typ, local)
+			p.Symbols.Add(symbol.UnsetAddr, name, zv, symbol.Var, typ, local)
 			break
 		}
-		p.AddSymbol(p.framelen[p.funcScope], name, zv, SymVar, typ, local)
+		p.Symbols.Add(p.framelen[p.funcScope], name, zv, symbol.Var, typ, local)
 		p.framelen[p.funcScope]++
 	}
 }
@@ -193,8 +194,8 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 	if in[0].Tok != lang.Ident {
 		return false
 	}
-	s, _, ok := p.GetSym(in[0].Str, p.scope)
-	return !ok || s.Kind != SymType
+	s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
+	return !ok || s.Kind != symbol.Type
 }
 
 // typeStartIndex returns the index of the start of type expression in tokens, or -1.

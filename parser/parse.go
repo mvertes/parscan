@@ -10,14 +10,15 @@ import (
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/symbol"
 )
 
 // Parser represents the state of a parser.
 type Parser struct {
 	*scanner.Scanner
 
-	Symbols  map[string]*Symbol
-	function *Symbol
+	Symbols  symbol.SymMap
+	function *symbol.Symbol
 	scope    string
 	fname    string
 	pkgName  string // current package name
@@ -42,13 +43,15 @@ var (
 
 // NewParser returns a new parser.
 func NewParser(spec *lang.Spec, noPkg bool) *Parser {
-	return &Parser{
+	p := &Parser{
 		Scanner:    scanner.NewScanner(spec),
+		Symbols:    symbol.SymMap{},
 		noPkg:      noPkg,
-		Symbols:    initUniverse(),
 		framelen:   map[string]int{},
 		labelCount: map[string]int{},
 	}
+	p.Symbols.Init()
+	return p
 }
 
 // Scan performs lexical analysis on s and returns Tokens or an error.
@@ -255,9 +258,9 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	p.fname = fname
 	ofunc := p.function
 	funcScope := p.funcScope
-	s, _, ok := p.GetSym(fname, p.scope)
+	s, _, ok := p.Symbols.Get(fname, p.scope)
 	if !ok {
-		s = &Symbol{Used: true}
+		s = &symbol.Symbol{Used: true}
 		p.Symbols[p.scope+fname] = s
 	}
 	p.pushScope(fname)
@@ -282,7 +285,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if err != nil {
 		return out, err
 	}
-	s.Kind = SymFunc
+	s.Kind = symbol.Func
 	s.Type = typ
 	p.function = s
 

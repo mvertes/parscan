@@ -69,7 +69,7 @@ type Instruction struct {
 }
 
 func (i Instruction) String() (s string) {
-	s = fmt.Sprintf("%4d: %v", i.Pos, i.Op)
+	s = fmt.Sprintf("%3d: %v", i.Pos, i.Op)
 	var sb strings.Builder
 	for _, a := range i.Arg {
 		sb.WriteString(fmt.Sprintf(" %v", a))
@@ -100,7 +100,7 @@ func (m *Machine) Run() (err error) {
 		sp = len(mem) // stack pointer
 		c := m.code[ip]
 		if debug {
-			log.Printf("ip:%-4d sp:%-4d fp:%-4d op:[%-18v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
+			log.Printf("ip:%-3d sp:%-3d fp:%-3d op:[%-20v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
 		}
 		ic++
 		switch c.Op {

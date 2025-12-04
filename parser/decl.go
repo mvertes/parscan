@@ -10,6 +10,7 @@ import (
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
 
@@ -57,7 +58,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
 				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
-				p.AddSymbol(UnsetAddr, name, nilValue, SymConst, nil, false)
+				p.Symbols.Add(symbol.UnsetAddr, name, nilValue, symbol.Const, nil, false)
 			}
 		} else {
 			return out, err
@@ -76,9 +77,9 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			return out, err
 		}
 		name := strings.TrimPrefix(p.scope+"/"+vars[i], "/")
-		p.Symbols[name] = &Symbol{
-			Kind:  SymConst,
-			Index: UnsetAddr,
+		p.Symbols[name] = &symbol.Symbol{
+			Kind:  symbol.Const,
+			Index: symbol.UnsetAddr,
 			Cval:  cval,
 			Value: vm.ValueOf(constValue(cval)),
 			Local: p.funcScope != "",
@@ -131,11 +132,11 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 	case id.IsLiteral():
 		return constant.MakeFromLiteral(t.Str, gotok[id], 0), 1, err
 	case id == lang.Ident:
-		s, _, ok := p.GetSym(t.Str, p.scope)
+		s, _, ok := p.Symbols.Get(t.Str, p.scope)
 		if !ok {
 			return nil, 0, errors.New("symbol not found")
 		}
-		if s.Kind != SymConst {
+		if s.Kind != symbol.Const {
 			return nil, 0, errors.New("symbol is not a constant")
 		}
 		return s.Cval, 1, err
@@ -240,10 +241,10 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	if n == "." {
 		// Import package symbols in the current scope.
 		for k, v := range pkg {
-			p.Symbols[k] = &Symbol{Index: UnsetAddr, PkgPath: pp, Value: v}
+			p.Symbols[k] = &symbol.Symbol{Index: symbol.UnsetAddr, PkgPath: pp, Value: v}
 		}
 	} else {
-		p.Symbols[n] = &Symbol{Kind: SymPkg, PkgPath: pp, Index: UnsetAddr}
+		p.Symbols[n] = &symbol.Symbol{Kind: symbol.Pkg, PkgPath: pp, Index: symbol.UnsetAddr}
 	}
 	return out, err
 }
@@ -299,7 +300,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	typ.Name = in[0].Str
-	p.AddSymbol(UnsetAddr, in[0].Str, vm.NewValue(typ), SymType, typ, p.funcScope != "")
+	p.Symbols.Add(symbol.UnsetAddr, in[0].Str, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
 	return out, err
 }
 
@@ -336,10 +337,10 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 				vars = append(vars, lt[0].Str)
 				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
 				if p.funcScope == "" {
-					p.AddSymbol(UnsetAddr, name, nilValue, SymVar, nil, false)
+					p.Symbols.Add(symbol.UnsetAddr, name, nilValue, symbol.Var, nil, false)
 					continue
 				}
-				p.AddSymbol(p.framelen[p.funcScope], name, nilValue, SymVar, nil, false)
+				p.Symbols.Add(p.framelen[p.funcScope], name, nilValue, symbol.Var, nil, false)
 				p.framelen[p.funcScope]++
 			}
 		} else {

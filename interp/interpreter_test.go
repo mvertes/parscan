@@ -262,5 +262,7 @@ func TestComposite(t *testing.T) {
 		{src: `type T struct{N int; S string}; var t T; t = T{2, "foo"}; t`, res: `{2 foo}`},
 		{src: `type T struct{N int; S string}; t := T{2, "foo"}; t`, res: `{2 foo}`},
 		{src: `type T struct{N int; S string}; t := T{S: "foo"}; t`, res: `{0 foo}`},
+		{src: `a := []int{}`, res: `[]`},
+		// {src: `a := []int{1, 2, 3}`, res: `[1 2 3]`},
 	})
 }
