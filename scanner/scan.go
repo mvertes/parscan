@@ -119,8 +119,8 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 		if len(tokens) > 0 && t.Str == "\n" {
 			// Check for automatic semi-colon insertion after newline.
 			last := tokens[len(tokens)-1]
-			if last.Tok.IsKeyword() && sc.TokenProps[last.Str].SkipSemi ||
-				last.Tok.IsOperator() && !sc.TokenProps[last.Str].SkipSemi {
+			if last.Tok.IsKeyword() && sc.TokenProps[last.Tok].SkipSemi ||
+				last.Tok.IsOperator() && !sc.TokenProps[last.Tok].SkipSemi {
 				skip = true
 			} else {
 				t.Tok = lang.Semicolon
@@ -142,8 +142,8 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 		if last.Str == ";" {
 			return tokens, nil
 		}
-		if last.Tok == lang.Ident && sc.TokenProps[last.Str].SkipSemi ||
-			last.Tok.IsOperator() && !sc.TokenProps[last.Str].SkipSemi {
+		if last.Tok == lang.Ident && sc.TokenProps[last.Tok].SkipSemi ||
+			last.Tok.IsOperator() && !sc.TokenProps[last.Tok].SkipSemi {
 			return tokens, nil
 		}
 		tokens = append(tokens, Token{Tok: lang.Semicolon, Str: ";"})
@@ -179,7 +179,7 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 			return Token{}, nil
 		case sc.isGroupSep(r):
 			// TODO: handle group separators.
-			return Token{Tok: sc.TokenProps[string(r)].Token, Pos: p + i, Str: string(r)}, nil
+			return Token{Tok: sc.Tokens[string(r)], Pos: p + i, Str: string(r)}, nil
 		case sc.isLineSep(r):
 			return Token{Pos: p + i, Str: "\n"}, nil
 		case sc.isStr(r):
@@ -194,12 +194,12 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 				err = ErrBlock
 			}
 			tok := Token{Pos: p + i, Str: b, Beg: 1, End: 1}
-			tok.Tok = sc.TokenProps[tok.Name()].Token
+			tok.Tok = sc.Tokens[tok.Name()]
 			return tok, err
 		case sc.isOp(r):
 			op, isOp := sc.getOp(src[i:])
 			if isOp {
-				t := sc.TokenProps[op].Token
+				t := sc.Tokens[op]
 				if t == lang.Illegal {
 					err = fmt.Errorf("%w: %s", ErrIllegal, op)
 				}
@@ -218,7 +218,7 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 		default:
 			t, isDefined := sc.getToken(src[i:])
 			if isDefined {
-				ident := sc.TokenProps[t].Token
+				ident := sc.Tokens[t]
 				if ident == lang.Illegal {
 					ident = lang.Ident
 				}

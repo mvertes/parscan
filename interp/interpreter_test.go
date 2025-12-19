@@ -48,39 +48,41 @@ func run(t *testing.T, tests []etest) {
 
 func TestExpr(t *testing.T) {
 	run(t, []etest{
-		{src: "", res: "<invalid reflect.Value>"},
-		{src: "1+2", res: "3"},
-		{src: "1+", err: "block not terminated"},
-		{src: "a := 1 + 2; b := 0; a + 1", res: "4"},
-		{src: "1+(2+3)", res: "6"},
-		{src: "(1+2)+3", res: "6"},
-		{src: "(6+(1+2)+3)+5", res: "17"},
-		{src: "(6+(1+2+3)+5", err: "1:1: block not terminated"},
-		{src: "a := 2; a = 3; a", res: "3"},
-		{src: "2 * 3 + 1 == 7", res: "true"},
-		{src: "7 == 2 * 3 + 1", res: "true"},
-		{src: "1 + 3 * 2 == 2 * 3 + 1", res: "true"},
-		{src: "a := 1 + 3 * 2 == 2 * 3 + 1; a", res: "true"},
-		{src: "-2", res: "-2"},
-		{src: "-2 + 5", res: "3"},
-		{src: "5 + -2", res: "3"},
-		{src: "!false", res: "true"},
-		{src: `a := "hello"`, res: "hello"},
+		{src: "", res: "<invalid reflect.Value>"},               // #00
+		{src: "1+2", res: "3"},                                  // #01
+		{src: "1+", err: "block not terminated"},                // #02
+		{src: "a := 1 + 2; b := 0; a + 1", res: "4"},            // #03
+		{src: "1+(2+3)", res: "6"},                              // #04
+		{src: "(1+2)+3", res: "6"},                              // #05
+		{src: "(6+(1+2)+3)+5", res: "17"},                       // #06
+		{src: "(6+(1+2+3)+5", err: "1:1: block not terminated"}, // #07
+		{src: "a := 2; a = 3; a", res: "3"},                     // #08
+		{src: "2 * 3 + 1 == 7", res: "true"},                    // #09
+		{src: "7 == 2 * 3 + 1", res: "true"},                    // #10
+		{src: "1 + 3 * 2 == 2 * 3 + 1", res: "true"},            // #11
+		{src: "a := 1 + 3 * 2 == 2 * 3 + 1; a", res: "true"},    // #12
+		{src: "-2", res: "-2"},                                  // #13
+		{src: "-2 + 5", res: "3"},                               // #14
+		{src: "5 + -2", res: "3"},                               // #15
+		{src: "!false", res: "true"},                            // #16
+		{src: `a := "hello"`, res: "hello"},                     // #17
 	})
 }
 
 func TestLogical(t *testing.T) {
 	run(t, []etest{
-		{src: "true && false", res: "false"},
-		{src: "true && true", res: "true"},
-		{src: "true && true && false", res: "false"},
-		{src: "false || true && true", res: "true"},
-		{src: "2 < 3 && 1 > 2 || 3 == 3", res: "true"},
-		{src: "2 > 3 && 1 > 2 || 3 == 3", res: "true"},
-		{src: "2 > 3 || 2 == 1+1 && 3>0", res: "true"},
-		{src: "2 > 3 || 2 == 1+1 && 3>4 || 1<2", res: "true"},
-		{src: "a := 1+1 < 3 && 4 == 2+2; a", res: "true"},
-		{src: "a := 1+1 < 3 || 3 == 2+2; a", res: "true"},
+		{src: "true", res: "true"},                            // #00
+		{src: "false", res: "false"},                          // #01
+		{src: "true && false", res: "false"},                  // #02
+		{src: "true && true", res: "true"},                    // #03
+		{src: "true && true && false", res: "false"},          // #04
+		{src: "false || true && true", res: "true"},           // #05
+		{src: "2 < 3 && 1 > 2 || 3 == 3", res: "true"},        // #06
+		{src: "2 > 3 && 1 > 2 || 3 == 3", res: "true"},        // #07
+		{src: "2 > 3 || 2 == 1+1 && 3>0", res: "true"},        // #08
+		{src: "2 > 3 || 2 == 1+1 && 3>4 || 1<2", res: "true"}, // #09
+		{src: "a := 1+1 < 3 && 4 == 2+2; a", res: "true"},     // #10
+		{src: "a := 1+1 < 3 || 3 == 2+2; a", res: "true"},     // #11
 	})
 }
 

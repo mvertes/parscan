@@ -11,7 +11,53 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
+// parseExpr transform an infix expression into a postfix notation
 func (p *Parser) parseExpr(in Tokens) (out Tokens, err error) {
+	log.Println("parseExpr2 in:", in)
+	var ops Tokens
+
+	popop := func() (t scanner.Token) { l := len(ops) - 1; t = ops[l]; ops = ops[:l]; return t }
+
+	for i, t := range in {
+		switch t.Tok {
+		case lang.Int, lang.String:
+			out = append(out, t)
+
+		case lang.Add, lang.Assign, lang.Define, lang.Equal, lang.Greater, lang.Less, lang.Mul:
+			// Apply operator precedence rule.
+			for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
+				out = append(out, popop())
+			}
+			ops = append(ops, t)
+
+		case lang.Ident:
+			_, sc, ok := p.Symbols.Get(t.Str, p.scope)
+			if ok {
+				// t.Str = sc + "/" + t.Str
+				_ = sc
+			}
+			out = append(out, t)
+			if i+1 < len(in) && in[i+1].Tok == lang.Define {
+				log.Println("t:", t.Str)
+				p.Symbols.Add(symbol.UnsetAddr, t.Str, vm.Value{}, symbol.Var, nil, false)
+			}
+
+		case lang.ParenBlock:
+			toks, err := p.parseExprStr(t.Block())
+			if err != nil {
+				return out, err
+			}
+			out = append(out, toks...)
+		}
+	}
+	for len(ops) > 0 {
+		out = append(out, popop())
+	}
+	log.Println("Final out:", out)
+	return out, err
+}
+
+func (p *Parser) parseExpr2(in Tokens) (out Tokens, err error) {
 	log.Println("parseExpr in:", in)
 	var ops, selectors Tokens
 	var vl int

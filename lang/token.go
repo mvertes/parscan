@@ -120,6 +120,9 @@ const (
 	JumpSetTrue
 	Label
 	New
+
+	// This must be the last token value.
+	MaxTok
 )
 
 // UnaryOp contains the set of unary operators.

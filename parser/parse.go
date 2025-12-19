@@ -519,5 +519,5 @@ func (p *Parser) popScope() {
 }
 
 func (p *Parser) precedence(t scanner.Token) int {
-	return p.TokenProps[t.Str].Precedence
+	return p.TokenProps[t.Tok].Precedence
 }
