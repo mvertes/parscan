@@ -149,12 +149,13 @@ var tests = []struct {
 	sym: []Value{ValueOf(fmt.Println), ValueOf("Hello")},
 	code: []Instruction{
 		{Op: Dup, Arg: []int{0}},
+		{Op: Dup, Arg: []int{1}},
 		{Op: CallX, Arg: []int{1}},
 		{Op: Exit},
 	},
-	start: 1, end: 3, mem: "[6 <nil>]",
-	/*
-		 }, { // #12 -- Defining and calling a function in VM.
+	start: 2, end: 4, mem: "[6 <nil>]",
+}, /*
+		{ // #12 -- Defining and calling a function in VM.
 			code: []Instruction{
 				{Op: Jump, Arg: []int{3}},      // 0
 				{Op: Push, Arg: []int{3}},      // 1
@@ -164,79 +165,79 @@ var tests = []struct {
 				{Op: Exit},                     // 5
 			},
 			start: 0, end: 1, mem: "[3]",
-	*/
-}, { // #13 -- Defining and calling a function in VM.
-	code: []Instruction{
-		{Op: Jump, Arg: []int{3}},      // 0
-		{Op: Push, Arg: []int{3}},      // 1
-		{Op: Return, Arg: []int{1, 1}}, // 2
-		{Op: Push, Arg: []int{1}},      // 3
-		{Op: Push, Arg: []int{1}},      // 4
-		{Op: Call, Arg: []int{0}},      // 5
-		{Op: Exit},                     // 6
-	},
-	start: 0, end: 1, mem: "[3]",
-}, { // #14 -- Defining and calling a function in VM.
-	code: []Instruction{
-		{Op: Jump, Arg: []int{5}},      // 0
-		{Op: Push, Arg: []int{3}},      // 1
-		{Op: Fassign, Arg: []int{-2}},  // 2
-		{Op: Fdup, Arg: []int{-2}},     // 3
-		{Op: Return, Arg: []int{1, 1}}, // 4
-		{Op: Push, Arg: []int{1}},      // 5
-		{Op: Push, Arg: []int{1}},      // 6
-		{Op: Call, Arg: []int{0}},      // 7
-		{Op: Exit},                     // 8
-	},
-	start: 1, end: 2, mem: "[3]",
-}, { // #15 -- Fibonacci numbers, hand written. Showcase recursivity.
-	code: []Instruction{
-		{Op: Jump, Arg: []int{19}},     // 0
-		{Op: Fdup, Arg: []int{-2}},     // 1  [2 i]
-		{Op: Push, Arg: []int{2}},      // 2  [2]
-		{Op: Lower},                    // 3  [true/false]
-		{Op: JumpTrue, Arg: []int{13}}, // 4  [], goto 17
-		{Op: Push, Arg: []int{1}},      // 5
-		{Op: Fdup, Arg: []int{-2}},     // 6  [i]
-		{Op: Push, Arg: []int{2}},      // 7  [i 2]
-		{Op: Sub},                      // 8  [(i-2)]
-		{Op: Call, Arg: []int{1}},      // 9  [fib(i-2)]
-		{Op: Push, Arg: []int{1}},      // 10
-		{Op: Fdup, Arg: []int{-2}},     // 11 [fib(i-2) i]
-		{Op: Push, Arg: []int{1}},      // 12 [(i-2) i 1]
-		{Op: Sub},                      // 13 [(i-2) (i-1)]
-		{Op: Call, Arg: []int{1}},      // 14 [fib(i-2) fib(i-1)]
-		{Op: Add},                      // 15 [fib(i-2)+fib(i-1)]
-		{Op: Return, Arg: []int{1, 1}}, // 16 return i
-		{Op: Fdup, Arg: []int{-2}},     // 17 [i]
-		{Op: Return, Arg: []int{1, 1}}, // 18 return i
-		{Op: Push, Arg: []int{1}},      // 19
-		{Op: Push, Arg: []int{6}},      // 20 [1]
-		{Op: Call, Arg: []int{1}},      // 21 [fib(*1)]
-		{Op: Exit},                     // 22
-	},
-	start: 0, end: 1, mem: "[8]",
-	/*
-		 }, { // #16 -- Fibonacci with some immediate instructions.
-			code: []Instruction{
-				{Op: Jump, Arg: []int{14}},     // 0
-				{Op: Fdup, Arg: []int{-2}},     // 1  [i]
-				{Op: Loweri, Arg: []int{2}},    // 2  [true/false]
-				{Op: JumpTrue, Arg: []int{9}},  // 3  [], goto 12
-				{Op: Fdup, Arg: []int{-2}},     // 4  [i]
-				{Op: Subi, Arg: []int{2}},      // 5  [(i-2)]
-				{Op: Calli, Arg: []int{1}},     // 6  [fib(i-2)]
-				{Op: Fdup, Arg: []int{-2}},     // 7  [fib(i-2) i]
-				{Op: Subi, Arg: []int{1}},      // 8  [(i-2) (i-1)]
-				{Op: Calli, Arg: []int{1}},     // 9  [fib(i-2) fib(i-1)], call 1
-				{Op: Add},                      // 10 [fib(i-2)+fib(i-1)]
-				{Op: Return, Arg: []int{1, 1}}, // 11 return i
-				{Op: Fdup, Arg: []int{-2}},     // 12 [i]
-				{Op: Return, Arg: []int{1, 1}}, // 13 return i
-				{Op: Push, Arg: []int{6}},      // 14 [1]
-				{Op: Calli, Arg: []int{1}},     // 15 [fib(*1)], call 1
-				{Op: Exit},                     // 16
-			},
-			start: 0, end: 1, mem: "[8]",
-	*/
-}}
+		},
+	*/{ // #13 -- Defining and calling a function in VM.
+		code: []Instruction{
+			{Op: Jump, Arg: []int{3}},      // 0
+			{Op: Push, Arg: []int{3}},      // 1
+			{Op: Return, Arg: []int{1, 1}}, // 2
+			{Op: Push, Arg: []int{1}},      // 3
+			{Op: Push, Arg: []int{1}},      // 4
+			{Op: Call, Arg: []int{0}},      // 5
+			{Op: Exit},                     // 6
+		},
+		start: 0, end: 1, mem: "[3]",
+	}, { // #14 -- Defining and calling a function in VM.
+		code: []Instruction{
+			{Op: Jump, Arg: []int{5}},      // 0
+			{Op: Push, Arg: []int{3}},      // 1
+			{Op: Fassign, Arg: []int{-2}},  // 2
+			{Op: Fdup, Arg: []int{-2}},     // 3
+			{Op: Return, Arg: []int{1, 1}}, // 4
+			{Op: Push, Arg: []int{1}},      // 5
+			{Op: Push, Arg: []int{1}},      // 6
+			{Op: Call, Arg: []int{0}},      // 7
+			{Op: Exit},                     // 8
+		},
+		start: 1, end: 2, mem: "[3]",
+	}, { // #15 -- Fibonacci numbers, hand written. Showcase recursivity.
+		code: []Instruction{
+			{Op: Jump, Arg: []int{19}},     // 0
+			{Op: Fdup, Arg: []int{-2}},     // 1  [2 i]
+			{Op: Push, Arg: []int{2}},      // 2  [2]
+			{Op: Lower},                    // 3  [true/false]
+			{Op: JumpTrue, Arg: []int{13}}, // 4  [], goto 17
+			{Op: Push, Arg: []int{1}},      // 5
+			{Op: Fdup, Arg: []int{-2}},     // 6  [i]
+			{Op: Push, Arg: []int{2}},      // 7  [i 2]
+			{Op: Sub},                      // 8  [(i-2)]
+			{Op: Call, Arg: []int{1}},      // 9  [fib(i-2)]
+			{Op: Push, Arg: []int{1}},      // 10
+			{Op: Fdup, Arg: []int{-2}},     // 11 [fib(i-2) i]
+			{Op: Push, Arg: []int{1}},      // 12 [(i-2) i 1]
+			{Op: Sub},                      // 13 [(i-2) (i-1)]
+			{Op: Call, Arg: []int{1}},      // 14 [fib(i-2) fib(i-1)]
+			{Op: Add},                      // 15 [fib(i-2)+fib(i-1)]
+			{Op: Return, Arg: []int{1, 1}}, // 16 return i
+			{Op: Fdup, Arg: []int{-2}},     // 17 [i]
+			{Op: Return, Arg: []int{1, 1}}, // 18 return i
+			{Op: Push, Arg: []int{1}},      // 19
+			{Op: Push, Arg: []int{6}},      // 20 [1]
+			{Op: Call, Arg: []int{1}},      // 21 [fib(*1)]
+			{Op: Exit},                     // 22
+		},
+		start: 0, end: 1, mem: "[8]",
+		/*
+			 }, { // #16 -- Fibonacci with some immediate instructions.
+				code: []Instruction{
+					{Op: Jump, Arg: []int{14}},     // 0
+					{Op: Fdup, Arg: []int{-2}},     // 1  [i]
+					{Op: Loweri, Arg: []int{2}},    // 2  [true/false]
+					{Op: JumpTrue, Arg: []int{9}},  // 3  [], goto 12
+					{Op: Fdup, Arg: []int{-2}},     // 4  [i]
+					{Op: Subi, Arg: []int{2}},      // 5  [(i-2)]
+					{Op: Calli, Arg: []int{1}},     // 6  [fib(i-2)]
+					{Op: Fdup, Arg: []int{-2}},     // 7  [fib(i-2) i]
+					{Op: Subi, Arg: []int{1}},      // 8  [(i-2) (i-1)]
+					{Op: Calli, Arg: []int{1}},     // 9  [fib(i-2) fib(i-1)], call 1
+					{Op: Add},                      // 10 [fib(i-2)+fib(i-1)]
+					{Op: Return, Arg: []int{1, 1}}, // 11 return i
+					{Op: Fdup, Arg: []int{-2}},     // 12 [i]
+					{Op: Return, Arg: []int{1, 1}}, // 13 return i
+					{Op: Push, Arg: []int{6}},      // 14 [1]
+					{Op: Calli, Arg: []int{1}},     // 15 [fib(*1)], call 1
+					{Op: Exit},                     // 16
+				},
+				start: 0, end: 1, mem: "[8]",
+		*/
+	}}
