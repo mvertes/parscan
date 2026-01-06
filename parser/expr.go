@@ -12,7 +12,7 @@ import (
 
 // parseExpr transform an infix expression into a postfix notation.
 func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
-	log.Println("parseExpr2 in:", in)
+	log.Println("parseExpr in:", in)
 	var ops Tokens
 
 	popop := func() (t scanner.Token) {

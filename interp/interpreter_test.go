@@ -88,6 +88,8 @@ func TestLogical(t *testing.T) {
 		{src: "2 > 3 || 2 == 1+1 && 3>4 || 1<2", res: "true"}, // #07
 		{src: "a := 1+1 < 3 && 4 == 2+2; a", res: "true"},     // #08
 		{src: "a := 1+1 < 3 || 3 == 2+2; a", res: "true"},     // #09
+		{src: "a := 1+1 < 3 && 4 == 2+2; a", res: "true"},     // #10
+		{src: "a := 1+1 < 3 || 3 == 2+2; a", res: "true"},     // #11
 	})
 }
 
