@@ -197,17 +197,3 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 	s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
 	return !ok || s.Kind != symbol.Type
 }
-
-// typeStartIndex returns the index of the start of type expression in tokens, or -1.
-func (p *Parser) typeStartIndex(in Tokens) int {
-	index := len(in) - 1
-	for i := index; i >= 0; i-- {
-		switch in[i].Tok {
-		case lang.Ident, lang.Struct, lang.Map, lang.Func, lang.Interface, lang.Mul, lang.BraceBlock, lang.BracketBlock, lang.ParenBlock:
-			index = i
-		default:
-			return index
-		}
-	}
-	return -1
-}

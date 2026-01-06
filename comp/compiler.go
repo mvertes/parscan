@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/parser"
@@ -44,11 +45,18 @@ func (c *Compiler) AddSym(name string, value vm.Value) int {
 	return p
 }
 
+func errorf(format string, v ...any) error {
+	_, file, line, _ := runtime.Caller(1)
+	loc := fmt.Sprintf("%s:%d: ", path.Base(file), line)
+	return fmt.Errorf(loc+format, v...)
+}
+
 // Generate generates vm code and data from parsed tokens.
 func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
 	fixList := parser.Tokens{}  // list of tokens to fix after all necessary information is gathered
-	stack := []*symbol.Symbol{} // for symbolic evaluation, type checking, etc
+	stack := []*symbol.Symbol{} // for symbolic evaluation and type checking
+	flen := []int{}             // stack length according to function scopes
 	keyList := []string{}
 
 	emit := func(t scanner.Token, op vm.Op, arg ...int) {
@@ -58,13 +66,13 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	}
 	push := func(s *symbol.Symbol) { stack = append(stack, s) }
 	pop := func() *symbol.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
-	top := func() *symbol.Symbol { return stack[len(stack)-1] }
+	popflen := func() int { le := len(flen) - 1; l := flen[le]; flen = flen[:le]; return l }
 
 	showStack := func() {
 		_, file, line, _ := runtime.Caller(1)
 		fmt.Fprintf(os.Stderr, "%s%d: showstack: %d\n", path.Base(file), line, len(stack))
 		for i, s := range stack {
-			fmt.Fprintf(os.Stderr, "%s:%d: stack[%d]: %v\n", path.Base(file), line, i, s)
+			fmt.Fprintf(os.Stderr, "  stack[%d]: %v\n", i, s)
 		}
 	}
 
@@ -87,7 +95,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				c.Data = append(c.Data, v)
 				c.strings[s] = i
 			}
-			push(&symbol.Symbol{Kind: symbol.Const, Value: v})
+			push(&symbol.Symbol{Kind: symbol.Const, Value: v, Type: vm.TypeOf("")})
 			emit(t, vm.Dup, i)
 
 		case lang.Add:
@@ -103,8 +111,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Sub)
 
 		case lang.Minus:
-			emit(t, vm.Push, 0)
-			emit(t, vm.Sub)
+			emit(t, vm.Negate)
 
 		case lang.Not:
 			emit(t, vm.Not)
@@ -121,6 +128,8 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Deref)
 
 		case lang.Index:
+			showStack()
+			pop()
 			push(&symbol.Symbol{Type: pop().Type.Elem()})
 			emit(t, vm.Index)
 
@@ -133,21 +142,30 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Lower)
 
 		case lang.Call:
-			s := pop()
+			showStack()
+			narg := t.Beg // FIXME: t.Beg is hijacked to store the number of function parameters.
+			s := stack[len(stack)-1-narg]
 			if s.Kind != symbol.Value {
 				typ := s.Type
 				// TODO: pop input types (careful with variadic function).
+				// Pop function and input arg symbols, push return value symbols.
+				pop()
+				for i := 0; i < narg; i++ {
+					pop()
+				}
 				for i := 0; i < typ.Rtype.NumOut(); i++ {
 					push(&symbol.Symbol{Type: typ.Out(i)})
 				}
-				emit(t, vm.Call)
+				emit(t, vm.Call, narg)
+
+				showStack()
 				break
 			}
-			push(s)
 			fallthrough // A symValue must be called through callX.
 
 		case lang.CallX:
-			rtyp := pop().Value.Value.Type()
+			s := stack[len(stack)-1-t.Beg]
+			rtyp := s.Value.Value.Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
 				push(&symbol.Symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
@@ -159,12 +177,17 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			// If the key is an ident (field name), then push it on the keystack,
 			// to be computed at compile time in Composite handling.
 			// Or generate instructions so key will be computed at runtime.
-			if tokens[i-1].Tok == lang.Ident {
-				keyList = append(keyList, tokens[i-1].Str)
+			showStack()
+			s, ok := c.Symbols[t.Str]
+			if ok {
+				j := s.Type.FieldIndex(tokens[i-2].Str)
+				log.Println("### fieldIndex", tokens[i-2].Str, j)
+				emit(t, vm.FieldSet, j...)
 			}
 
 		case lang.Composite:
-			d := top() // let the type symbol on the stack, may be required for assignment
+			showStack()
+			d := c.Symbols[t.Str]
 			switch d.Type.Rtype.Kind() {
 			case reflect.Struct:
 				emit(t, vm.Fnew, d.Index)
@@ -182,62 +205,50 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				}
 			case reflect.Slice:
 				emit(t, vm.Fnew, d.Index)
-				// if len(keyList) == 0 {
-				// }
 			default:
 				return fmt.Errorf("composite kind not supported yet: %v", d.Type.Rtype.Kind())
+			}
+			for j := len(stack) - 1; j >= 0; j-- {
+				// pop until type
+				if stack[j].Kind == symbol.Type {
+					stack = stack[:j+1]
+					break
+				}
 			}
 
 		case lang.Grow:
 			emit(t, vm.Grow, t.Beg)
 
 		case lang.Define:
-			// TODO: support assignment to local, composite objects.
-			st := tokens[i-1]
-			l := len(c.Data)
 			showStack()
-			d := pop()
-			typ := d.Type
+			rhs := pop()
+			typ := rhs.Type
 			if typ == nil {
-				typ = d.Value.Type
+				typ = rhs.Value.Type
 			}
-			v := vm.NewValue(typ)
-			c.Symbols.Add(l, st.Str, v, symbol.Var, typ, false)
-			c.Data = append(c.Data, v)
-			emit(t, vm.Assign, l)
+			lhs := pop()
+			lhs.Type = typ
+			c.Data[lhs.Index] = vm.NewValue(typ)
+			emit(t, vm.Vassign)
 
 		case lang.Assign:
-			st := tokens[i-1]
-			if st.Tok == lang.Period || st.Tok == lang.Index {
-				emit(t, vm.Vassign)
-				break
-			}
-			s, ok := c.Symbols[st.Str]
-			if !ok {
-				return fmt.Errorf("symbol not found: %s", st.Str)
-			}
-			d := pop()
-			typ := d.Type
-			if typ == nil {
-				typ = d.Value.Type
-			}
-			if s.Type == nil {
-				s.Type = typ
-				s.Value = vm.NewValue(typ)
-			}
-			if s.Local {
-				if !s.Used {
-					emit(st, vm.New, s.Index, c.typeSym(s.Type).Index)
-					s.Used = true
+			showStack()
+			rhs := pop()
+			lhs := pop()
+			if lhs.Local {
+				if !lhs.Used {
+					emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
+					lhs.Used = true
 				}
-				emit(st, vm.Fassign, s.Index)
+				emit(t, vm.Fassign, lhs.Index)
 				break
 			}
-			if s.Index == symbol.UnsetAddr {
-				s.Index = len(c.Data)
-				c.Data = append(c.Data, s.Value)
+			// TODO check source type against var type
+			if v := c.Data[lhs.Index]; !v.IsValid() {
+				c.Data[lhs.Index] = vm.NewValue(rhs.Type)
+				c.Symbols[lhs.Name].Type = rhs.Type
 			}
-			emit(st, vm.Assign, s.Index)
+			emit(t, vm.Vassign)
 
 		case lang.Equal:
 			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
@@ -248,16 +259,13 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.EqualSet)
 
 		case lang.Ident:
-			if i < len(tokens)-1 {
-				switch t1 := tokens[i+1]; t1.Tok {
-				case lang.Define, lang.Assign, lang.Colon:
-					continue
-				}
-			}
 			s, ok := c.Symbols[t.Str]
 			if !ok {
-				return fmt.Errorf("symbol not found: %s", t.Str)
+				// return errorf("symbol not found: %s", t.Str)
+				// it could be either an undefined symbol or a key ident in a literal composite expr.
+				continue
 			}
+			log.Println("Ident symbol", t.Str, s.Local, s.Index, s.Type)
 			push(s)
 			if s.Kind == symbol.Pkg {
 				break
@@ -276,17 +284,26 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 
 		case lang.Label:
 			lc := len(c.Code)
-			s, ok := c.Symbols[t.Str]
-			if ok {
+			if s, ok := c.Symbols[t.Str]; ok {
 				s.Value = vm.ValueOf(lc)
 				if s.Kind == symbol.Func {
-					// label is a function entry point, register its code address in data.
+					// Label is a function entry point, register its code address in data
+					// and save caller stack length.
 					s.Index = len(c.Data)
 					c.Data = append(c.Data, s.Value)
+					flen = append(flen, len(stack))
+					log.Println("### func label:", lc, s.Index, s.Value.Value, c.Data[0].Value)
 				} else {
 					c.Data[s.Index] = s.Value
 				}
 			} else {
+				if strings.HasSuffix(t.Str, "_end") {
+					if s, ok = c.Symbols[strings.TrimSuffix(t.Str, "_end")]; ok && s.Kind == symbol.Func {
+						// Exit function: restore caller stack
+						l := popflen()
+						stack = stack[:l]
+					}
+				}
 				c.Symbols[t.Str] = &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)}
 			}
 
@@ -334,6 +351,9 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Jump, i)
 
 		case lang.Period:
+			if len(stack) < 1 {
+				return errorf("missing symbol")
+			}
 			s := pop()
 			switch s.Kind {
 			case symbol.Pkg:
@@ -361,6 +381,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			default:
 				if f, ok := s.Type.Rtype.FieldByName(t.Str[1:]); ok {
 					emit(t, vm.Field, f.Index...)
+					push(&symbol.Symbol{Type: s.Type.FieldType(t.Str[1:])})
 					break
 				}
 				return fmt.Errorf("field or method not found: %s", t.Str[1:])
@@ -384,8 +405,9 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	}
 	return err
 }
-func arithmeticOpType(s1, _ *symbol.Symbol) *vm.Type { return symbol.Vtype(s1) }
-func booleanOpType(_, _ *symbol.Symbol) *vm.Type     { return vm.TypeOf(true) }
+
+func arithmeticOpType(s, _ *symbol.Symbol) *vm.Type { return symbol.Vtype(s) }
+func booleanOpType(_, _ *symbol.Symbol) *vm.Type    { return vm.TypeOf(true) }
 
 // PrintCode pretty prints the generated code.
 func (c *Compiler) PrintCode() {
@@ -440,7 +462,11 @@ func (c *Compiler) PrintData() {
 
 	fmt.Fprintln(os.Stderr, "# Data:")
 	for i, d := range c.Data {
-		fmt.Fprintf(os.Stderr, "%4d %T %v %v\n", i, d.Interface(), d.Value, dict[i])
+		if d.IsValid() {
+			fmt.Fprintf(os.Stderr, "%4d %T %v, Symbol: %v\n", i, d.Interface(), d.Value, dict[i])
+		} else {
+			fmt.Fprintf(os.Stderr, "%4d %v %v\n", i, d.Value, dict[i])
+		}
 	}
 }
 
@@ -453,76 +479,6 @@ func (c *Compiler) symbolsByIndex() map[int]entry {
 		dict[sym.Index] = entry{name, sym}
 	}
 	return dict
-}
-
-// Dump represents the state of a data dump.
-type Dump struct {
-	Values []*DumpValue
-}
-
-// DumpValue is a value of a dump state.
-type DumpValue struct {
-	Index int
-	Name  string
-	Kind  int
-	Type  string
-	Value any
-}
-
-// Dump creates a snapshot of the execution state of global variables.
-// This method is specifically implemented in the Compiler to minimize the coupling between
-// the dump format and other components. By situating the dump logic in the Compiler,
-// it relies solely on the program being executed and the indexing algorithm used for ordering variables
-// (currently, this is an integer that corresponds to the order of variables in the program).
-// This design choice allows the Virtual Machine (VM) to evolve its memory management strategies
-// without compromising backward compatibility with dumps generated by previous versions.
-func (c *Compiler) Dump() *Dump {
-	dict := c.symbolsByIndex()
-	dv := make([]*DumpValue, len(c.Data))
-	for i, d := range c.Data {
-		e := dict[i]
-		dv[i] = &DumpValue{
-			Index: e.Index,
-			Name:  e.name,
-			Kind:  int(e.Kind),
-			Type:  e.Type.Name,
-			Value: d.Interface(),
-		}
-	}
-	return &Dump{Values: dv}
-}
-
-// ApplyDump sets previously saved dump, restoring the state of global variables.
-func (c *Compiler) ApplyDump(d *Dump) error {
-	dict := c.symbolsByIndex()
-	for _, dv := range d.Values {
-		// do all the checks to be sure we are applying the correct values
-		e, ok := dict[dv.Index]
-		if !ok {
-			return fmt.Errorf("entry not found on index %d", dv.Index)
-		}
-
-		if dv.Name != e.name ||
-			dv.Type != e.Type.Name ||
-			dv.Kind != int(e.Kind) {
-			return fmt.Errorf("entry with index %d does not match with provided entry. "+
-				"dumpValue: %s, %s, %d. memoryValue: %s, %s, %d",
-				dv.Index,
-				dv.Name, dv.Type, dv.Kind,
-				e.name, e.Type, e.Kind)
-		}
-
-		if dv.Index >= len(c.Data) {
-			return fmt.Errorf("index (%d) bigger than memory (%d)", dv.Index, len(c.Data))
-		}
-
-		if !c.Data[dv.Index].CanSet() {
-			return fmt.Errorf("value %v cannot be set", dv.Value)
-		}
-
-		c.Data[dv.Index].Set(reflect.ValueOf(dv.Value))
-	}
-	return nil
 }
 
 func (c *Compiler) typeSym(t *vm.Type) *symbol.Symbol {

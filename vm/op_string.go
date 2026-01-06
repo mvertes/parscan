@@ -38,18 +38,19 @@ func _() {
 	_ = x[Loweri-27]
 	_ = x[Mul-28]
 	_ = x[New-29]
-	_ = x[Not-30]
-	_ = x[Pop-31]
-	_ = x[Push-32]
-	_ = x[Return-33]
-	_ = x[Sub-34]
-	_ = x[Subi-35]
-	_ = x[Swap-36]
+	_ = x[Negate-30]
+	_ = x[Not-31]
+	_ = x[Pop-32]
+	_ = x[Push-33]
+	_ = x[Return-34]
+	_ = x[Sub-35]
+	_ = x[Subi-36]
+	_ = x[Swap-37]
 }
 
-const _Op_name = "NopAddAddrAssignFassignVassignCallCalliCallXDerefDupFdupFnewEqualEqualSetExitFieldFieldSetGreaterGrowIndexJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLowerLoweriMulNewNotPopPushReturnSubSubiSwap"
+const _Op_name = "NopAddAddrAssignFassignVassignCallCalliCallXDerefDupFdupFnewEqualEqualSetExitFieldFieldSetGreaterGrowIndexJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLowerLoweriMulNewNegateNotPopPushReturnSubSubiSwap"
 
-var _Op_index = [...]uint8{0, 3, 6, 10, 16, 23, 30, 34, 39, 44, 49, 52, 56, 60, 65, 73, 77, 82, 90, 97, 101, 106, 110, 118, 127, 138, 150, 155, 161, 164, 167, 170, 173, 177, 183, 186, 190, 194}
+var _Op_index = [...]uint8{0, 3, 6, 10, 16, 23, 30, 34, 39, 44, 49, 52, 56, 60, 65, 73, 77, 82, 90, 97, 101, 106, 110, 118, 127, 138, 150, 155, 161, 164, 167, 173, 176, 179, 183, 189, 192, 196, 200}
 
 func (i Op) String() string {
 	idx := int(i) - 0

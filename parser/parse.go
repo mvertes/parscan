@@ -143,7 +143,7 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		}
 		fallthrough
 	default:
-		return p.parseExpr(in)
+		return p.parseExpr(in, "")
 	}
 }
 
@@ -220,7 +220,7 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	}
 	out = append(out, scanner.Token{Tok: lang.Label, Str: p.scope + "b"})
 	if len(cond) > 0 {
-		if cond, err = p.parseExpr(cond); err != nil {
+		if cond, err = p.parseExpr(cond, ""); err != nil {
 			return nil, err
 		}
 		out = append(out, cond...)
@@ -353,7 +353,7 @@ func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 			}
 			pre = append(pre, init...)
 		}
-		if cond, err = p.parseExpr(cond); err != nil {
+		if cond, err = p.parseExpr(cond, ""); err != nil {
 			return nil, err
 		}
 		pre = append(pre, cond...)
@@ -393,7 +393,7 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 	}
 	condSwitch := false
 	if len(cond) > 0 {
-		if cond, err = p.parseExpr(cond); err != nil {
+		if cond, err = p.parseExpr(cond, ""); err != nil {
 			return nil, err
 		}
 		out = append(out, cond...)
@@ -436,7 +436,7 @@ func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch bool)
 	}
 	lcond := conds.Split(lang.Comma)
 	for i, cond := range lcond {
-		if cond, err = p.parseExpr(cond); err != nil {
+		if cond, err = p.parseExpr(cond, ""); err != nil {
 			return out, err
 		}
 		txt := fmt.Sprintf("%sc%d.%d", p.scope, index, i)
@@ -472,7 +472,7 @@ func (p *Parser) parseLabel(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 	if l := len(in); l > 1 {
-		if out, err = p.parseExpr(in[1:]); err != nil {
+		if out, err = p.parseExpr(in[1:], ""); err != nil {
 			return out, err
 		}
 	} else if l == 0 {
@@ -519,5 +519,5 @@ func (p *Parser) popScope() {
 }
 
 func (p *Parser) precedence(t scanner.Token) int {
-	return p.TokenProps[t.Str].Precedence
+	return p.TokenProps[t.Tok].Precedence
 }

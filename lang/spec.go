@@ -21,22 +21,36 @@ const (
 // ASCIILen is the length of the ASCII characters set.
 const ASCIILen = 1 << 7 // 128
 
+// Associativity represent the associativity rule of an operator.
+type Associativity int
+
+// Associativity kinds for operators.
+const (
+	Aboth  Associativity = iota // both left and right associative
+	Aleft                       // left associative only
+	Aright                      // right associative only
+	Anon                        // non associative
+)
+
 // TokenProp represent token properties for parsing.
 type TokenProp struct {
 	Token
 	SkipSemi   bool // automatic semicolon insertion after newline
 	Precedence int  // operator precedence
+	Associativity
 }
 
 // Spec represents the language specification for scanning.
 type Spec struct {
-	CharProp   [ASCIILen]uint       // special Character properties
-	End        map[string]string    // end delimiters, indexed by start
-	BlockProp  map[string]uint      // block properties
-	TokenProps map[string]TokenProp // token properties
-	DotNum     bool                 // true if a number can start with '.'
-	IdentASCII bool                 // true if an identifier can be in ASCII only
-	NumUnder   bool                 // true if a number can contain _ character
+	CharProp   [ASCIILen]uint    // special Character properties
+	End        map[string]string // end delimiters, indexed by start
+	BlockProp  map[string]uint   // block properties
+	Tokens     map[string]Token  // token per string
+	TokenProps []TokenProp       // token properties, indexed by token
+	DotNum     bool              // true if a number can start with '.'
+	IdentASCII bool              // true if an identifier can be in ASCII only
+	NumUnder   bool              // true if a number can contain _ character
+	// TokenProps map[string]TokenProp // token properties
 }
 
 // HasInit stores if a statement may contain a simple init statement.

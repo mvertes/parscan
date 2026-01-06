@@ -104,3 +104,13 @@ func (t *Type) FieldIndex(name string) []int {
 	}
 	return nil
 }
+
+// FieldType returns the type of struct field name.
+func (t *Type) FieldType(name string) *Type {
+	for _, f := range reflect.VisibleFields(t.Rtype) {
+		if f.Name == name {
+			return &Type{Name: f.Name, PkgPath: f.PkgPath, Rtype: f.Type}
+		}
+	}
+	return nil
+}

@@ -8,7 +8,7 @@ linters:
     - govet
     - ineffassign
     - misspell
-    - modernize
+#    - modernize
     - perfsprint
     - prealloc
     - predeclared

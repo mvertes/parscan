@@ -69,7 +69,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		values = nil
 	}
 	for i, v := range values {
-		if v, err = p.parseExpr(v); err != nil {
+		if v, err = p.parseExpr(v, ""); err != nil {
 			return out, err
 		}
 		cval, _, err := p.evalConstExpr(v)
@@ -99,11 +99,11 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 	id := t.Tok
 	switch {
 	case id.IsBinaryOp():
-		op1, l1, err := p.evalConstExpr(in[:l])
+		op2, l2, err := p.evalConstExpr(in[:l])
 		if err != nil {
 			return nil, 0, err
 		}
-		op2, l2, err := p.evalConstExpr(in[:l-l1])
+		op1, l1, err := p.evalConstExpr(in[:l-l2])
 		if err != nil {
 			return nil, 0, err
 		}
@@ -164,6 +164,8 @@ func constValue(c constant.Value) any {
 	return nil
 }
 
+// Correspondence between language independent parscan tokens and Go stdlib tokens,
+// To enable the use of the Go constant expression evaluator.
 var gotok = map[lang.Token]token.Token{
 	lang.Char:         token.CHAR,
 	lang.Imag:         token.IMAG,
@@ -352,13 +354,12 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		values = nil
 	}
 	for i, v := range values {
-		if v, err = p.parseExpr(v); err != nil {
+		if v, err = p.parseExpr(v, ""); err != nil {
 			return out, err
 		}
+		out = append(out, scanner.Token{Tok: lang.Ident, Str: vars[i]})
 		out = append(out, v...)
-		out = append(out,
-			scanner.Token{Tok: lang.Ident, Str: vars[i]},
-			scanner.Token{Tok: lang.Assign})
+		out = append(out, scanner.Token{Tok: lang.Assign})
 	}
 	return out, err
 }
