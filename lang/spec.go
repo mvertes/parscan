@@ -35,9 +35,10 @@ const (
 // TokenProp represent token properties for parsing.
 type TokenProp struct {
 	Token
-	SkipSemi   bool // automatic semicolon insertion after newline
-	Precedence int  // operator precedence
-	Associativity
+	SkipSemi      bool // automatic semicolon insertion after newline
+	Precedence    int  // operator precedence
+	Associativity      //
+	HasInit       bool // true if may have an init clause
 }
 
 // Spec represents the language specification for scanning.
@@ -51,13 +52,4 @@ type Spec struct {
 	IdentASCII bool              // true if an identifier can be in ASCII only
 	NumUnder   bool              // true if a number can contain _ character
 	// TokenProps map[string]TokenProp // token properties
-}
-
-// HasInit stores if a statement may contain a simple init statement.
-var HasInit = map[Token]bool{
-	Case:   true,
-	For:    true,
-	If:     true,
-	Select: true,
-	Switch: true,
 }

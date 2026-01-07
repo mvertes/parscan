@@ -76,7 +76,7 @@ func (p *Parser) parseStmts(in Tokens) (out Tokens, err error) {
 			return out, scanner.ErrBlock
 		}
 		// Skip over simple init statements for some tokens (if, for, ...)
-		if lang.HasInit[in[0].Tok] {
+		if p.TokenProps[in[0].Tok].HasInit {
 			for in[endstmt-1].Tok != lang.BraceBlock {
 				e2 := in[endstmt+1:].Index(lang.Semicolon)
 				if e2 == -1 {
