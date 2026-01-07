@@ -37,6 +37,7 @@ const (
 	Exit                   // -- ;
 	Field                  // s -- f ; f = s.FieldIndex($1, ...)
 	FieldSet               // s d -- s ; s.FieldIndex($1, ...) = d
+	FieldFset              // s i v -- s; s.FieldIndex(i) = v
 	Greater                // n1 n2 -- cond; cond = n1 > n2
 	Grow                   // -- ; sp += $1
 	Index                  // a i -- a[i] ;
@@ -177,14 +178,21 @@ func (m *Machine) Run() (err error) {
 			}
 			mem[sp-1].Value = fv
 		case FieldSet:
-			fv := mem[sp-1].FieldByIndex(c.Arg)
+			fv := mem[sp-2].FieldByIndex(c.Arg)
 			if !fv.CanSet() {
 				// Normally private fields can not bet set via reflect. Override this limitation.
 				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
 			}
-			fv.Set(mem[sp-2].Value)
-			mem[sp-2] = mem[sp-1]
+			fv.Set(mem[sp-1].Value)
 			mem = mem[:sp-1]
+		case FieldFset:
+			fv := mem[sp-3].Field(int(mem[sp-2].Int()))
+			if !fv.CanSet() {
+				// Normally private fields can not bet set via reflect. Override this limitation.
+				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
+			}
+			fv.Set(mem[sp-1].Value)
+			mem = mem[:sp-2]
 		case Jump:
 			ip += c.Arg[0]
 			continue

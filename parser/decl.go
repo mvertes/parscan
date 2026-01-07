@@ -243,10 +243,10 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	if n == "." {
 		// Import package symbols in the current scope.
 		for k, v := range pkg {
-			p.Symbols[k] = &symbol.Symbol{Index: symbol.UnsetAddr, PkgPath: pp, Value: v}
+			p.Symbols[k] = &symbol.Symbol{Index: symbol.UnsetAddr, Name: k, Kind: symbol.Value, PkgPath: pp, Value: v}
 		}
 	} else {
-		p.Symbols[n] = &symbol.Symbol{Kind: symbol.Pkg, PkgPath: pp, Index: symbol.UnsetAddr}
+		p.Symbols[n] = &symbol.Symbol{Kind: symbol.Pkg, PkgPath: pp, Index: symbol.UnsetAddr, Name: n}
 	}
 	return out, err
 }

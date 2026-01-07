@@ -251,7 +251,7 @@ func TestImport(t *testing.T) {
 )
 `
 	run(t, []etest{
-		{src: "fmt.Println(4)", err: "missing symbol"},                                      // #00
+		{src: "fmt.Println(4)", err: "invalid symbol: fmt"},                                 // #00
 		{src: `import "xxx"`, err: "package not found: xxx"},                                // #01
 		{src: `import "fmt"; fmt.Println(4)`, res: "<nil>"},                                 // #02
 		{src: src0 + "fmt.Println(4)", res: "<nil>"},                                        // #03
@@ -268,7 +268,7 @@ func TestComposite(t *testing.T) {
 		{src: `type T struct {}; var t T; t = T{}; t`, res: "{}"},                            // #02
 		{src: `type T struct{N int; S string}; var t T; t = T{2, "foo"}; t`, res: `{2 foo}`}, // #03
 		{src: `type T struct{N int; S string}; t := T{2, "foo"}; t`, res: `{2 foo}`},         // #04
-		// {src: `type T struct{N int; S string}; t := T{S: "foo"}; t`, res: `{0 foo}`},         // #05
+		{src: `type T struct{N int; S string}; t := T{S: "foo"}; t`, res: `{0 foo}`},         // #05
 		// {src: `a := []int{}`, res: `[]`},                                                     // #06
 		// {src: `a := []int{1, 2, 3}`, res: `[1 2 3]`},                                         // #07
 	})

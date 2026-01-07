@@ -14,13 +14,14 @@ type Kind int
 
 // Symbol kinds.
 const (
-	Value Kind = iota // a value defined in the runtime
-	Type              // a type
-	Label             // a label indicating a position in the VM code
-	Const             // a constant
-	Var               // a variable, located in the VM memory
-	Func              // a function, located in the VM code
-	Pkg               // a package
+	Unset Kind = iota
+	Value      // a value defined in the runtime
+	Type       // a type
+	Label      // a label indicating a position in the VM code
+	Const      // a constant
+	Var        // a variable, located in the VM memory
+	Func       // a function, located in the VM code
+	Pkg        // a package
 )
 
 //go:generate stringer -type=Kind
@@ -97,10 +98,10 @@ func (sm SymMap) Init() {
 	sm["int"] = &Symbol{Name: "int", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*int)(nil)).Elem()}
 	sm["string"] = &Symbol{Name: "string", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*string)(nil)).Elem()}
 
-	sm["nil"] = &Symbol{Name: "nil", Index: UnsetAddr}
+	sm["nil"] = &Symbol{Name: "nil", Kind: Value, Index: UnsetAddr}
 	sm["iota"] = &Symbol{Name: "iota", Kind: Const, Index: UnsetAddr}
-	sm["true"] = &Symbol{Name: "true", Index: UnsetAddr, Value: vm.ValueOf(true), Type: vm.TypeOf(true)}
-	sm["false"] = &Symbol{Name: "false", Index: UnsetAddr, Value: vm.ValueOf(false), Type: vm.TypeOf(false)}
+	sm["true"] = &Symbol{Name: "true", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(true), Type: vm.TypeOf(true)}
+	sm["false"] = &Symbol{Name: "false", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(false), Type: vm.TypeOf(false)}
 
-	sm["println"] = &Symbol{Name: "println", Index: UnsetAddr, Value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })}
+	sm["println"] = &Symbol{Name: "println", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })}
 }

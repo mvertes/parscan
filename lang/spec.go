@@ -37,7 +37,7 @@ type TokenProp struct {
 	Token
 	SkipSemi      bool // automatic semicolon insertion after newline
 	Precedence    int  // operator precedence
-	Associativity      //
+	Associativity      // associativity of operator
 	HasInit       bool // true if may have an init clause
 }
 
@@ -51,5 +51,4 @@ type Spec struct {
 	DotNum     bool              // true if a number can start with '.'
 	IdentASCII bool              // true if an identifier can be in ASCII only
 	NumUnder   bool              // true if a number can contain _ character
-	// TokenProps map[string]TokenProp // token properties
 }

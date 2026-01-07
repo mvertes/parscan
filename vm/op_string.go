@@ -26,31 +26,32 @@ func _() {
 	_ = x[Exit-15]
 	_ = x[Field-16]
 	_ = x[FieldSet-17]
-	_ = x[Greater-18]
-	_ = x[Grow-19]
-	_ = x[Index-20]
-	_ = x[Jump-21]
-	_ = x[JumpTrue-22]
-	_ = x[JumpFalse-23]
-	_ = x[JumpSetTrue-24]
-	_ = x[JumpSetFalse-25]
-	_ = x[Lower-26]
-	_ = x[Loweri-27]
-	_ = x[Mul-28]
-	_ = x[New-29]
-	_ = x[Negate-30]
-	_ = x[Not-31]
-	_ = x[Pop-32]
-	_ = x[Push-33]
-	_ = x[Return-34]
-	_ = x[Sub-35]
-	_ = x[Subi-36]
-	_ = x[Swap-37]
+	_ = x[FieldFset-18]
+	_ = x[Greater-19]
+	_ = x[Grow-20]
+	_ = x[Index-21]
+	_ = x[Jump-22]
+	_ = x[JumpTrue-23]
+	_ = x[JumpFalse-24]
+	_ = x[JumpSetTrue-25]
+	_ = x[JumpSetFalse-26]
+	_ = x[Lower-27]
+	_ = x[Loweri-28]
+	_ = x[Mul-29]
+	_ = x[New-30]
+	_ = x[Negate-31]
+	_ = x[Not-32]
+	_ = x[Pop-33]
+	_ = x[Push-34]
+	_ = x[Return-35]
+	_ = x[Sub-36]
+	_ = x[Subi-37]
+	_ = x[Swap-38]
 }
 
-const _Op_name = "NopAddAddrAssignFassignVassignCallCalliCallXDerefDupFdupFnewEqualEqualSetExitFieldFieldSetGreaterGrowIndexJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLowerLoweriMulNewNegateNotPopPushReturnSubSubiSwap"
+const _Op_name = "NopAddAddrAssignFassignVassignCallCalliCallXDerefDupFdupFnewEqualEqualSetExitFieldFieldSetFieldFsetGreaterGrowIndexJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLowerLoweriMulNewNegateNotPopPushReturnSubSubiSwap"
 
-var _Op_index = [...]uint8{0, 3, 6, 10, 16, 23, 30, 34, 39, 44, 49, 52, 56, 60, 65, 73, 77, 82, 90, 97, 101, 106, 110, 118, 127, 138, 150, 155, 161, 164, 167, 173, 176, 179, 183, 189, 192, 196, 200}
+var _Op_index = [...]uint8{0, 3, 6, 10, 16, 23, 30, 34, 39, 44, 49, 52, 56, 60, 65, 73, 77, 82, 90, 99, 106, 110, 115, 119, 127, 136, 147, 159, 164, 170, 173, 176, 182, 185, 188, 192, 198, 201, 205, 209}
 
 func (i Op) String() string {
 	idx := int(i) - 0

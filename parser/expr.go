@@ -89,9 +89,6 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			ops = append(ops, t)
 
 		case lang.Ident:
-			if i < lin-1 && in[i].Tok == lang.Colon {
-				continue
-			}
 			s, sc, ok := p.Symbols.Get(t.Str, p.scope)
 			if ok && sc != "" {
 				t.Str = sc + "/" + t.Str
@@ -123,7 +120,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 
 		case lang.BraceBlock:
-			toks, err := p.parseExprStr(t.Block(), typeStr)
+			toks, err := p.parseComposite(t.Block(), typeStr)
 			out = append(out, toks...)
 			if err != nil {
 				return out, err
@@ -161,6 +158,32 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	}
 	log.Println("Final out:", out)
 	return out, err
+}
+
+func (p *Parser) parseComposite(s, typ string) (Tokens, error) {
+	tokens, err := p.Scan(s, false)
+	if err != nil {
+		return nil, err
+	}
+
+	noColon := len(tokens) > 0 && tokens.Index(lang.Colon) == -1
+	var result Tokens
+	for i, sub := range tokens.Split(lang.Comma) {
+		toks, err := p.parseExpr(sub, typ)
+		if err != nil {
+			return result, err
+		}
+		if noColon {
+			// Insert a numeric index key and a colon operator.
+			result = append(result, scanner.Token{Tok: lang.Int, Str: strconv.Itoa(i)})
+			result = append(result, toks...)
+			result = append(result, scanner.Token{Tok: lang.Colon, Str: ":"})
+		} else {
+			result = append(result, toks...)
+		}
+	}
+
+	return result, nil
 }
 
 func (p *Parser) parseExprStr(s, typ string) (tokens Tokens, err error) {

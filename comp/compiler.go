@@ -57,7 +57,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	fixList := parser.Tokens{}  // list of tokens to fix after all necessary information is gathered
 	stack := []*symbol.Symbol{} // for symbolic evaluation and type checking
 	flen := []int{}             // stack length according to function scopes
-	keyList := []string{}
 
 	emit := func(t scanner.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
@@ -65,6 +64,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
 	}
 	push := func(s *symbol.Symbol) { stack = append(stack, s) }
+	top := func() *symbol.Symbol { return stack[len(stack)-1] }
 	pop := func() *symbol.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
 	popflen := func() int { le := len(flen) - 1; l := flen[le]; flen = flen[:le]; return l }
 
@@ -76,7 +76,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		}
 	}
 
-	for i, t := range tokens {
+	for _, t := range tokens {
 		switch t.Tok {
 		case lang.Int:
 			n, err := strconv.Atoi(t.Str)
@@ -173,48 +173,20 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.CallX, t.Beg)
 
 		case lang.Colon:
-			// Keyed element in a literal composite expression:
-			// If the key is an ident (field name), then push it on the keystack,
-			// to be computed at compile time in Composite handling.
-			// Or generate instructions so key will be computed at runtime.
 			showStack()
-			s, ok := c.Symbols[t.Str]
-			if ok {
-				j := s.Type.FieldIndex(tokens[i-2].Str)
-				log.Println("### fieldIndex", tokens[i-2].Str, j)
+			pop()
+			ks := pop()
+			switch ks.Kind {
+			case symbol.Const:
+				if v := ks.Value.Value; v.CanInt() {
+					emit(t, vm.FieldFset)
+				}
+			case symbol.Unset:
+				j := top().Type.FieldIndex(ks.Name)
 				emit(t, vm.FieldSet, j...)
 			}
 
 		case lang.Composite:
-			showStack()
-			d := c.Symbols[t.Str]
-			switch d.Type.Rtype.Kind() {
-			case reflect.Struct:
-				emit(t, vm.Fnew, d.Index)
-				if len(keyList) == 0 {
-					nf := d.Type.Rtype.NumField()
-					for i := 0; i < nf; i++ {
-						emit(t, vm.FieldSet, i)
-					}
-				} else {
-					for _, fname := range keyList {
-						i := d.Type.FieldIndex(fname)
-						emit(t, vm.FieldSet, i...)
-					}
-					keyList = []string{}
-				}
-			case reflect.Slice:
-				emit(t, vm.Fnew, d.Index)
-			default:
-				return fmt.Errorf("composite kind not supported yet: %v", d.Type.Rtype.Kind())
-			}
-			for j := len(stack) - 1; j >= 0; j-- {
-				// pop until type
-				if stack[j].Kind == symbol.Type {
-					stack = stack[:j+1]
-					break
-				}
-			}
 
 		case lang.Grow:
 			emit(t, vm.Grow, t.Beg)
@@ -261,13 +233,12 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.Ident:
 			s, ok := c.Symbols[t.Str]
 			if !ok {
-				// return errorf("symbol not found: %s", t.Str)
 				// it could be either an undefined symbol or a key ident in a literal composite expr.
-				continue
+				s = &symbol.Symbol{Name: t.Str}
 			}
 			log.Println("Ident symbol", t.Str, s.Local, s.Index, s.Type)
 			push(s)
-			if s.Kind == symbol.Pkg {
+			if s.Kind == symbol.Pkg || s.Kind == symbol.Unset {
 				break
 			}
 			if s.Local {
@@ -277,7 +248,9 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					s.Index = len(c.Data)
 					c.Data = append(c.Data, s.Value)
 				}
-				if s.Kind != symbol.Type {
+				if s.Kind == symbol.Type {
+					emit(t, vm.Fnew, s.Index)
+				} else {
 					emit(t, vm.Dup, s.Index)
 				}
 			}
@@ -378,6 +351,8 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				}
 				push(sym)
 				emit(t, vm.Dup, l)
+			case symbol.Unset:
+				return errorf("invalid symbol: %s", s.Name)
 			default:
 				if f, ok := s.Type.Rtype.FieldByName(t.Str[1:]); ok {
 					emit(t, vm.Field, f.Index...)
