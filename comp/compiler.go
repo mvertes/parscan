@@ -176,10 +176,18 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			showStack()
 			pop()
 			ks := pop()
+			ts := top()
 			switch ks.Kind {
 			case symbol.Const:
-				if v := ks.Value.Value; v.CanInt() {
-					emit(t, vm.FieldFset)
+				switch ts.Type.Rtype.Kind() {
+				case reflect.Struct:
+					if v := ks.Value.Value; v.CanInt() {
+						emit(t, vm.FieldFset)
+					}
+				case reflect.Slice:
+					if v := ks.Value.Value; v.CanInt() {
+						emit(t, vm.IndexSet)
+					}
 				}
 			case symbol.Unset:
 				j := top().Type.FieldIndex(ks.Name)
@@ -249,7 +257,11 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					c.Data = append(c.Data, s.Value)
 				}
 				if s.Kind == symbol.Type {
-					emit(t, vm.Fnew, s.Index)
+					if s.Type.Rtype.Kind() == reflect.Slice {
+						emit(t, vm.Fnew, s.Index, s.SliceLen)
+					} else {
+						emit(t, vm.Fnew, s.Index)
+					}
 				} else {
 					emit(t, vm.Dup, s.Index)
 				}
@@ -265,7 +277,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					s.Index = len(c.Data)
 					c.Data = append(c.Data, s.Value)
 					flen = append(flen, len(stack))
-					log.Println("### func label:", lc, s.Index, s.Value.Value, c.Data[0].Value)
 				} else {
 					c.Data[s.Index] = s.Value
 				}

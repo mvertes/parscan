@@ -128,15 +128,24 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			ops = append(ops, scanner.Token{Tok: lang.Composite, Pos: t.Pos, Str: typeStr})
 
 		case lang.BracketBlock:
+			if i == 0 || in[i-1].Tok.IsOperator() {
+				// array or slice type expression
+				typ, err := p.parseTypeExpr(in[i:])
+				if err != nil {
+					return out, err
+				}
+				typeStr = typ.String()
+				p.Symbols.Add(symbol.UnsetAddr, typ.String(), vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+				out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typeStr})
+				i++
+				break
+			}
 			toks, err := p.parseExprStr(t.Block(), typeStr)
 			if err != nil {
 				return out, err
 			}
 			out = append(out, toks...)
 			ops = append(ops, scanner.Token{Tok: lang.Index, Pos: t.Pos})
-
-		case lang.Comment:
-			// return out, nil
 
 		case lang.Struct:
 			typ, err := p.parseTypeExpr(in[i : i+2])
@@ -146,8 +155,9 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			typeStr = typ.String()
 			p.Symbols.Add(symbol.UnsetAddr, typ.String(), vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
 			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typeStr})
-			log.Println("### typ:", typ)
 			i++
+
+		case lang.Comment:
 
 		default:
 			log.Println("unxexpected token:", t)
@@ -168,6 +178,7 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, error) {
 
 	noColon := len(tokens) > 0 && tokens.Index(lang.Colon) == -1
 	var result Tokens
+	var sliceLen int
 	for i, sub := range tokens.Split(lang.Comma) {
 		toks, err := p.parseExpr(sub, typ)
 		if err != nil {
@@ -178,10 +189,12 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, error) {
 			result = append(result, scanner.Token{Tok: lang.Int, Str: strconv.Itoa(i)})
 			result = append(result, toks...)
 			result = append(result, scanner.Token{Tok: lang.Colon, Str: ":"})
+			sliceLen++
 		} else {
 			result = append(result, toks...)
 		}
 	}
+	p.Symbols[typ].SliceLen = sliceLen
 
 	return result, nil
 }

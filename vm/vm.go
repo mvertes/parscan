@@ -41,6 +41,7 @@ const (
 	Greater                // n1 n2 -- cond; cond = n1 > n2
 	Grow                   // -- ; sp += $1
 	Index                  // a i -- a[i] ;
+	IndexSet               // a i v -- a; a[i] = v
 	Jump                   // -- ; ip += $1
 	JumpTrue               // cond -- ; if cond { ip += $1 }
 	JumpFalse              // cond -- ; if cond { ip += $1 }
@@ -170,6 +171,10 @@ func (m *Machine) Run() (err error) {
 			mem = append(mem, mem[c.Arg[0]+fp-1])
 		case Fnew:
 			mem = append(mem, NewValue(mem[c.Arg[0]].Type))
+			if len(c.Arg) > 1 {
+				mem[len(mem)-1].Grow(c.Arg[1])
+				mem[len(mem)-1].SetLen(c.Arg[1])
+			}
 		case Field:
 			fv := mem[sp-1].FieldByIndex(c.Arg)
 			if !fv.CanSet() {
@@ -262,8 +267,11 @@ func (m *Machine) Run() (err error) {
 		case Index:
 			mem[sp-2].Value = mem[sp-2].Index(int(mem[sp-1].Int()))
 			mem = mem[:sp-1]
+		case IndexSet:
+			log.Println("## IndexSet:", sp-3, mem[sp-3].Type)
+			mem[sp-3].Value.Index(int(mem[sp-2].Int())).Set(mem[sp-1].Value)
+			mem = mem[:sp-2]
 		case Vassign:
-			// mem[sp-1].Set(mem[sp-2].Value)
 			mem[sp-2].Set(mem[sp-1].Value)
 			mem = mem[:sp-2]
 		}
