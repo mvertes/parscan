@@ -39,14 +39,14 @@ Go language support:
 - [ ] complete numeric types
 - [x] function types
 - [ ] variadic functions
-- [ ] pointers
+- [x] pointers
 - [x] structures
 - [ ] embedded structures
 - [ ] recursive structures
-- [ ] literal composite objects
+- [x] literal composite objects
 - [ ] interfaces
 - [x] arrays, slices
-- [ ] maps
+- [x] maps
 - [ ] deterministic maps
 - [ ] channel types
 - [ ] channel operations

@@ -155,12 +155,22 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			typeStr = typ.String()
 			p.Symbols.Add(symbol.UnsetAddr, typ.String(), vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
 			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typeStr})
-			i++
+			i++ // FIXME: number of tokens to skip should be computed from type parsing.
+
+		case lang.Map:
+			typ, err := p.parseTypeExpr(in[i:])
+			if err != nil {
+				return out, err
+			}
+			typeStr = typ.String()
+			p.Symbols.Add(symbol.UnsetAddr, typ.String(), vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typeStr})
+			i += 2 // FIXME: number of tokens to skip should be computed from type parsing.
 
 		case lang.Comment:
 
 		default:
-			log.Println("unxexpected token:", t)
+			log.Println("unexpected token:", t)
 		}
 	}
 	for len(ops) > 0 {

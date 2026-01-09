@@ -217,6 +217,12 @@ func TestStruct(t *testing.T) {
 	})
 }
 
+func TestMap(t *testing.T) {
+	run(t, []etest{
+		{src: `type M map[string]bool; var m M; m`, res: `map[]`}, // #00
+	})
+}
+
 func TestType(t *testing.T) {
 	src0 := `type (
 	I int
@@ -271,5 +277,7 @@ func TestComposite(t *testing.T) {
 		{src: `type T struct{N int; S string}; t := T{S: "foo"}; t`, res: `{0 foo}`},         // #05
 		{src: `a := []int{}`, res: `[]`},                                                     // #06
 		{src: `a := []int{1, 2, 3}; a`, res: `[1 2 3]`},                                      // #07
+		{src: `m := map[string]bool{}`, res: `map[]`},                                        // #08
+		{src: `m := map[string]bool{"hello": true}; m`, res: `map[hello:true]`},              // #09
 	})
 }

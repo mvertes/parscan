@@ -188,6 +188,8 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					if v := ks.Value.Value; v.CanInt() {
 						emit(t, vm.IndexSet)
 					}
+				case reflect.Map:
+					emit(t, vm.MapSet)
 				}
 			case symbol.Unset:
 				j := top().Type.FieldIndex(ks.Name)
@@ -260,7 +262,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					if s.Type.Rtype.Kind() == reflect.Slice {
 						emit(t, vm.Fnew, s.Index, s.SliceLen)
 					} else {
-						emit(t, vm.Fnew, s.Index)
+						emit(t, vm.Fnew, s.Index, 1)
 					}
 				} else {
 					emit(t, vm.Dup, s.Index)

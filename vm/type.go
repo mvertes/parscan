@@ -38,8 +38,21 @@ type Value struct {
 }
 
 // NewValue returns an addressable zero value for the specified type.
-func NewValue(typ *Type) Value {
-	if typ.Rtype.Kind() == reflect.Func {
+func NewValue(typ *Type, arg ...int) Value {
+	switch typ.Rtype.Kind() {
+	case reflect.Slice:
+		if len(arg) == 1 {
+			v := reflect.New(typ.Rtype).Elem()
+			v.Set(reflect.MakeSlice(typ.Rtype, arg[0], arg[0]))
+			return Value{Type: typ, Value: v}
+		}
+	case reflect.Map:
+		if len(arg) == 1 {
+			v := reflect.New(typ.Rtype).Elem()
+			v.Set(reflect.MakeMapWithSize(typ.Rtype, arg[0]))
+			return Value{Type: typ, Value: v}
+		}
+	case reflect.Func:
 		typ = TypeOf(0) // Function value is its index in the code segment.
 	}
 	return Value{Type: typ, Value: reflect.New(typ.Rtype).Elem()}
@@ -69,6 +82,11 @@ func ArrayOf(length int, t *Type) *Type {
 // SliceOf returns the slice type with the given element type.
 func SliceOf(t *Type) *Type {
 	return &Type{Rtype: reflect.SliceOf(t.Rtype)}
+}
+
+// MapOf returns the map type with the given key and element types.
+func MapOf(k, e *Type) *Type {
+	return &Type{Rtype: reflect.MapOf(k.Rtype, e.Rtype)}
 }
 
 // FuncOf returns the function type with the given argument and result types.

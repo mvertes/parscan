@@ -127,6 +127,24 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		}
 		return vm.StructOf(fields), nil
 
+	case lang.Map:
+		if len(in) < 3 || in[1].Tok != lang.BracketBlock {
+			return nil, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
+		}
+		kin, err := p.Scan(in[1].Block(), false)
+		if err != nil {
+			return nil, err
+		}
+		ktyp, err := p.parseTypeExpr(kin) // Key type
+		if err != nil {
+			return nil, err
+		}
+		etyp, err := p.parseTypeExpr(in[2:]) // Element type
+		if err != nil {
+			return nil, err
+		}
+		return vm.MapOf(ktyp, etyp), nil
+
 	default:
 		return nil, fmt.Errorf("%w: %v", ErrNotImplemented, in[0].Name())
 	}
