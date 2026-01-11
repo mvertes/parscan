@@ -59,6 +59,7 @@ Go language support:
 - [x] iota expression
 - [ ] defer statement
 - [ ] recover statement
+- [ ] range clause
 - [ ] go statement
 - [x] if statement (including else and else if)
 - [x] for statement

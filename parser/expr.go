@@ -145,7 +145,14 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				return out, err
 			}
 			out = append(out, toks...)
-			ops = append(ops, scanner.Token{Tok: lang.Index, Pos: t.Pos})
+			if i < len(in)-2 && in[i+1].Tok == lang.Assign {
+				// A brace block followed by assign implies a MapAssing token,
+				// as assignement to a map element cannot be implemented through a normal Assign.
+				ops = append(ops, scanner.Token{Tok: lang.MapAssign, Pos: t.Pos})
+				i++
+			} else {
+				ops = append(ops, scanner.Token{Tok: lang.Index, Pos: t.Pos})
+			}
 
 		case lang.Struct:
 			typ, err := p.parseTypeExpr(in[i : i+2])

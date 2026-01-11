@@ -130,8 +130,13 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.Index:
 			showStack()
 			pop()
-			push(&symbol.Symbol{Type: pop().Type.Elem()})
-			emit(t, vm.Index)
+			s := pop()
+			if s.Type.Rtype.Kind() == reflect.Map {
+				emit(t, vm.MapIndex)
+			} else {
+				emit(t, vm.Index)
+			}
+			push(&symbol.Symbol{Type: s.Type.Elem()})
 
 		case lang.Greater:
 			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
@@ -231,6 +236,18 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				c.Symbols[lhs.Name].Type = rhs.Type
 			}
 			emit(t, vm.Vassign)
+
+		case lang.MapAssign:
+			s := stack[len(stack)-3]
+			switch s.Type.Rtype.Kind() {
+			case reflect.Array, reflect.Slice:
+				emit(t, vm.IndexSet)
+			case reflect.Map:
+				emit(t, vm.MapSet)
+			default:
+				return errorf("not a map or array: %s", s.Name)
+			}
+			stack = stack[:len(stack)-3]
 
 		case lang.Equal:
 			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})

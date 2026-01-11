@@ -59,6 +59,7 @@ const (
 	AndNotAssign // &^=
 	Inc          // ++
 	Dec          // --
+	MapAssign
 
 	// Unary operations.
 	Plus     // unary +

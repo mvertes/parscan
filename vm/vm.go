@@ -42,6 +42,7 @@ const (
 	Grow                   // -- ; sp += $1
 	Index                  // a i -- a[i] ;
 	IndexSet               // a i v -- a; a[i] = v
+	MapIndex               // a i -- a[i]
 	MapSet                 // a i v -- a; a[i] = v
 	Jump                   // -- ; ip += $1
 	JumpTrue               // cond -- ; if cond { ip += $1 }
@@ -267,6 +268,9 @@ func (m *Machine) Run() (err error) {
 		case IndexSet:
 			mem[sp-3].Value.Index(int(mem[sp-2].Int())).Set(mem[sp-1].Value)
 			mem = mem[:sp-2]
+		case MapIndex:
+			mem[sp-2].Value = mem[sp-2].MapIndex(mem[sp-1].Value)
+			mem = mem[:sp-1]
 		case MapSet:
 			mem[sp-3].SetMapIndex(mem[sp-2].Value, mem[sp-1].Value)
 			mem = mem[:sp-2]

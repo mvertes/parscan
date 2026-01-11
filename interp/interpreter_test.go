@@ -218,8 +218,13 @@ func TestStruct(t *testing.T) {
 }
 
 func TestMap(t *testing.T) {
+	src0 := `type M map[string]bool;`
 	run(t, []etest{
-		{src: `type M map[string]bool; var m M; m`, res: `map[]`}, // #00
+		{src: src0 + `var m M; m`, res: `map[]`},                                     // #00
+		{src: `m := map[string]bool{"foo": true}; m["foo"]`, res: `true`},            // #01
+		{src: src0 + `m := M{"xx": true}; m`, res: `map[xx:true]`},                   // #02
+		{src: src0 + `var m = M{"xx": true}; m`, res: `map[xx:true]`},                // #03
+		{src: src0 + `var m = M{"xx": true}; m["xx"] = false`, res: `map[xx:false]`}, // #04
 	})
 }
 
