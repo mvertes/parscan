@@ -281,7 +281,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if bi < 0 {
 		return out, ErrBody
 	}
-	typ, err := p.parseTypeExpr(in[:bi])
+	typ, _, err := p.parseTypeExpr(in[:bi])
 	if err != nil {
 		return out, err
 	}

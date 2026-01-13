@@ -29,36 +29,36 @@ var (
 	ErrNotImplemented = errors.New("not implemented")
 )
 
-func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
+func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 	switch in[0].Tok {
 	case lang.BracketBlock:
-		typ, err := p.parseTypeExpr(in[1:])
+		typ, i, err := p.parseTypeExpr(in[1:])
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if b := in[0].Block(); len(b) > 0 {
 			x, err := p.Scan(b, false)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			cval, _, err := p.evalConstExpr(x)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			size, ok := constValue(cval).(int)
 			if !ok {
-				return nil, ErrSize
+				return nil, 0, ErrSize
 			}
-			return vm.ArrayOf(size, typ), nil
+			return vm.ArrayOf(size, typ), 1 + i, nil
 		}
-		return vm.SliceOf(typ), nil
+		return vm.SliceOf(typ), 1 + i, nil
 
 	case lang.Mul:
-		typ, err := p.parseTypeExpr(in[1:])
+		typ, i, err := p.parseTypeExpr(in[1:])
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		return vm.PointerTo(typ), nil
+		return vm.PointerTo(typ), 1 + i, nil
 
 	case lang.Func:
 		// Get argument and return token positions depending on function pattern:
@@ -74,79 +74,79 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, err error) {
 		case l >= 2 && in1.Tok == lang.ParenBlock:
 			indexArgs, out = 1, in[2:]
 		default:
-			return nil, ErrFuncType
+			return nil, 0, ErrFuncType
 		}
 
 		// We can now parse function input and output parameter types.
 		// Input parameters are always enclosed by parenthesis.
 		iargs, err := p.Scan(in[indexArgs].Block(), false)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		arg, _, err := p.parseParamTypes(iargs, parseTypeIn)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		// Output parameters may be empty, or enclosed or not by parenthesis.
 		if len(out) == 1 && out[0].Tok == lang.ParenBlock {
 			if out, err = p.Scan(out[0].Block(), false); err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 		}
 		ret, _, err := p.parseParamTypes(out, parseTypeOut)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		return vm.FuncOf(arg, ret, false), nil
+		return vm.FuncOf(arg, ret, false), 1 + indexArgs, nil
 
 	case lang.Ident:
 		// TODO: selector expression (pkg.type)
 		s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
 		if !ok || s.Kind != symbol.Type {
-			return nil, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
+			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
-		return s.Type, nil
+		return s.Type, 1, nil
 
 	case lang.Struct:
-		if len(in) != 2 || in[1].Tok != lang.BraceBlock {
-			return nil, fmt.Errorf("%w: %v", ErrSyntax, in)
+		if len(in) < 2 || in[1].Tok != lang.BraceBlock {
+			return nil, 0, fmt.Errorf("%w: %v", ErrSyntax, in)
 		}
 		if in, err = p.Scan(in[1].Block(), false); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		var fields []*vm.Type
 		for _, lt := range in.Split(lang.Semicolon) {
 			types, names, err := p.parseParamTypes(lt, parseTypeType)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			for i, name := range names {
 				fields = append(fields, &vm.Type{Name: name, PkgPath: p.pkgName, Rtype: types[i].Rtype})
 				// TODO: handle embedded fields
 			}
 		}
-		return vm.StructOf(fields), nil
+		return vm.StructOf(fields), 2, nil
 
 	case lang.Map:
 		if len(in) < 3 || in[1].Tok != lang.BracketBlock {
-			return nil, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
+			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
 		kin, err := p.Scan(in[1].Block(), false)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		ktyp, err := p.parseTypeExpr(kin) // Key type
+		ktyp, _, err := p.parseTypeExpr(kin) // Key type
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		etyp, err := p.parseTypeExpr(in[2:]) // Element type
+		etyp, i, err := p.parseTypeExpr(in[2:]) // Element type
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		return vm.MapOf(ktyp, etyp), nil
+		return vm.MapOf(ktyp, etyp), 2 + i, nil
 
 	default:
-		return nil, fmt.Errorf("%w: %v", ErrNotImplemented, in[0].Name())
+		return nil, 0, fmt.Errorf("%w: %v", ErrNotImplemented, in[0].Name())
 	}
 }
 
@@ -176,7 +176,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 				continue
 			}
 		}
-		typ, err := p.parseTypeExpr(t)
+		typ, _, err := p.parseTypeExpr(t)
 		if err != nil {
 			return nil, nil, err
 		}

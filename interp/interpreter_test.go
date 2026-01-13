@@ -274,15 +274,20 @@ func TestImport(t *testing.T) {
 
 func TestComposite(t *testing.T) {
 	run(t, []etest{
-		{src: "type T struct{}; t := T{}; t", res: "{}"},                                     // #00
-		{src: "t := struct{}{}; t", res: "{}"},                                               // #01
-		{src: `type T struct {}; var t T; t = T{}; t`, res: "{}"},                            // #02
-		{src: `type T struct{N int; S string}; var t T; t = T{2, "foo"}; t`, res: `{2 foo}`}, // #03
-		{src: `type T struct{N int; S string}; t := T{2, "foo"}; t`, res: `{2 foo}`},         // #04
-		{src: `type T struct{N int; S string}; t := T{S: "foo"}; t`, res: `{0 foo}`},         // #05
-		{src: `a := []int{}`, res: `[]`},                                                     // #06
-		{src: `a := []int{1, 2, 3}; a`, res: `[1 2 3]`},                                      // #07
-		{src: `m := map[string]bool{}`, res: `map[]`},                                        // #08
-		{src: `m := map[string]bool{"hello": true}; m`, res: `map[hello:true]`},              // #09
+		{src: "type T struct{}; t := T{}; t", res: "{}"},                                       // #00
+		{src: "t := struct{}{}; t", res: "{}"},                                                 // #01
+		{src: `type T struct {}; var t T; t = T{}; t`, res: "{}"},                              // #02
+		{src: `type T struct{N int; S string}; var t T; t = T{2, "foo"}; t`, res: `{2 foo}`},   // #03
+		{src: `type T struct{N int; S string}; t := T{2, "foo"}; t`, res: `{2 foo}`},           // #04
+		{src: `type T struct{N int; S string}; t := T{S: "foo"}; t`, res: `{0 foo}`},           // #05
+		{src: `a := []int{}`, res: `[]`},                                                       // #06
+		{src: `a := []int{1, 2, 3}; a`, res: `[1 2 3]`},                                        // #07
+		{src: `m := map[string]bool{}`, res: `map[]`},                                          // #08
+		{src: `m := map[string]bool{"hello": true}; m`, res: `map[hello:true]`},                // #09
+		{src: `m := map[int]struct{b bool}{1:struct {b bool}{true}}; m`, res: `map[1:{true}]`}, // #10
+		{src: `type T struct {b bool}; m := []T{T{true}}; m`, res: `[{true}]`},                 // #11
+		{src: `type T struct {b bool}; m := []T{{true}}; m`, res: `[{true}]`},                  // #12
+		{src: `m := []struct{b bool}{{true}}; m`, res: `[{true}]`},                             // #13
+		{src: `m := map[int]struct{b bool}{1:{true}}; m`, res: `map[1:{true}]`},                // #14
 	})
 }

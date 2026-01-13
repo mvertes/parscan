@@ -14,6 +14,7 @@ import (
 func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	log.Println("parseExpr in:", in)
 	var ops Tokens
+	var ctype string
 
 	popop := func() (t scanner.Token) {
 		l := len(ops) - 1
@@ -62,6 +63,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				// An operator preceded by an operator or no token is unary.
 				t.Tok = lang.UnaryOp[t.Tok]
+				// FIXME: parsetype for composite if & or *
 			}
 			for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
 				out = append(out, popop())
@@ -94,7 +96,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				t.Str = sc + "/" + t.Str
 			}
 			if s != nil && s.Kind == symbol.Type {
-				typeStr = s.Type.String()
+				ctype = s.Type.String()
 			}
 			out = append(out, t)
 			if i+1 < len(in) && in[i+1].Tok == lang.Define {
@@ -120,24 +122,31 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 
 		case lang.BraceBlock:
-			toks, err := p.parseComposite(t.Block(), typeStr)
+			if ctype == "" {
+				// Infer composite inner type from passed typeStr
+				typ := p.Symbols[typeStr].Type.Elem()
+				ctype = typ.String()
+				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+				out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
+			}
+			toks, err := p.parseComposite(t.Block(), ctype)
 			out = append(out, toks...)
 			if err != nil {
 				return out, err
 			}
-			ops = append(ops, scanner.Token{Tok: lang.Composite, Pos: t.Pos, Str: typeStr})
+			ops = append(ops, scanner.Token{Tok: lang.Composite, Pos: t.Pos, Str: ctype})
 
 		case lang.BracketBlock:
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				// array or slice type expression
-				typ, err := p.parseTypeExpr(in[i:])
+				typ, n, err := p.parseTypeExpr(in[i:])
 				if err != nil {
 					return out, err
 				}
-				typeStr = typ.String()
-				p.Symbols.Add(symbol.UnsetAddr, typ.String(), vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-				out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typeStr})
-				i++
+				ctype = typ.String()
+				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+				out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
+				i += n - 1
 				break
 			}
 			toks, err := p.parseExprStr(t.Block(), typeStr)
@@ -146,7 +155,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 			out = append(out, toks...)
 			if i < len(in)-2 && in[i+1].Tok == lang.Assign {
-				// A brace block followed by assign implies a MapAssing token,
+				// A bracket block followed by assign implies a MapAssing token,
 				// as assignement to a map element cannot be implemented through a normal Assign.
 				ops = append(ops, scanner.Token{Tok: lang.MapAssign, Pos: t.Pos})
 				i++
@@ -155,24 +164,24 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 
 		case lang.Struct:
-			typ, err := p.parseTypeExpr(in[i : i+2])
+			typ, _, err := p.parseTypeExpr(in[i : i+2])
 			if err != nil {
 				return out, err
 			}
-			typeStr = typ.String()
-			p.Symbols.Add(symbol.UnsetAddr, typ.String(), vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typeStr})
-			i++ // FIXME: number of tokens to skip should be computed from type parsing.
+			ctype = typ.String()
+			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
+			i++
 
 		case lang.Map:
-			typ, err := p.parseTypeExpr(in[i:])
+			typ, n, err := p.parseTypeExpr(in[i:])
 			if err != nil {
 				return out, err
 			}
-			typeStr = typ.String()
-			p.Symbols.Add(symbol.UnsetAddr, typ.String(), vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: typeStr})
-			i += 2 // FIXME: number of tokens to skip should be computed from type parsing.
+			ctype = typ.String()
+			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
+			i += n - 1
 
 		case lang.Comment:
 

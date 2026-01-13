@@ -297,7 +297,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	if isAlias {
 		toks = toks[1:]
 	}
-	typ, err := p.parseTypeExpr(toks)
+	typ, _, err := p.parseTypeExpr(toks)
 	if err != nil {
 		return out, err
 	}
