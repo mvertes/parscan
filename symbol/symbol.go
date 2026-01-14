@@ -4,6 +4,7 @@ package symbol
 import (
 	"fmt"
 	"go/constant"
+	"reflect"
 	"strings"
 
 	"github.com/mvertes/parscan/vm"
@@ -47,14 +48,17 @@ type Symbol struct {
 //  	return fmt.Sprintf("{Kind: %v, Name: %v, Index: %v, Type: %v}\n", s.Kind, s.Name, s.Index, s.Type)
 //}
 
-// IsConst return true if symbol is a constant.
+// IsConst returns true if symbol is a constant.
 func (s *Symbol) IsConst() bool { return s.Kind == Const }
 
-// IsType return true if symbol is a type.
+// IsType returns true if symbol is a type.
 func (s *Symbol) IsType() bool { return s.Kind == Type }
 
-// IsFunc return true if symbol is a function.
+// IsFunc returns true if symbol is a function.
 func (s *Symbol) IsFunc() bool { return s.Kind == Func }
+
+// IsPtr returns true if symbol is a pointer.
+func (s *Symbol) IsPtr() bool { return s.Type.Rtype.Kind() == reflect.Pointer }
 
 // Vtype returns the VM type of a symbol.
 func Vtype(s *Symbol) *vm.Type {

@@ -132,3 +132,6 @@ func (t *Type) FieldType(name string) *Type {
 	}
 	return nil
 }
+
+// IsPtr returns true if type t is of pointer kind.
+func (t *Type) IsPtr() bool { return t.Rtype.Kind() == reflect.Pointer }

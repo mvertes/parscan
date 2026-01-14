@@ -32,10 +32,12 @@ const (
 	Dup                    // addr -- value ; value = mem[addr]
 	Fdup                   // addr -- value ; value = mem[addr]
 	Fnew                   // -- x; x = new mem[$1]
+	FnewE                  // -- x; x = new mem[$1].Elem()
 	Equal                  // n1 n2 -- cond ; cond = n1 == n2
 	EqualSet               // n1 n2 -- n1 cond ; cond = n1 == n2
 	Exit                   // -- ;
 	Field                  // s -- f ; f = s.FieldIndex($1, ...)
+	FieldE                 // s -- f ; f = s.FieldIndex($1, ...)
 	FieldSet               // s d -- s ; s.FieldIndex($1, ...) = d
 	FieldFset              // s i v -- s; s.FieldIndex(i) = v
 	Greater                // n1 n2 -- cond; cond = n1 > n2
@@ -173,8 +175,17 @@ func (m *Machine) Run() (err error) {
 			mem = append(mem, mem[c.Arg[0]+fp-1])
 		case Fnew:
 			mem = append(mem, NewValue(mem[c.Arg[0]].Type, c.Arg[1:]...))
+		case FnewE:
+			mem = append(mem, NewValue(mem[c.Arg[0]].Type.Elem(), c.Arg[1:]...))
 		case Field:
 			fv := mem[sp-1].FieldByIndex(c.Arg)
+			if !fv.CanSet() {
+				// Normally private fields can not bet set via reflect. Override this limitation.
+				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
+			}
+			mem[sp-1].Value = fv
+		case FieldE:
+			fv := mem[sp-1].Value.Elem().FieldByIndex(c.Arg)
 			if !fv.CanSet() {
 				// Normally private fields can not bet set via reflect. Override this limitation.
 				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()

@@ -99,15 +99,15 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Dup, i)
 
 		case lang.Add:
-			push(&symbol.Symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Add)
 
 		case lang.Mul:
-			push(&symbol.Symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Mul)
 
 		case lang.Sub:
-			push(&symbol.Symbol{Type: arithmeticOpType(pop(), pop())})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
 			emit(t, vm.Sub)
 
 		case lang.Minus:
@@ -120,11 +120,11 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			// Unary '+' is idempotent. Nothing to do.
 
 		case lang.Addr:
-			push(&symbol.Symbol{Type: vm.PointerTo(pop().Type)})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: vm.PointerTo(pop().Type)})
 			emit(t, vm.Addr)
 
 		case lang.Deref:
-			push(&symbol.Symbol{Type: pop().Type.Elem()})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: pop().Type.Elem()})
 			emit(t, vm.Deref)
 
 		case lang.Index:
@@ -136,14 +136,14 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			} else {
 				emit(t, vm.Index)
 			}
-			push(&symbol.Symbol{Type: s.Type.Elem()})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type.Elem()})
 
 		case lang.Greater:
-			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(pop(), pop())})
 			emit(t, vm.Greater)
 
 		case lang.Less:
-			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(pop(), pop())})
 			emit(t, vm.Lower)
 
 		case lang.Call:
@@ -159,7 +159,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					pop()
 				}
 				for i := 0; i < typ.Rtype.NumOut(); i++ {
-					push(&symbol.Symbol{Type: typ.Out(i)})
+					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.Out(i)})
 				}
 				emit(t, vm.Call, narg)
 
@@ -173,7 +173,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			rtyp := s.Value.Value.Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
-				push(&symbol.Symbol{Type: &vm.Type{Rtype: rtyp.Out(i)}})
+				push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtyp.Out(i)}})
 			}
 			emit(t, vm.CallX, t.Beg)
 
@@ -182,6 +182,10 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			pop()
 			ks := pop()
 			ts := top()
+			if ts.IsPtr() {
+				// Resolve index on the element type
+				ts = &symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: ts.Type.Rtype.Elem()}}
+			}
 			switch ks.Kind {
 			case symbol.Const:
 				switch ts.Type.Rtype.Kind() {
@@ -190,9 +194,10 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 						emit(t, vm.FieldFset)
 					}
 				case reflect.Slice:
-					if v := ks.Value.Value; v.CanInt() {
-						emit(t, vm.IndexSet)
+					if ts.Type.Elem().IsPtr() {
+						emit(t, vm.Addr)
 					}
+					emit(t, vm.IndexSet)
 				case reflect.Map:
 					emit(t, vm.MapSet)
 				}
@@ -276,9 +281,12 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					c.Data = append(c.Data, s.Value)
 				}
 				if s.Kind == symbol.Type {
-					if s.Type.Rtype.Kind() == reflect.Slice {
+					switch s.Type.Rtype.Kind() {
+					case reflect.Slice:
 						emit(t, vm.Fnew, s.Index, s.SliceLen)
-					} else {
+					case reflect.Pointer:
+						emit(t, vm.FnewE, s.Index, 1)
+					default:
 						emit(t, vm.Fnew, s.Index, 1)
 					}
 				} else {
@@ -357,6 +365,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			if len(stack) < 1 {
 				return errorf("missing symbol")
 			}
+			showStack()
 			s := pop()
 			switch s.Kind {
 			case symbol.Pkg:
@@ -384,9 +393,21 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			case symbol.Unset:
 				return errorf("invalid symbol: %s", s.Name)
 			default:
-				if f, ok := s.Type.Rtype.FieldByName(t.Str[1:]); ok {
-					emit(t, vm.Field, f.Index...)
-					push(&symbol.Symbol{Type: s.Type.FieldType(t.Str[1:])})
+				// FIXME: handle pointer indirection here
+				log.Println("## XXX", s.Type, s.Type.IsPtr())
+				typ := s.Type.Rtype
+				isPtr := typ.Kind() == reflect.Pointer
+				if isPtr {
+					typ = typ.Elem()
+				}
+				if f, ok := typ.FieldByName(t.Str[1:]); ok {
+					if isPtr {
+						emit(t, vm.FieldE, f.Index...)
+						push(&symbol.Symbol{Type: s.Type.Elem().FieldType(t.Str[1:])})
+					} else {
+						emit(t, vm.Field, f.Index...)
+						push(&symbol.Symbol{Type: s.Type.FieldType(t.Str[1:])})
+					}
 					break
 				}
 				return fmt.Errorf("field or method not found: %s", t.Str[1:])

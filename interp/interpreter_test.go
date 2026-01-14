@@ -214,6 +214,8 @@ func TestStruct(t *testing.T) {
 		{src: "type T struct {a string; b, c int}; var t T; t", res: "{ 0 0}"}, // #00
 		{src: "type T struct {a int}; var t T; t.a", res: "0"},                 // #01
 		{src: "type T struct {a int}; var t T; t.a = 1; t.a", res: "1"},        // #02
+		{src: "type T struct {a int}; var t T = T{1}; t.a", res: "1"},          // #03
+		{src: "type T struct {a int}; var t *T = &T{1}; t.a", res: "1"},        // #04
 	})
 }
 
@@ -289,5 +291,7 @@ func TestComposite(t *testing.T) {
 		{src: `type T struct {b bool}; m := []T{{true}}; m`, res: `[{true}]`},                  // #12
 		{src: `m := []struct{b bool}{{true}}; m`, res: `[{true}]`},                             // #13
 		{src: `m := map[int]struct{b bool}{1:{true}}; m`, res: `map[1:{true}]`},                // #14
+		{src: `type T *struct {b bool}; m := []T{{true}}; m[0]`, res: `&{true}`},               // #15
+		{src: `type T *struct {b bool}; m := []T{{true}}; m[0].b`, res: `true`},                // #16
 	})
 }

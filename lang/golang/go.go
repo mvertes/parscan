@@ -136,7 +136,7 @@ var GoSpec = &lang.Spec{
 		lang.Minus:        {Precedence: 6},
 		lang.Not:          {Precedence: 6},
 		lang.Call:         {Precedence: 6},
-		lang.Index:        {Precedence: 6},
+		lang.Index:        {Precedence: 8},
 		lang.Period:       {Precedence: 7},
 		lang.Colon:        {Precedence: 7},
 		lang.Inc:          {SkipSemi: true},
