@@ -26,7 +26,6 @@ const (
 	Fassign                // val -- ; mem[$1] = val
 	Vassign                // dest val -- ; dest.Set(val)
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
-	Calli                  // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallX                  // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
 	Deref                  // x -- *x ;
 	Dup                    // addr -- value ; value = mem[addr]
@@ -44,15 +43,15 @@ const (
 	Grow                   // -- ; sp += $1
 	Index                  // a i -- a[i] ;
 	IndexSet               // a i v -- a; a[i] = v
-	MapIndex               // a i -- a[i]
-	MapSet                 // a i v -- a; a[i] = v
 	Jump                   // -- ; ip += $1
 	JumpTrue               // cond -- ; if cond { ip += $1 }
 	JumpFalse              // cond -- ; if cond { ip += $1 }
 	JumpSetTrue            //
 	JumpSetFalse           //
+	Len                    // -- x; x = mem[sp-$1]
 	Lower                  // n1 n2 -- cond ; cond = n1 < n2
-	Loweri                 // n1 -- cond ; cond = n1 < $1
+	MapIndex               // a i -- a[i]
+	MapSet                 // a i v -- a; a[i] = v
 	Mul                    // n1 n2 -- prod ; prod = n1*n2
 	New                    // -- x; mem[fp+$1] = new mem[$2]
 	Negate                 // -- ; - mem[fp]
@@ -60,8 +59,9 @@ const (
 	Pop                    // v --
 	Push                   // -- v
 	Return                 // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
+	Slice                  // a l h -- a; a = a [l:h]
+	Slice3                 // a l h m -- a; a = a[l:h:m]
 	Sub                    // n1 n2 -- diff ; diff = n1 - n2
-	Subi                   // n1 -- diff ; diff = n1 - $1
 	Swap                   // --
 )
 
@@ -126,18 +126,10 @@ func (m *Machine) Run() (err error) {
 			mem[fp+c.Arg[0]-1].Set(mem[sp-1].Value)
 			mem = mem[:sp-1]
 		case Call:
-			// nip := int(mem[sp-1].Int())
-			// mem = append(mem[:sp-1], ValueOf(ip+1), ValueOf(fp))
 			nip := int(mem[sp-1-c.Arg[0]].Int())
 			mem = append(mem, ValueOf(ip+1), ValueOf(fp))
 			ip = nip
-			// fp = sp + 1
 			fp = sp + 2
-			continue
-		case Calli:
-			mem = append(mem, ValueOf(ip+1), ValueOf(fp))
-			fp = sp + 2
-			ip = c.Arg[0]
 			continue
 		case CallX: // Should be made optional.
 			in := make([]reflect.Value, c.Arg[0])
@@ -246,8 +238,8 @@ func (m *Machine) Run() (err error) {
 		case Lower:
 			mem[sp-2] = ValueOf(mem[sp-2].Int() < mem[sp-1].Int())
 			mem = mem[:sp-1]
-		case Loweri:
-			mem[sp-1] = ValueOf(mem[sp-1].Int() < int64(c.Arg[0]))
+		case Len:
+			mem = append(mem, ValueOf(mem[sp-1-c.Arg[0]].Len()))
 		case Negate:
 			mem[sp-1] = ValueOf(-mem[sp-1].Int())
 		case Not:
@@ -265,11 +257,15 @@ func (m *Machine) Run() (err error) {
 			fp = int(mem[fp-1].Int())
 			mem = append(mem[:ofp-c.Arg[0]-c.Arg[1]-2], mem[sp-c.Arg[0]:]...)
 			continue
+		case Slice:
+			mem[sp-3].Value = mem[sp-3].Slice(int(mem[sp-2].Int()), int(mem[sp-1].Int()))
+			mem = mem[:sp-2]
+		case Slice3:
+			mem[sp-4].Value = mem[sp-4].Slice3(int(mem[sp-3].Int()), int(mem[sp-2].Int()), int(mem[sp-1].Int()))
+			mem = mem[:sp-3]
 		case Sub:
 			mem[sp-2] = ValueOf(int(mem[sp-2].Int() - mem[sp-1].Int()))
 			mem = mem[:sp-1]
-		case Subi:
-			mem[sp-1] = ValueOf(int(mem[sp-1].Int()) - c.Arg[0])
 		case Swap:
 			a, b := sp-c.Arg[0]-1, sp-c.Arg[1]-1
 			mem[a], mem[b] = mem[b], mem[a]

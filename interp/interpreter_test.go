@@ -230,6 +230,23 @@ func TestMap(t *testing.T) {
 	})
 }
 
+func TestSlice(t *testing.T) {
+	src0 := `s := []int{0, 1, 2, 3};`
+	run(t, []etest{
+		{src: src0 + `s`, res: `[0 1 2 3]`},                                  // #00
+		{src: src0 + `s[:]`, res: `[0 1 2 3]`},                               // #01
+		{src: src0 + `s[1:3]`, res: `[1 2]`},                                 // #02
+		{src: src0 + `s[1:3:4]`, res: `[1 2]`},                               // #03
+		{src: src0 + `s[:3:4]`, res: `[0 1 2]`},                              // #04
+		{src: src0 + `s[:2:]`, err: `final index required in 3-index slice`}, // #05
+		{src: src0 + `s[:3:4:]`, err: `expected ']', found ':'`},             // #06
+		{src: src0 + `s[2:]`, res: `[2 3]`},                                  // #07
+		{src: src0 + `s[:0]`, res: `[]`},                                     // #08
+		{src: `"Hello"[1:3]`, res: `el`},                                     // #09
+		{src: `s := "Hello"; s[1:3]`, res: `el`},                             // #10
+	})
+}
+
 func TestType(t *testing.T) {
 	src0 := `type (
 	I int

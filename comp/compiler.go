@@ -178,7 +178,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.CallX, t.Beg)
 
 		case lang.Colon:
-			showStack()
 			pop()
 			ks := pop()
 			ts := top()
@@ -242,7 +241,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			}
 			emit(t, vm.Vassign)
 
-		case lang.MapAssign:
+		case lang.IndexAssign:
 			s := stack[len(stack)-3]
 			switch s.Type.Rtype.Kind() {
 			case reflect.Array, reflect.Slice:
@@ -317,6 +316,10 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				}
 				c.Symbols[t.Str] = &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)}
 			}
+
+		case lang.Len:
+			push(&symbol.Symbol{Type: c.Symbols["int"].Type})
+			emit(t, vm.Len, t.Beg)
 
 		case lang.JumpFalse:
 			var i int
@@ -393,8 +396,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			case symbol.Unset:
 				return errorf("invalid symbol: %s", s.Name)
 			default:
-				// FIXME: handle pointer indirection here
-				log.Println("## XXX", s.Type, s.Type.IsPtr())
 				typ := s.Type.Rtype
 				isPtr := typ.Kind() == reflect.Pointer
 				if isPtr {
@@ -415,6 +416,15 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 
 		case lang.Return:
 			emit(t, vm.Return, t.Beg, t.End)
+
+		case lang.Slice:
+			if stack[len(stack)-3].IsInt() {
+				emit(t, vm.Slice3)
+				stack = stack[:len(stack)-4]
+			} else {
+				emit(t, vm.Slice)
+				stack = stack[:len(stack)-3]
+			}
 
 		default:
 			return fmt.Errorf("generate: unsupported token %v", t)
@@ -457,7 +467,7 @@ func (c *Compiler) PrintCode() {
 		}
 		extra := ""
 		switch l.Op {
-		case vm.Jump, vm.JumpFalse, vm.JumpTrue, vm.JumpSetFalse, vm.JumpSetTrue, vm.Calli:
+		case vm.Jump, vm.JumpFalse, vm.JumpTrue, vm.JumpSetFalse, vm.JumpSetTrue:
 			if d, ok := labels[i+l.Arg[0]]; ok {
 				extra = "// " + d[0]
 			}

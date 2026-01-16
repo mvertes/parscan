@@ -60,6 +60,9 @@ func (s *Symbol) IsFunc() bool { return s.Kind == Func }
 // IsPtr returns true if symbol is a pointer.
 func (s *Symbol) IsPtr() bool { return s.Type.Rtype.Kind() == reflect.Pointer }
 
+// IsInt returns true if symbol is an int.
+func (s *Symbol) IsInt() bool { return s.Type.Rtype.Kind() == reflect.Int }
+
 // Vtype returns the VM type of a symbol.
 func Vtype(s *Symbol) *vm.Type {
 	if s.Type != nil {

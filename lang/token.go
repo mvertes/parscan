@@ -59,7 +59,7 @@ const (
 	AndNotAssign // &^=
 	Inc          // ++
 	Dec          // --
-	MapAssign
+	IndexAssign  // a[i] =
 
 	// Unary operations.
 	Plus     // unary +
@@ -120,7 +120,9 @@ const (
 	JumpSetFalse
 	JumpSetTrue
 	Label
+	Len
 	New
+	Slice
 
 	// This must be the last token value.
 	MaxTok

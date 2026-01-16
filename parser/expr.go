@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"errors"
 	"log"
 	"strconv"
 
@@ -105,7 +106,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 
 		case lang.ParenBlock:
-			toks, err := p.parseExprStr(t.Block(), typeStr)
+			toks, err := p.parseBlock(t, typeStr)
 			if err != nil {
 				return out, err
 			}
@@ -149,17 +150,20 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				i += n - 1
 				break
 			}
-			toks, err := p.parseExprStr(t.Block(), typeStr)
+			toks, err := p.parseBlock(t, typeStr)
 			if err != nil {
 				return out, err
 			}
+			if len(toks) == 0 {
+				break
+			}
 			out = append(out, toks...)
 			if i < len(in)-2 && in[i+1].Tok == lang.Assign {
-				// A bracket block followed by assign implies a MapAssing token,
+				// A bracket block followed by assign implies an IndexAssign token,
 				// as assignement to a map element cannot be implemented through a normal Assign.
-				ops = append(ops, scanner.Token{Tok: lang.MapAssign, Pos: t.Pos})
+				ops = append(ops, scanner.Token{Tok: lang.IndexAssign, Pos: t.Pos})
 				i++
-			} else {
+			} else if toks[len(toks)-1].Tok != lang.Slice {
 				ops = append(ops, scanner.Token{Tok: lang.Index, Pos: t.Pos})
 			}
 
@@ -225,17 +229,44 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, error) {
 	return result, nil
 }
 
-func (p *Parser) parseExprStr(s, typ string) (tokens Tokens, err error) {
-	if tokens, err = p.Scan(s, false); err != nil {
+func (p *Parser) parseBlock(t scanner.Token, typ string) (result Tokens, err error) {
+	tokens, err := p.Scan(t.Block(), false)
+	if err != nil {
 		return tokens, err
 	}
 
-	var result Tokens
+	if tokens.Index(lang.Colon) >= 0 {
+		// Slice expression, a[low : high] or a[low : high : max]
+		for i, sub := range tokens.Split(lang.Colon) {
+			if i > 2 {
+				return nil, errors.New("expected ']', found ':'")
+			}
+			if len(sub) == 0 {
+				if i == 0 {
+					result = append(result, scanner.Token{Tok: lang.Int, Str: "0"})
+					continue
+				} else if i == 2 {
+					return nil, errors.New("final index required in 3-index slice")
+				}
+				result = append(result, scanner.Token{Tok: lang.Len, Beg: 1})
+				continue
+			}
+			toks, err := p.parseExpr(sub, typ)
+			if err != nil {
+				return result, err
+			}
+			result = append(result, toks...)
+		}
+		result = append(result, scanner.Token{Tok: lang.Slice, Pos: t.Pos})
+		return result, err
+	}
+
 	for _, sub := range tokens.Split(lang.Comma) {
 		toks, err := p.parseExpr(sub, typ)
 		if err != nil {
 			return result, err
 		}
+		// Inverse sub list order (func call parameters)
 		result = append(toks, result...)
 	}
 
