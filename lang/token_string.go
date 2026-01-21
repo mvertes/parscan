@@ -104,13 +104,15 @@ func _() {
 	_ = x[Label-93]
 	_ = x[Len-94]
 	_ = x[New-95]
-	_ = x[Slice-96]
-	_ = x[MaxTok-97]
+	_ = x[Next-96]
+	_ = x[Slice-97]
+	_ = x[Stop-98]
+	_ = x[MaxTok-99]
 }
 
-const _Token_name = "IllegalCommentIdentCharFloatImagIntStringAddSubMulQuoRemAndOrXorShlShrAndNotPeriodEqualGreaterGreaterEqualLandLessLessEqualLorNotEqualDefineAssignAddAssignSubAssignMulAssignQuoAssignRemAssignAndAssignOrAssignXorAssignShlAssignShrAssignAndNotAssignIncDecIndexAssignPlusMinusAddrDerefBitCompArrowEllipsisNotTildeCommaSemicolonColonParenBlockBracketBlockBraceBlockBreakCaseChanConstContinueDefaultDeferElseFallthroughForFuncGoGotoIfImportInterfaceMapPackageRangeReturnSelectStructSwitchTypeVarCallCallXCompositeEqualSetGrowIndexJumpFalseJumpSetFalseJumpSetTrueLabelLenNewSliceMaxTok"
+const _Token_name = "IllegalCommentIdentCharFloatImagIntStringAddSubMulQuoRemAndOrXorShlShrAndNotPeriodEqualGreaterGreaterEqualLandLessLessEqualLorNotEqualDefineAssignAddAssignSubAssignMulAssignQuoAssignRemAssignAndAssignOrAssignXorAssignShlAssignShrAssignAndNotAssignIncDecIndexAssignPlusMinusAddrDerefBitCompArrowEllipsisNotTildeCommaSemicolonColonParenBlockBracketBlockBraceBlockBreakCaseChanConstContinueDefaultDeferElseFallthroughForFuncGoGotoIfImportInterfaceMapPackageRangeReturnSelectStructSwitchTypeVarCallCallXCompositeEqualSetGrowIndexJumpFalseJumpSetFalseJumpSetTrueLabelLenNewNextSliceStopMaxTok"
 
-var _Token_index = [...]uint16{0, 7, 14, 19, 23, 28, 32, 35, 41, 44, 47, 50, 53, 56, 59, 61, 64, 67, 70, 76, 82, 87, 94, 106, 110, 114, 123, 126, 134, 140, 146, 155, 164, 173, 182, 191, 200, 208, 217, 226, 235, 247, 250, 253, 264, 268, 273, 277, 282, 289, 294, 302, 305, 310, 315, 324, 329, 339, 351, 361, 366, 370, 374, 379, 387, 394, 399, 403, 414, 417, 421, 423, 427, 429, 435, 444, 447, 454, 459, 465, 471, 477, 483, 487, 490, 494, 499, 508, 516, 520, 525, 534, 546, 557, 562, 565, 568, 573, 579}
+var _Token_index = [...]uint16{0, 7, 14, 19, 23, 28, 32, 35, 41, 44, 47, 50, 53, 56, 59, 61, 64, 67, 70, 76, 82, 87, 94, 106, 110, 114, 123, 126, 134, 140, 146, 155, 164, 173, 182, 191, 200, 208, 217, 226, 235, 247, 250, 253, 264, 268, 273, 277, 282, 289, 294, 302, 305, 310, 315, 324, 329, 339, 351, 361, 366, 370, 374, 379, 387, 394, 399, 403, 414, 417, 421, 423, 427, 429, 435, 444, 447, 454, 459, 465, 471, 477, 483, 487, 490, 494, 499, 508, 516, 520, 525, 534, 546, 557, 562, 565, 568, 572, 577, 581, 587}
 
 func (i Token) String() string {
 	idx := int(i) - 0

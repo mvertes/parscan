@@ -121,11 +121,13 @@ func TestIf(t *testing.T) {
 
 func TestFor(t *testing.T) {
 	run(t, []etest{
-		{src: "a := 0; for i := 0; i < 3; i = i+1 {a = a+i}; a", res: "3"},                                 // #00
-		{src: "func f() int {a := 0; for i := 0; i < 3; i = i+1 {a = a+i}; return a}; f()", res: "3"},      // #01
-		{src: "a := 0; for {a = a+1; if a == 3 {break}}; a", res: "3"},                                     // #02
-		{src: "func f() int {a := 0; for {a = a+1; if a == 3 {break}}; return a}; f()", res: "3"},          // #03
-		{src: "func f() int {a := 0; for {a = a+1; if a < 3 {continue}; break}; return a}; f()", res: "3"}, // #04
+		{src: "a := 0; for i := 0; i < 3; i = i+1 {a = a+i}; a", res: "3"},                                       // #00
+		{src: "func f() int {a := 0; for i := 0; i < 3; i = i+1 {a = a+i}; return a}; f()", res: "3"},            // #01
+		{src: "a := 0; for {a = a+1; if a == 3 {break}}; a", res: "3"},                                           // #02
+		{src: "func f() int {a := 0; for {a = a+1; if a == 3 {break}}; return a}; f()", res: "3"},                // #03
+		{src: "func f() int {a := 0; for {a = a+1; if a < 3 {continue}; break}; return a}; f()", res: "3"},       // #04
+		{src: "a := []int{1,2,3,4}; b := 0; for i := range a {b = b+i}; b", res: "6"},                            // #05
+		{src: "func f() int {a := []int{1,2,3,4}; b := 0; for i := range a {b = b+i}; return b}; f()", res: "6"}, // #06
 	})
 }
 

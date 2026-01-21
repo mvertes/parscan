@@ -17,14 +17,23 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	var ops Tokens
 	var ctype string
 
-	popop := func() (t scanner.Token) {
+	popop := func() scanner.Token {
 		l := len(ops) - 1
-		t = ops[l]
+		t := ops[l]
 		ops = ops[:l]
 		if t.Tok.IsLogicalOp() {
 			t.Tok = lang.Label // Implement conditional branching directly.
 		}
 		return t
+	}
+
+	// addop adds an operator to the operator stack.
+	addop := func(t scanner.Token) {
+		// Operators on stack with a lower precedence are poped out and output first.
+		for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
+			out = append(out, popop())
+		}
+		ops = append(ops, t)
 	}
 
 	lin := len(in)
@@ -47,18 +56,19 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 		case lang.Period:
 			// TODO: fail if next is not an ident.
 			t.Str += in[i+1].Str // Hardwire selector argument.
-			for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
-				out = append(out, popop())
-			}
-			ops = append(ops, t)
+			addop(t)
 			i++ // Skip over next ident.
+
+		case lang.Next:
+			out = append(out, t)
+
+		case lang.Range:
+			ops = ops[:len(ops)-1] // Suppress previous assign or define.
+			addop(t)
 
 		case lang.Colon:
 			t.Str = typeStr
-			for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
-				out = append(out, popop())
-			}
-			ops = append(ops, t)
+			addop(t)
 
 		case lang.Add, lang.And, lang.Assign, lang.Define, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Not, lang.Sub, lang.Shl, lang.Shr:
 			if i == 0 || in[i-1].Tok.IsOperator() {
@@ -66,30 +76,21 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				t.Tok = lang.UnaryOp[t.Tok]
 				// FIXME: parsetype for composite if & or *
 			}
-			for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
-				out = append(out, popop())
-			}
-			ops = append(ops, t)
+			addop(t)
 
 		case lang.Land:
-			for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
-				out = append(out, popop())
-			}
+			addop(t)
 			xp := strconv.Itoa(p.labelCount[p.scope])
 			p.labelCount[p.scope]++
 			out = append(out, scanner.Token{Tok: lang.JumpSetFalse, Str: p.scope + "x" + xp})
-			t.Str = p.scope + "x" + xp
-			ops = append(ops, t)
+			ops[len(ops)-1].Str = p.scope + "x" + xp
 
 		case lang.Lor:
-			for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
-				out = append(out, popop())
-			}
+			addop(t)
 			xp := strconv.Itoa(p.labelCount[p.scope])
 			p.labelCount[p.scope]++
 			out = append(out, scanner.Token{Tok: lang.JumpSetTrue, Str: p.scope + "x" + xp})
-			t.Str = p.scope + "x" + xp
-			ops = append(ops, t)
+			ops[len(ops)-1].Str = p.scope + "x" + xp
 
 		case lang.Ident:
 			s, sc, ok := p.Symbols.Get(t.Str, p.scope)
@@ -145,7 +146,8 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 					return out, err
 				}
 				ctype = typ.String()
-				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+				// p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, false)
 				out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
 				i += n - 1
 				break

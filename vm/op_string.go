@@ -44,19 +44,22 @@ func _() {
 	_ = x[Mul-33]
 	_ = x[New-34]
 	_ = x[Negate-35]
-	_ = x[Not-36]
-	_ = x[Pop-37]
-	_ = x[Push-38]
-	_ = x[Return-39]
-	_ = x[Slice-40]
-	_ = x[Slice3-41]
-	_ = x[Sub-42]
-	_ = x[Swap-43]
+	_ = x[Next-36]
+	_ = x[Not-37]
+	_ = x[Pop-38]
+	_ = x[Push-39]
+	_ = x[Pull-40]
+	_ = x[Return-41]
+	_ = x[Slice-42]
+	_ = x[Slice3-43]
+	_ = x[Stop-44]
+	_ = x[Sub-45]
+	_ = x[Swap-46]
 }
 
-const _Op_name = "NopAddAddrAssignFassignVassignCallCallXDerefDupFdupFnewFnewEEqualEqualSetExitFieldFieldEFieldSetFieldFsetGreaterGrowIndexIndexSetJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLenLowerMapIndexMapSetMulNewNegateNotPopPushReturnSliceSlice3SubSwap"
+const _Op_name = "NopAddAddrAssignFassignVassignCallCallXDerefDupFdupFnewFnewEEqualEqualSetExitFieldFieldEFieldSetFieldFsetGreaterGrowIndexIndexSetJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLenLowerMapIndexMapSetMulNewNegateNextNotPopPushPullReturnSliceSlice3StopSubSwap"
 
-var _Op_index = [...]uint8{0, 3, 6, 10, 16, 23, 30, 34, 39, 44, 47, 51, 55, 60, 65, 73, 77, 82, 88, 96, 105, 112, 116, 121, 129, 133, 141, 150, 161, 173, 176, 181, 189, 195, 198, 201, 207, 210, 213, 217, 223, 228, 234, 237, 241}
+var _Op_index = [...]uint8{0, 3, 6, 10, 16, 23, 30, 34, 39, 44, 47, 51, 55, 60, 65, 73, 77, 82, 88, 96, 105, 112, 116, 121, 129, 133, 141, 150, 161, 173, 176, 181, 189, 195, 198, 201, 207, 211, 214, 217, 221, 225, 231, 236, 242, 246, 249, 253}
 
 func (i Op) String() string {
 	idx := int(i) - 0

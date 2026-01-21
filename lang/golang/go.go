@@ -156,7 +156,7 @@ var GoSpec = &lang.Spec{
 		lang.Interface:    {SkipSemi: true},
 		lang.Map:          {SkipSemi: true},
 		lang.Package:      {SkipSemi: true},
-		lang.Range:        {SkipSemi: true},
+		lang.Range:        {SkipSemi: true, Precedence: 9},
 		lang.Select:       {SkipSemi: true, HasInit: true},
 		lang.Struct:       {SkipSemi: true},
 		lang.Switch:       {SkipSemi: true, HasInit: true},

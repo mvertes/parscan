@@ -51,6 +51,14 @@ func errorf(format string, v ...any) error {
 	return fmt.Errorf(loc+format, v...)
 }
 
+func showStack(stack []*symbol.Symbol) {
+	_, file, line, _ := runtime.Caller(1)
+	fmt.Fprintf(os.Stderr, "%s%d: showstack: %d\n", path.Base(file), line, len(stack))
+	for i, s := range stack {
+		fmt.Fprintf(os.Stderr, "  stack[%d]: %v\n", i, s)
+	}
+}
+
 // Generate generates vm code and data from parsed tokens.
 func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
@@ -67,14 +75,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	top := func() *symbol.Symbol { return stack[len(stack)-1] }
 	pop := func() *symbol.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
 	popflen := func() int { le := len(flen) - 1; l := flen[le]; flen = flen[:le]; return l }
-
-	showStack := func() {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Fprintf(os.Stderr, "%s%d: showstack: %d\n", path.Base(file), line, len(stack))
-		for i, s := range stack {
-			fmt.Fprintf(os.Stderr, "  stack[%d]: %v\n", i, s)
-		}
-	}
 
 	for _, t := range tokens {
 		switch t.Tok {
@@ -128,7 +128,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Deref)
 
 		case lang.Index:
-			showStack()
+			showStack(stack)
 			pop()
 			s := pop()
 			if s.Type.Rtype.Kind() == reflect.Map {
@@ -147,7 +147,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Lower)
 
 		case lang.Call:
-			showStack()
+			showStack(stack)
 			narg := t.Beg // FIXME: t.Beg is hijacked to store the number of function parameters.
 			s := stack[len(stack)-1-narg]
 			if s.Kind != symbol.Value {
@@ -163,7 +163,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				}
 				emit(t, vm.Call, narg)
 
-				showStack()
+				showStack(stack)
 				break
 			}
 			fallthrough // A symValue must be called through callX.
@@ -211,7 +211,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Grow, t.Beg)
 
 		case lang.Define:
-			showStack()
 			rhs := pop()
 			typ := rhs.Type
 			if typ == nil {
@@ -223,7 +222,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Vassign)
 
 		case lang.Assign:
-			showStack()
 			rhs := pop()
 			lhs := pop()
 			if lhs.Local {
@@ -264,7 +262,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.Ident:
 			s, ok := c.Symbols[t.Str]
 			if !ok {
-				// it could be either an undefined symbol or a key ident in a literal composite expr.
+				// It could be either an undefined symbol or a key ident in a literal composite expr.
 				s = &symbol.Symbol{Name: t.Str}
 			}
 			log.Println("Ident symbol", t.Str, s.Local, s.Index, s.Type)
@@ -368,7 +366,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			if len(stack) < 1 {
 				return errorf("missing symbol")
 			}
-			showStack()
+			showStack(stack)
 			s := pop()
 			switch s.Kind {
 			case symbol.Pkg:
@@ -413,6 +411,26 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				}
 				return fmt.Errorf("field or method not found: %s", t.Str[1:])
 			}
+
+		case lang.Next:
+			k := stack[len(stack)-2]
+			emit(t, vm.Next, k.Index)
+
+		case lang.Range:
+			// FIXME: handle all iterator types.
+			// set the correct type to the iterator variables.
+			switch t := top().Type; t.Rtype.Kind() {
+			case reflect.Slice:
+				k := stack[len(stack)-2]
+				k.Type = c.Symbols["int"].Type
+				c.Data[k.Index] = vm.NewValue(k.Type)
+			case reflect.Map:
+				// FIXME: handle map
+			}
+			emit(t, vm.Pull)
+
+		case lang.Stop:
+			emit(t, vm.Stop)
 
 		case lang.Return:
 			emit(t, vm.Return, t.Beg, t.End)

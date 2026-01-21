@@ -193,18 +193,9 @@ func (p *Parser) parseGoto(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	// TODO: detect invalid code.
+	var init, cond, post, body, final Tokens
 	fc := strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
-	var init, cond, post, body Tokens
-	pre := in[1 : len(in)-1].Split(lang.Semicolon)
-	switch len(pre) {
-	case 1:
-		cond = pre[0]
-	case 3:
-		init, cond, post = pre[0], pre[1], pre[2]
-	default:
-		return nil, ErrFor
-	}
 	breakLabel, continueLabel := p.breakLabel, p.continueLabel
 	p.pushScope("for" + fc)
 	p.breakLabel, p.continueLabel = p.scope+"e", p.scope+"b"
@@ -212,6 +203,23 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		p.breakLabel, p.continueLabel = breakLabel, continueLabel
 		p.popScope()
 	}()
+	pre := in[1 : len(in)-1].Split(lang.Semicolon)
+	switch len(pre) {
+	case 1:
+		if in.Index(lang.Range) >= 0 {
+			init = pre[0]
+			// cond = Tokens{{Tok: lang.Next, Str: p.scope + "c"}}
+			// final = Tokens{{Tok: lang.Stop, Str: p.scope + "f"}}
+			cond = Tokens{{Tok: lang.Next}}
+			final = Tokens{{Tok: lang.Stop}}
+		} else {
+			cond = pre[0]
+		}
+	case 3:
+		init, cond, post = pre[0], pre[1], pre[2]
+	default:
+		return nil, ErrFor
+	}
 	if len(init) > 0 {
 		if init, err = p.parseStmt(init); err != nil {
 			return nil, err
@@ -239,6 +247,7 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	out = append(out,
 		scanner.Token{Tok: lang.Goto, Str: p.scope + "b"},
 		scanner.Token{Tok: lang.Label, Str: p.scope + "e"})
+	out = append(out, final...)
 	return out, err
 }
 

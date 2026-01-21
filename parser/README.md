@@ -59,7 +59,7 @@ Go language support:
 - [x] iota expression
 - [ ] defer statement
 - [ ] recover statement
-- [ ] range clause
+- [x] range clause
 - [ ] go statement
 - [x] if statement (including else and else if)
 - [x] for statement
@@ -80,7 +80,7 @@ Go language support:
 - [x] call expressions
 - [x] index expressions
 - [x] selector expressions
-- [ ] slice expressions
+- [x] slice expressions
 - [ ] type convertions
 - [ ] type assertions
 - [ ] parametric types (generic)

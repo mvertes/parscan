@@ -2,7 +2,8 @@
 package vm
 
 import (
-	"fmt"     // for tracing only
+	"fmt" // for tracing only
+	"iter"
 	"log"     // for tracing only
 	"reflect" // for optional CallX only
 	"strings"
@@ -55,12 +56,15 @@ const (
 	Mul                    // n1 n2 -- prod ; prod = n1*n2
 	New                    // -- x; mem[fp+$1] = new mem[$2]
 	Negate                 // -- ; - mem[fp]
+	Next                   // -- ; iterator next
 	Not                    // c -- r ; r = !c
 	Pop                    // v --
 	Push                   // -- v
+	Pull                   // a -- a s n; pull iterator next and stop function
 	Return                 // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
 	Slice                  // a l h -- a; a = a [l:h]
 	Slice3                 // a l h m -- a; a = a[l:h:m]
+	Stop                   // -- iterator stop
 	Sub                    // n1 n2 -- diff ; diff = n1 - n2
 	Swap                   // --
 )
@@ -242,6 +246,12 @@ func (m *Machine) Run() (err error) {
 			mem = append(mem, ValueOf(mem[sp-1-c.Arg[0]].Len()))
 		case Negate:
 			mem[sp-1] = ValueOf(-mem[sp-1].Int())
+		case Next:
+			v, ok := mem[sp-2].Interface().(func() (reflect.Value, bool))()
+			if ok {
+				mem[c.Arg[0]].Set(v)
+			}
+			mem = append(mem, ValueOf(ok))
 		case Not:
 			mem[sp-1] = ValueOf(!mem[sp-1].Bool())
 		case Pop:
@@ -249,6 +259,9 @@ func (m *Machine) Run() (err error) {
 		case Push:
 			mem = append(mem, NewValue(TypeOf(0)))
 			mem[sp].SetInt(int64(c.Arg[0]))
+		case Pull:
+			next, stop := iter.Pull(mem[sp-1].Seq())
+			mem = append(mem, ValueOf(next), ValueOf(stop))
 		case Grow:
 			mem = append(mem, make([]Value, c.Arg[0])...)
 		case Return:
@@ -263,6 +276,9 @@ func (m *Machine) Run() (err error) {
 		case Slice3:
 			mem[sp-4].Value = mem[sp-4].Slice3(int(mem[sp-3].Int()), int(mem[sp-2].Int()), int(mem[sp-1].Int()))
 			mem = mem[:sp-3]
+		case Stop:
+			mem[sp-1].Interface().(func())()
+			mem = mem[:sp-4]
 		case Sub:
 			mem[sp-2] = ValueOf(int(mem[sp-2].Int() - mem[sp-1].Int()))
 			mem = mem[:sp-1]

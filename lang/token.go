@@ -122,7 +122,9 @@ const (
 	Label
 	Len
 	New
+	Next
 	Slice
+	Stop
 
 	// This must be the last token value.
 	MaxTok
