@@ -17,7 +17,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	var ops Tokens
 	var ctype string
 
-	popop := func() scanner.Token {
+	popop := func() Token {
 		l := len(ops) - 1
 		t := ops[l]
 		ops = ops[:l]
@@ -28,7 +28,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	}
 
 	// addop adds an operator to the operator stack.
-	addop := func(t scanner.Token) {
+	addop := func(t Token) {
 		// Operators on stack with a lower precedence are poped out and output first.
 		for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
 			out = append(out, popop())
@@ -82,14 +82,14 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			addop(t)
 			xp := strconv.Itoa(p.labelCount[p.scope])
 			p.labelCount[p.scope]++
-			out = append(out, scanner.Token{Tok: lang.JumpSetFalse, Str: p.scope + "x" + xp})
+			out = append(out, Token{Token: scanner.Token{Tok: lang.JumpSetFalse, Str: p.scope + "x" + xp}})
 			ops[len(ops)-1].Str = p.scope + "x" + xp
 
 		case lang.Lor:
 			addop(t)
 			xp := strconv.Itoa(p.labelCount[p.scope])
 			p.labelCount[p.scope]++
-			out = append(out, scanner.Token{Tok: lang.JumpSetTrue, Str: p.scope + "x" + xp})
+			out = append(out, Token{Token: scanner.Token{Tok: lang.JumpSetTrue, Str: p.scope + "x" + xp}})
 			ops[len(ops)-1].Str = p.scope + "x" + xp
 
 		case lang.Ident:
@@ -114,12 +114,12 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				out = append(out, toks...)
 			} else {
-				prec := p.precedence(scanner.Token{Tok: lang.Call})
+				prec := p.precedence(Token{Token: scanner.Token{Tok: lang.Call}})
 				for len(ops) > 0 && prec < p.precedence(ops[len(ops)-1]) {
 					out = append(out, popop())
 				}
 				// func call: ensure that the func token in on the top of the stack, after args.
-				ops = append(ops, scanner.Token{Tok: lang.Call, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)})
+				ops = append(ops, Token{Token: scanner.Token{Tok: lang.Call, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)}})
 				out = append(out, toks...)
 			}
 
@@ -129,14 +129,14 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				typ := p.Symbols[typeStr].Type.Elem()
 				ctype = typ.String()
 				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-				out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
+				out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
 			}
 			toks, err := p.parseComposite(t.Block(), ctype)
 			out = append(out, toks...)
 			if err != nil {
 				return out, err
 			}
-			ops = append(ops, scanner.Token{Tok: lang.Composite, Pos: t.Pos, Str: ctype})
+			ops = append(ops, Token{Token: scanner.Token{Tok: lang.Composite, Pos: t.Pos, Str: ctype}})
 
 		case lang.BracketBlock:
 			if i == 0 || in[i-1].Tok.IsOperator() {
@@ -148,7 +148,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				ctype = typ.String()
 				// p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
 				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, false)
-				out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
+				out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
 				i += n - 1
 				break
 			}
@@ -163,10 +163,10 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if i < len(in)-2 && in[i+1].Tok == lang.Assign {
 				// A bracket block followed by assign implies an IndexAssign token,
 				// as assignement to a map element cannot be implemented through a normal Assign.
-				ops = append(ops, scanner.Token{Tok: lang.IndexAssign, Pos: t.Pos})
+				ops = append(ops, Token{Token: scanner.Token{Tok: lang.IndexAssign, Pos: t.Pos}})
 				i++
 			} else if toks[len(toks)-1].Tok != lang.Slice {
-				ops = append(ops, scanner.Token{Tok: lang.Index, Pos: t.Pos})
+				ops = append(ops, Token{Token: scanner.Token{Tok: lang.Index, Pos: t.Pos}})
 			}
 
 		case lang.Struct:
@@ -176,7 +176,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 			ctype = typ.String()
 			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
+			out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
 			i++
 
 		case lang.Map:
@@ -186,7 +186,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 			ctype = typ.String()
 			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-			out = append(out, scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype})
+			out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
 			i += n - 1
 
 		case lang.Comment:
@@ -218,9 +218,9 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, error) {
 		}
 		if noColon {
 			// Insert a numeric index key and a colon operator.
-			result = append(result, scanner.Token{Tok: lang.Int, Str: strconv.Itoa(i)})
+			result = append(result, Token{Token: scanner.Token{Tok: lang.Int, Str: strconv.Itoa(i)}})
 			result = append(result, toks...)
-			result = append(result, scanner.Token{Tok: lang.Colon, Str: ":"})
+			result = append(result, Token{Token: scanner.Token{Tok: lang.Colon, Str: ":"}})
 			sliceLen++
 		} else {
 			result = append(result, toks...)
@@ -231,7 +231,7 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, error) {
 	return result, nil
 }
 
-func (p *Parser) parseBlock(t scanner.Token, typ string) (result Tokens, err error) {
+func (p *Parser) parseBlock(t Token, typ string) (result Tokens, err error) {
 	tokens, err := p.Scan(t.Block(), false)
 	if err != nil {
 		return tokens, err
@@ -245,12 +245,12 @@ func (p *Parser) parseBlock(t scanner.Token, typ string) (result Tokens, err err
 			}
 			if len(sub) == 0 {
 				if i == 0 {
-					result = append(result, scanner.Token{Tok: lang.Int, Str: "0"})
+					result = append(result, Token{Token: scanner.Token{Tok: lang.Int, Str: "0"}})
 					continue
 				} else if i == 2 {
 					return nil, errors.New("final index required in 3-index slice")
 				}
-				result = append(result, scanner.Token{Tok: lang.Len, Beg: 1})
+				result = append(result, Token{Token: scanner.Token{Tok: lang.Len, Beg: 1}})
 				continue
 			}
 			toks, err := p.parseExpr(sub, typ)
@@ -259,7 +259,7 @@ func (p *Parser) parseBlock(t scanner.Token, typ string) (result Tokens, err err
 			}
 			result = append(result, toks...)
 		}
-		result = append(result, scanner.Token{Tok: lang.Slice, Pos: t.Pos})
+		result = append(result, Token{Token: scanner.Token{Tok: lang.Slice, Pos: t.Pos}})
 		return result, err
 	}
 

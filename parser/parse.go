@@ -55,8 +55,15 @@ func NewParser(spec *lang.Spec, noPkg bool) *Parser {
 }
 
 // Scan performs lexical analysis on s and returns Tokens or an error.
-func (p *Parser) Scan(s string, endSemi bool) (Tokens, error) {
-	return p.Scanner.Scan(s, endSemi)
+func (p *Parser) Scan(s string, endSemi bool) (out Tokens, err error) {
+	toks, err := p.Scanner.Scan(s, endSemi)
+	if err != nil {
+		return out, err
+	}
+	for _, t := range toks {
+		out = append(out, Token{Token: t})
+	}
+	return out, err
 }
 
 // Parse performs syntax analysis on s and returns Tokens or an error.
@@ -161,7 +168,7 @@ func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, ErrBreak
 	}
-	out = Tokens{{Tok: lang.Goto, Str: label}}
+	out = Tokens{{Token: scanner.Token{Tok: lang.Goto, Str: label}}}
 	return out, err
 }
 
@@ -179,7 +186,7 @@ func (p *Parser) parseContinue(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, ErrContinue
 	}
-	out = Tokens{{Tok: lang.Goto, Str: label}}
+	out = Tokens{{Token: scanner.Token{Tok: lang.Goto, Str: label}}}
 	return out, err
 }
 
@@ -188,7 +195,7 @@ func (p *Parser) parseGoto(in Tokens) (out Tokens, err error) {
 		return nil, ErrGoto
 	}
 	// TODO: check validity of user provided label
-	return Tokens{{Tok: lang.Goto, Str: p.funcScope + "/" + in[1].Str}}, nil
+	return Tokens{{Token: scanner.Token{Tok: lang.Goto, Str: p.funcScope + "/" + in[1].Str}}}, nil
 }
 
 func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
@@ -208,10 +215,8 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	case 1:
 		if in.Index(lang.Range) >= 0 {
 			init = pre[0]
-			// cond = Tokens{{Tok: lang.Next, Str: p.scope + "c"}}
-			// final = Tokens{{Tok: lang.Stop, Str: p.scope + "f"}}
-			cond = Tokens{{Tok: lang.Next}}
-			final = Tokens{{Tok: lang.Stop}}
+			cond = Tokens{{Token: scanner.Token{Tok: lang.Next}}}
+			final = Tokens{{Token: scanner.Token{Tok: lang.Stop}}}
 		} else {
 			cond = pre[0]
 		}
@@ -226,13 +231,13 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		}
 		out = init
 	}
-	out = append(out, scanner.Token{Tok: lang.Label, Str: p.scope + "b"})
+	out = append(out, Token{Token: scanner.Token{Tok: lang.Label, Str: p.scope + "b"}})
 	if len(cond) > 0 {
 		if cond, err = p.parseExpr(cond, ""); err != nil {
 			return nil, err
 		}
 		out = append(out, cond...)
-		out = append(out, scanner.Token{Tok: lang.JumpFalse, Str: p.scope + "e"})
+		out = append(out, Token{Token: scanner.Token{Tok: lang.JumpFalse, Str: p.scope + "e"}})
 	}
 	if body, err = p.Parse(in[len(in)-1].Block()); err != nil {
 		return nil, err
@@ -245,8 +250,8 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		out = append(out, post...)
 	}
 	out = append(out,
-		scanner.Token{Tok: lang.Goto, Str: p.scope + "b"},
-		scanner.Token{Tok: lang.Label, Str: p.scope + "e"})
+		Token{Token: scanner.Token{Tok: lang.Goto, Str: p.scope + "b"}},
+		Token{Token: scanner.Token{Tok: lang.Label, Str: p.scope + "e"}})
 	out = append(out, final...)
 	return out, err
 }
@@ -282,8 +287,8 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	}()
 
 	out = Tokens{
-		{Tok: lang.Goto, Str: fname + "_end"}, // Skip function definition.
-		{Tok: lang.Label, Pos: in[0].Pos, Str: fname},
+		{Token: scanner.Token{Tok: lang.Goto, Str: fname + "_end"}}, // Skip function definition.
+		{Token: scanner.Token{Tok: lang.Label, Pos: in[0].Pos, Str: fname}},
 	}
 
 	bi := in.Index(lang.BraceBlock)
@@ -303,7 +308,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	if l := p.framelen[p.funcScope] - 1; l > 0 {
-		out = append(out, scanner.Token{Tok: lang.Grow, Beg: l})
+		out = append(out, Token{Token: scanner.Token{Tok: lang.Grow, Beg: l}})
 	}
 	out = append(out, toks...)
 	if out[len(out)-1].Tok != lang.Return {
@@ -315,7 +320,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 		}
 		out = append(out, x...)
 	}
-	out = append(out, scanner.Token{Tok: lang.Label, Str: fname + "_end"})
+	out = append(out, Token{Token: scanner.Token{Tok: lang.Label, Str: fname + "_end"}})
 	return out, err
 }
 
@@ -336,9 +341,9 @@ func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		if sc > 0 {
-			pre = append(pre, scanner.Token{Tok: lang.Goto, Str: p.scope + "e0"})
+			pre = append(pre, Token{Token: scanner.Token{Tok: lang.Goto, Str: p.scope + "e0"}})
 		}
-		pre = append(pre, scanner.Token{Tok: lang.Label, Str: p.scope + "e" + ssc})
+		pre = append(pre, Token{Token: scanner.Token{Tok: lang.Label, Str: p.scope + "e" + ssc}})
 		out = append(pre, out...)
 		i--
 
@@ -366,7 +371,7 @@ func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		pre = append(pre, cond...)
-		pre = append(pre, scanner.Token{Tok: lang.JumpFalse, Str: p.scope + "e" + ssc})
+		pre = append(pre, Token{Token: scanner.Token{Tok: lang.JumpFalse, Str: p.scope + "e" + ssc}})
 		out = append(pre, out...)
 		i = ifp
 		if i > 1 && in[i].Tok == lang.If && in[i-1].Tok == lang.Else { // Step over 'else if'.
@@ -428,12 +433,12 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 		}
 		out = append(out, co...)
 	}
-	out = append(out, scanner.Token{Tok: lang.Label, Str: p.breakLabel})
+	out = append(out, Token{Token: scanner.Token{Tok: lang.Label, Str: p.breakLabel}})
 	return out, err
 }
 
 func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch bool) (out Tokens, err error) {
-	in = append(in, scanner.Token{Tok: lang.Semicolon}) // Force a ';' at the end of body clause.
+	in = append(in, Token{Token: scanner.Token{Tok: lang.Semicolon}}) // Force a ';' at the end of body clause.
 	var conds, body Tokens
 	tl := in.Split(lang.Colon)
 	if len(tl) != 2 {
@@ -459,24 +464,24 @@ func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch bool)
 		} else {
 			next = fmt.Sprintf("%sc%d.%d", p.scope, index, i+1)
 		}
-		out = append(out, scanner.Token{Tok: lang.Label, Str: txt})
+		out = append(out, Token{Token: scanner.Token{Tok: lang.Label, Str: txt}})
 		if len(cond) > 0 {
 			out = append(out, cond...)
 			if condSwitch {
-				out = append(out, scanner.Token{Tok: lang.EqualSet})
+				out = append(out, Token{Token: scanner.Token{Tok: lang.EqualSet}})
 			}
-			out = append(out, scanner.Token{Tok: lang.JumpFalse, Str: next})
+			out = append(out, Token{Token: scanner.Token{Tok: lang.JumpFalse, Str: next}})
 		}
 		out = append(out, body...)
 		if i != len(lcond)-1 || index != maximum {
-			out = append(out, scanner.Token{Tok: lang.Goto, Str: p.scope + "e"})
+			out = append(out, Token{Token: scanner.Token{Tok: lang.Goto, Str: p.scope + "e"}})
 		}
 	}
 	return out, err
 }
 
 func (p *Parser) parseLabel(in Tokens) (out Tokens, err error) {
-	return Tokens{{Tok: lang.Label, Str: p.funcScope + "/" + in[0].Str}}, nil
+	return Tokens{{Token: scanner.Token{Tok: lang.Label, Str: p.funcScope + "/" + in[0].Str}}}, nil
 }
 
 func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
@@ -485,7 +490,7 @@ func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 			return out, err
 		}
 	} else if l == 0 {
-		in = Tokens{{Tok: lang.Return}} // Implicit return in functions with no return parameters.
+		in = Tokens{{Token: scanner.Token{Tok: lang.Return}}} // Implicit return in functions with no return parameters.
 	}
 
 	// TODO: the function symbol should be already present in the parser context.
@@ -527,6 +532,6 @@ func (p *Parser) popScope() {
 	p.scope = p.scope[:j]
 }
 
-func (p *Parser) precedence(t scanner.Token) int {
+func (p *Parser) precedence(t Token) int {
 	return p.TokenProps[t.Tok].Precedence
 }

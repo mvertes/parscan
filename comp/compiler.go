@@ -13,7 +13,6 @@ import (
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/parser"
-	"github.com/mvertes/parscan/scanner"
 	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
@@ -66,7 +65,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	stack := []*symbol.Symbol{} // for symbolic evaluation and type checking
 	flen := []int{}             // stack length according to function scopes
 
-	emit := func(t scanner.Token, op vm.Op, arg ...int) {
+	emit := func(t parser.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
 		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 		c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})

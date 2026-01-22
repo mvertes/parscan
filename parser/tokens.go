@@ -7,8 +7,14 @@ import (
 	"github.com/mvertes/parscan/scanner"
 )
 
+// Token represents a parser token.
+type Token struct {
+	scanner.Token
+	Arg []any
+}
+
 // Tokens represents slice of tokens.
-type Tokens []scanner.Token
+type Tokens []Token
 
 func (toks Tokens) String() (s string) {
 	var sb strings.Builder
@@ -61,4 +67,12 @@ func (toks Tokens) SplitStart(tok lang.Token) (result []Tokens) {
 		result = append(result, toks[:i])
 		toks = toks[i+1:]
 	}
+}
+
+func newIdent(name string, pos int, arg ...any) Token {
+	return Token{Token: scanner.Token{Tok: lang.Ident, Pos: pos, Str: name}, Arg: arg}
+}
+
+func newToken(tok lang.Token, pos int, arg ...any) Token {
+	return Token{Token: scanner.Token{Tok: tok, Pos: pos}, Arg: arg}
 }

@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
-	"github.com/mvertes/parscan/scanner"
 	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
@@ -357,9 +356,9 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		if v, err = p.parseExpr(v, ""); err != nil {
 			return out, err
 		}
-		out = append(out, scanner.Token{Tok: lang.Ident, Str: vars[i]})
+		out = append(out, newIdent(vars[i], 0))
 		out = append(out, v...)
-		out = append(out, scanner.Token{Tok: lang.Assign})
+		out = append(out, newToken(lang.Assign, 0))
 	}
 	return out, err
 }
