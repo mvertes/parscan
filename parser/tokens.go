@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
@@ -69,10 +70,25 @@ func (toks Tokens) SplitStart(tok lang.Token) (result []Tokens) {
 	}
 }
 
-func newIdent(name string, pos int, arg ...any) Token {
-	return Token{Token: scanner.Token{Tok: lang.Ident, Pos: pos, Str: name}, Arg: arg}
+func newToken(tok lang.Token, str string, pos int, arg ...any) Token {
+	return Token{Token: scanner.Token{Tok: tok, Str: str, Pos: pos}, Arg: arg}
 }
 
-func newToken(tok lang.Token, pos int, arg ...any) Token {
-	return Token{Token: scanner.Token{Tok: tok, Pos: pos}, Arg: arg}
-}
+func newIdent(name string, pos int, arg ...any) Token { return newToken(lang.Ident, name, pos, arg...) }
+func newCall(pos int, arg ...any) Token               { return newToken(lang.Call, "", pos, arg...) }
+func newGoto(label string, pos int) Token             { return newToken(lang.Goto, label, pos) }
+func newLabel(label string, pos int) Token            { return newToken(lang.Label, label, pos) }
+func newJumpFalse(label string, pos int) Token        { return newToken(lang.JumpFalse, label, pos) }
+func newGrow(size, pos int) Token                     { return newToken(lang.Grow, "", pos, size) }
+func newSemicolon(pos int) Token                      { return newToken(lang.Semicolon, "", pos) }
+func newEqualSet(pos int) Token                       { return newToken(lang.EqualSet, "", pos) }
+func newReturn(pos int) Token                         { return newToken(lang.Return, "", pos) }
+func newJumpSetFalse(label string, pos int) Token     { return newToken(lang.JumpSetFalse, label, pos) }
+func newJumpSetTrue(label string, pos int) Token      { return newToken(lang.JumpSetTrue, label, pos) }
+func newComposite(pos int) Token                      { return newToken(lang.Composite, "", pos) }
+func newIndexAssign(pos int) Token                    { return newToken(lang.IndexAssign, "", pos) }
+func newIndex(pos int) Token                          { return newToken(lang.Index, "", pos) }
+func newInt(i, pos int) Token                         { return newToken(lang.Int, strconv.Itoa(i), pos) }
+func newColon(pos int) Token                          { return newToken(lang.Colon, "", pos) }
+func newLen(i, pos int) Token                         { return newToken(lang.Len, "", pos, i) }
+func newSlice(pos int) Token                          { return newToken(lang.Slice, "", pos) }

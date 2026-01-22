@@ -168,7 +168,7 @@ func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, ErrBreak
 	}
-	out = Tokens{{Token: scanner.Token{Tok: lang.Goto, Str: label}}}
+	out = append(out, newGoto(label, in[0].Pos))
 	return out, err
 }
 
@@ -186,7 +186,7 @@ func (p *Parser) parseContinue(in Tokens) (out Tokens, err error) {
 	default:
 		return nil, ErrContinue
 	}
-	out = Tokens{{Token: scanner.Token{Tok: lang.Goto, Str: label}}}
+	out = append(out, newGoto(label, in[0].Pos))
 	return out, err
 }
 
@@ -195,7 +195,7 @@ func (p *Parser) parseGoto(in Tokens) (out Tokens, err error) {
 		return nil, ErrGoto
 	}
 	// TODO: check validity of user provided label
-	return Tokens{{Token: scanner.Token{Tok: lang.Goto, Str: p.funcScope + "/" + in[1].Str}}}, nil
+	return Tokens{newGoto(p.funcScope+"/"+in[1].Str, in[0].Pos)}, nil
 }
 
 func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
@@ -231,13 +231,13 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		}
 		out = init
 	}
-	out = append(out, Token{Token: scanner.Token{Tok: lang.Label, Str: p.scope + "b"}})
+	out = append(out, newLabel(p.scope+"b", in[0].Pos))
 	if len(cond) > 0 {
 		if cond, err = p.parseExpr(cond, ""); err != nil {
 			return nil, err
 		}
 		out = append(out, cond...)
-		out = append(out, Token{Token: scanner.Token{Tok: lang.JumpFalse, Str: p.scope + "e"}})
+		out = append(out, newJumpFalse(p.scope+"e", in[0].Pos))
 	}
 	if body, err = p.Parse(in[len(in)-1].Block()); err != nil {
 		return nil, err
@@ -250,8 +250,9 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		out = append(out, post...)
 	}
 	out = append(out,
-		Token{Token: scanner.Token{Tok: lang.Goto, Str: p.scope + "b"}},
-		Token{Token: scanner.Token{Tok: lang.Label, Str: p.scope + "e"}})
+		newGoto(p.scope+"b", in[0].Pos),
+		newLabel(p.scope+"e", in[0].Pos),
+	)
 	out = append(out, final...)
 	return out, err
 }
@@ -287,8 +288,8 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	}()
 
 	out = Tokens{
-		{Token: scanner.Token{Tok: lang.Goto, Str: fname + "_end"}}, // Skip function definition.
-		{Token: scanner.Token{Tok: lang.Label, Pos: in[0].Pos, Str: fname}},
+		newGoto(fname+"_end", in[0].Pos), // Skuo function definition.
+		newLabel(fname, in[0].Pos),
 	}
 
 	bi := in.Index(lang.BraceBlock)
@@ -308,7 +309,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	if l := p.framelen[p.funcScope] - 1; l > 0 {
-		out = append(out, Token{Token: scanner.Token{Tok: lang.Grow, Beg: l}})
+		out = append(out, newGrow(l, in[0].Pos))
 	}
 	out = append(out, toks...)
 	if out[len(out)-1].Tok != lang.Return {
@@ -320,7 +321,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 		}
 		out = append(out, x...)
 	}
-	out = append(out, Token{Token: scanner.Token{Tok: lang.Label, Str: fname + "_end"}})
+	out = append(out, newLabel(fname+"_end", in[0].Pos))
 	return out, err
 }
 
@@ -341,9 +342,9 @@ func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		if sc > 0 {
-			pre = append(pre, Token{Token: scanner.Token{Tok: lang.Goto, Str: p.scope + "e0"}})
+			pre = append(pre, newGoto(p.scope+"e0", in[i].Pos))
 		}
-		pre = append(pre, Token{Token: scanner.Token{Tok: lang.Label, Str: p.scope + "e" + ssc}})
+		pre = append(pre, newLabel(p.scope+"e"+ssc, in[i].Pos))
 		out = append(pre, out...)
 		i--
 
@@ -371,7 +372,7 @@ func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		pre = append(pre, cond...)
-		pre = append(pre, Token{Token: scanner.Token{Tok: lang.JumpFalse, Str: p.scope + "e" + ssc}})
+		pre = append(pre, newJumpFalse(p.scope+"e"+ssc, in[i].Pos))
 		out = append(pre, out...)
 		i = ifp
 		if i > 1 && in[i].Tok == lang.If && in[i-1].Tok == lang.Else { // Step over 'else if'.
@@ -433,12 +434,12 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 		}
 		out = append(out, co...)
 	}
-	out = append(out, Token{Token: scanner.Token{Tok: lang.Label, Str: p.breakLabel}})
+	out = append(out, newLabel(p.breakLabel, in[len(in)-1].Pos))
 	return out, err
 }
 
 func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch bool) (out Tokens, err error) {
-	in = append(in, Token{Token: scanner.Token{Tok: lang.Semicolon}}) // Force a ';' at the end of body clause.
+	in = append(in, newSemicolon(in[len(in)-1].Pos)) // Force a ';' at the end of body clause.
 	var conds, body Tokens
 	tl := in.Split(lang.Colon)
 	if len(tl) != 2 {
@@ -464,24 +465,24 @@ func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch bool)
 		} else {
 			next = fmt.Sprintf("%sc%d.%d", p.scope, index, i+1)
 		}
-		out = append(out, Token{Token: scanner.Token{Tok: lang.Label, Str: txt}})
+		out = append(out, newLabel(txt, 0)) // FIXME: fix label position
 		if len(cond) > 0 {
 			out = append(out, cond...)
 			if condSwitch {
-				out = append(out, Token{Token: scanner.Token{Tok: lang.EqualSet}})
+				out = append(out, newEqualSet(cond[0].Pos))
 			}
-			out = append(out, Token{Token: scanner.Token{Tok: lang.JumpFalse, Str: next}})
+			out = append(out, newJumpFalse(next, cond[len(cond)-1].Pos))
 		}
 		out = append(out, body...)
 		if i != len(lcond)-1 || index != maximum {
-			out = append(out, Token{Token: scanner.Token{Tok: lang.Goto, Str: p.scope + "e"}})
+			out = append(out, newGoto(p.scope+"e", 0)) // FIXME: fix goto position
 		}
 	}
 	return out, err
 }
 
 func (p *Parser) parseLabel(in Tokens) (out Tokens, err error) {
-	return Tokens{{Token: scanner.Token{Tok: lang.Label, Str: p.funcScope + "/" + in[0].Str}}}, nil
+	return Tokens{newLabel(p.funcScope+"/"+in[0].Str, in[0].Pos)}, nil
 }
 
 func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
@@ -490,7 +491,7 @@ func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 			return out, err
 		}
 	} else if l == 0 {
-		in = Tokens{{Token: scanner.Token{Tok: lang.Return}}} // Implicit return in functions with no return parameters.
+		in = Tokens{newReturn(0)} // Implicit return in functions with no return parameters.
 	}
 
 	// TODO: the function symbol should be already present in the parser context.

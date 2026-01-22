@@ -146,8 +146,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Lower)
 
 		case lang.Call:
-			showStack(stack)
-			narg := t.Beg // FIXME: t.Beg is hijacked to store the number of function parameters.
+			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
 			if s.Kind != symbol.Value {
 				typ := s.Type
@@ -161,20 +160,19 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.Out(i)})
 				}
 				emit(t, vm.Call, narg)
-
-				showStack(stack)
 				break
 			}
 			fallthrough // A symValue must be called through callX.
 
 		case lang.CallX:
-			s := stack[len(stack)-1-t.Beg]
+			narg := t.Arg[0].(int)
+			s := stack[len(stack)-1-narg]
 			rtyp := s.Value.Value.Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
 				push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtyp.Out(i)}})
 			}
-			emit(t, vm.CallX, t.Beg)
+			emit(t, vm.CallX, narg)
 
 		case lang.Colon:
 			pop()
@@ -207,7 +205,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.Composite:
 
 		case lang.Grow:
-			emit(t, vm.Grow, t.Beg)
+			emit(t, vm.Grow, t.Arg[0].(int))
 
 		case lang.Define:
 			rhs := pop()
@@ -316,7 +314,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 
 		case lang.Len:
 			push(&symbol.Symbol{Type: c.Symbols["int"].Type})
-			emit(t, vm.Len, t.Beg)
+			emit(t, vm.Len, t.Arg[0].(int))
 
 		case lang.JumpFalse:
 			var i int

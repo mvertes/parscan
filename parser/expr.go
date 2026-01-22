@@ -82,14 +82,14 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			addop(t)
 			xp := strconv.Itoa(p.labelCount[p.scope])
 			p.labelCount[p.scope]++
-			out = append(out, Token{Token: scanner.Token{Tok: lang.JumpSetFalse, Str: p.scope + "x" + xp}})
+			out = append(out, newJumpSetFalse(p.scope+"x"+xp, t.Pos))
 			ops[len(ops)-1].Str = p.scope + "x" + xp
 
 		case lang.Lor:
 			addop(t)
 			xp := strconv.Itoa(p.labelCount[p.scope])
 			p.labelCount[p.scope]++
-			out = append(out, Token{Token: scanner.Token{Tok: lang.JumpSetTrue, Str: p.scope + "x" + xp}})
+			out = append(out, newJumpSetTrue(p.scope+"x"+xp, t.Pos))
 			ops[len(ops)-1].Str = p.scope + "x" + xp
 
 		case lang.Ident:
@@ -114,12 +114,12 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				out = append(out, toks...)
 			} else {
-				prec := p.precedence(Token{Token: scanner.Token{Tok: lang.Call}})
+				prec := p.precedence(newCall(0))
 				for len(ops) > 0 && prec < p.precedence(ops[len(ops)-1]) {
 					out = append(out, popop())
 				}
 				// func call: ensure that the func token in on the top of the stack, after args.
-				ops = append(ops, Token{Token: scanner.Token{Tok: lang.Call, Pos: t.Pos, Beg: p.numItems(t.Block(), lang.Comma)}})
+				ops = append(ops, newCall(t.Pos, p.numItems(t.Block(), lang.Comma)))
 				out = append(out, toks...)
 			}
 
@@ -129,14 +129,14 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				typ := p.Symbols[typeStr].Type.Elem()
 				ctype = typ.String()
 				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-				out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
+				out = append(out, newIdent(ctype, t.Pos))
 			}
 			toks, err := p.parseComposite(t.Block(), ctype)
 			out = append(out, toks...)
 			if err != nil {
 				return out, err
 			}
-			ops = append(ops, Token{Token: scanner.Token{Tok: lang.Composite, Pos: t.Pos, Str: ctype}})
+			ops = append(ops, newComposite(t.Pos))
 
 		case lang.BracketBlock:
 			if i == 0 || in[i-1].Tok.IsOperator() {
@@ -148,7 +148,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				ctype = typ.String()
 				// p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
 				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, false)
-				out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
+				out = append(out, newIdent(ctype, t.Pos))
 				i += n - 1
 				break
 			}
@@ -163,10 +163,10 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if i < len(in)-2 && in[i+1].Tok == lang.Assign {
 				// A bracket block followed by assign implies an IndexAssign token,
 				// as assignement to a map element cannot be implemented through a normal Assign.
-				ops = append(ops, Token{Token: scanner.Token{Tok: lang.IndexAssign, Pos: t.Pos}})
+				ops = append(ops, newIndexAssign(t.Pos))
 				i++
 			} else if toks[len(toks)-1].Tok != lang.Slice {
-				ops = append(ops, Token{Token: scanner.Token{Tok: lang.Index, Pos: t.Pos}})
+				ops = append(ops, newIndex(t.Pos))
 			}
 
 		case lang.Struct:
@@ -176,6 +176,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 			ctype = typ.String()
 			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+			// out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
 			out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
 			i++
 
@@ -186,7 +187,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 			ctype = typ.String()
 			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-			out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
+			out = append(out, newIdent(ctype, t.Pos))
 			i += n - 1
 
 		case lang.Comment:
@@ -218,9 +219,9 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, error) {
 		}
 		if noColon {
 			// Insert a numeric index key and a colon operator.
-			result = append(result, Token{Token: scanner.Token{Tok: lang.Int, Str: strconv.Itoa(i)}})
+			result = append(result, newInt(i, toks[0].Pos))
 			result = append(result, toks...)
-			result = append(result, Token{Token: scanner.Token{Tok: lang.Colon, Str: ":"}})
+			result = append(result, newColon(toks[0].Pos))
 			sliceLen++
 		} else {
 			result = append(result, toks...)
@@ -245,12 +246,12 @@ func (p *Parser) parseBlock(t Token, typ string) (result Tokens, err error) {
 			}
 			if len(sub) == 0 {
 				if i == 0 {
-					result = append(result, Token{Token: scanner.Token{Tok: lang.Int, Str: "0"}})
+					result = append(result, newInt(0, tokens[0].Pos))
 					continue
 				} else if i == 2 {
 					return nil, errors.New("final index required in 3-index slice")
 				}
-				result = append(result, Token{Token: scanner.Token{Tok: lang.Len, Beg: 1}})
+				result = append(result, newLen(1, tokens[0].Pos))
 				continue
 			}
 			toks, err := p.parseExpr(sub, typ)
@@ -259,7 +260,7 @@ func (p *Parser) parseBlock(t Token, typ string) (result Tokens, err error) {
 			}
 			result = append(result, toks...)
 		}
-		result = append(result, Token{Token: scanner.Token{Tok: lang.Slice, Pos: t.Pos}})
+		result = append(result, newSlice(t.Pos))
 		return result, err
 	}
 
