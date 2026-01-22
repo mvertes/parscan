@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/mvertes/parscan/lang"
-	"github.com/mvertes/parscan/scanner"
 	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
@@ -176,8 +175,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 			ctype = typ.String()
 			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
-			// out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
-			out = append(out, Token{Token: scanner.Token{Tok: lang.Ident, Pos: t.Pos, Str: ctype}})
+			out = append(out, newIdent(ctype, t.Pos))
 			i++
 
 		case lang.Map:
