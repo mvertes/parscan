@@ -79,6 +79,8 @@ func newCall(pos int, arg ...any) Token               { return newToken(lang.Cal
 func newGoto(label string, pos int) Token             { return newToken(lang.Goto, label, pos) }
 func newLabel(label string, pos int) Token            { return newToken(lang.Label, label, pos) }
 func newJumpFalse(label string, pos int) Token        { return newToken(lang.JumpFalse, label, pos) }
+func newNext(label string, pos int) Token             { return newToken(lang.Next, label, pos) }
+func newStop(pos int) Token                           { return newToken(lang.Stop, "", pos) }
 func newGrow(size, pos int) Token                     { return newToken(lang.Grow, "", pos, size) }
 func newSemicolon(pos int) Token                      { return newToken(lang.Semicolon, "", pos) }
 func newEqualSet(pos int) Token                       { return newToken(lang.EqualSet, "", pos) }

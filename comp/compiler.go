@@ -408,8 +408,15 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			}
 
 		case lang.Next:
+			var i int
+			if s, ok := c.Symbols[t.Str]; !ok {
+				t.Arg = []any{len(c.Code)} // current code location
+				fixList = append(fixList, t)
+			} else {
+				i = int(s.Value.Int()) - len(c.Code)
+			}
 			k := stack[len(stack)-2]
-			c.emit(t, vm.Next, k.Index)
+			c.emit(t, vm.Next, i, k.Index)
 
 		case lang.Range:
 			// FIXME: handle all iterator types.

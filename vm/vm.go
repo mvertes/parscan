@@ -108,8 +108,8 @@ func (m *Machine) Run() (err error) {
 	defer func() { m.mem, m.ip, m.fp, m.ic = mem, ip, fp, ic }()
 
 	for {
-		sp = len(mem) // stack pointer
-		c := m.code[ip]
+		sp = len(mem)   // stack pointer
+		c := m.code[ip] // current instruction
 		if debug {
 			log.Printf("ip:%-3d sp:%-3d fp:%-3d op:[%-20v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
 		}
@@ -247,11 +247,12 @@ func (m *Machine) Run() (err error) {
 		case Negate:
 			mem[sp-1] = ValueOf(-mem[sp-1].Int())
 		case Next:
-			v, ok := mem[sp-2].Interface().(func() (reflect.Value, bool))()
-			if ok {
-				mem[c.Arg[0]].Set(v)
+			if v, ok := mem[sp-2].Interface().(func() (reflect.Value, bool))(); ok {
+				mem[c.Arg[1]].Set(v)
+			} else {
+				ip += c.Arg[0]
+				continue
 			}
-			mem = append(mem, ValueOf(ok))
 		case Not:
 			mem[sp-1] = ValueOf(!mem[sp-1].Bool())
 		case Pop:
