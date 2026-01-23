@@ -128,7 +128,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			c.emit(t, vm.Deref)
 
 		case lang.Index:
-			showStack(stack)
 			pop()
 			s := pop()
 			if s.Type.Rtype.Kind() == reflect.Map {
@@ -361,7 +360,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			if len(stack) < 1 {
 				return errorf("missing symbol")
 			}
-			showStack(stack)
 			s := pop()
 			switch s.Kind {
 			case symbol.Pkg:
@@ -419,6 +417,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			c.emit(t, vm.Next, i, k.Index)
 
 		case lang.Range:
+			showStack(stack)
 			// FIXME: handle all iterator types.
 			// set the correct type to the iterator variables.
 			switch t := top().Type; t.Rtype.Kind() {

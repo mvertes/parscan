@@ -56,11 +56,13 @@ const (
 	Mul                    // n1 n2 -- prod ; prod = n1*n2
 	New                    // -- x; mem[fp+$1] = new mem[$2]
 	Negate                 // -- ; - mem[fp]
-	Next                   // -- ; iterator next
+	Next                   // -- ; iterator next, set K
+	Next2                  // -- ; iterator next, set K V
 	Not                    // c -- r ; r = !c
 	Pop                    // v --
 	Push                   // -- v
 	Pull                   // a -- a s n; pull iterator next and stop function
+	Pull2                  // a -- a s n; pull iterator next and stop function
 	Return                 // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
 	Slice                  // a l h -- a; a = a [l:h]
 	Slice3                 // a l h m -- a; a = a[l:h:m]
@@ -247,8 +249,16 @@ func (m *Machine) Run() (err error) {
 		case Negate:
 			mem[sp-1] = ValueOf(-mem[sp-1].Int())
 		case Next:
-			if v, ok := mem[sp-2].Interface().(func() (reflect.Value, bool))(); ok {
-				mem[c.Arg[1]].Set(v)
+			if k, ok := mem[sp-2].Interface().(func() (reflect.Value, bool))(); ok {
+				mem[c.Arg[1]].Set(k)
+			} else {
+				ip += c.Arg[0]
+				continue
+			}
+		case Next2:
+			if k, v, ok := mem[sp-2].Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
+				mem[c.Arg[1]].Set(k)
+				mem[c.Arg[2]].Set(v)
 			} else {
 				ip += c.Arg[0]
 				continue
@@ -262,6 +272,9 @@ func (m *Machine) Run() (err error) {
 			mem[sp].SetInt(int64(c.Arg[0]))
 		case Pull:
 			next, stop := iter.Pull(mem[sp-1].Seq())
+			mem = append(mem, ValueOf(next), ValueOf(stop))
+		case Pull2:
+			next, stop := iter.Pull2(mem[sp-1].Seq2())
 			mem = append(mem, ValueOf(next), ValueOf(stop))
 		case Grow:
 			mem = append(mem, make([]Value, c.Arg[0])...)
