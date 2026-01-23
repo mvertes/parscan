@@ -58,6 +58,12 @@ func showStack(stack []*symbol.Symbol) {
 	}
 }
 
+func (c *Compiler) emit(t parser.Token, op vm.Op, arg ...int) {
+	_, file, line, _ := runtime.Caller(1)
+	fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
+	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
+}
+
 // Generate generates vm code and data from parsed tokens.
 func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
@@ -65,11 +71,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 	stack := []*symbol.Symbol{} // for symbolic evaluation and type checking
 	flen := []int{}             // stack length according to function scopes
 
-	emit := func(t parser.Token, op vm.Op, arg ...int) {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
-		c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
-	}
 	push := func(s *symbol.Symbol) { stack = append(stack, s) }
 	top := func() *symbol.Symbol { return stack[len(stack)-1] }
 	pop := func() *symbol.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
@@ -83,7 +84,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				return err
 			}
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(n), Type: vm.TypeOf(0)})
-			emit(t, vm.Push, n)
+			c.emit(t, vm.Push, n)
 
 		case lang.String:
 			s := t.Block()
@@ -95,55 +96,55 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				c.strings[s] = i
 			}
 			push(&symbol.Symbol{Kind: symbol.Const, Value: v, Type: vm.TypeOf("")})
-			emit(t, vm.Dup, i)
+			c.emit(t, vm.Dup, i)
 
 		case lang.Add:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
-			emit(t, vm.Add)
+			c.emit(t, vm.Add)
 
 		case lang.Mul:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
-			emit(t, vm.Mul)
+			c.emit(t, vm.Mul)
 
 		case lang.Sub:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
-			emit(t, vm.Sub)
+			c.emit(t, vm.Sub)
 
 		case lang.Minus:
-			emit(t, vm.Negate)
+			c.emit(t, vm.Negate)
 
 		case lang.Not:
-			emit(t, vm.Not)
+			c.emit(t, vm.Not)
 
 		case lang.Plus:
 			// Unary '+' is idempotent. Nothing to do.
 
 		case lang.Addr:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: vm.PointerTo(pop().Type)})
-			emit(t, vm.Addr)
+			c.emit(t, vm.Addr)
 
 		case lang.Deref:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: pop().Type.Elem()})
-			emit(t, vm.Deref)
+			c.emit(t, vm.Deref)
 
 		case lang.Index:
 			showStack(stack)
 			pop()
 			s := pop()
 			if s.Type.Rtype.Kind() == reflect.Map {
-				emit(t, vm.MapIndex)
+				c.emit(t, vm.MapIndex)
 			} else {
-				emit(t, vm.Index)
+				c.emit(t, vm.Index)
 			}
 			push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type.Elem()})
 
 		case lang.Greater:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(pop(), pop())})
-			emit(t, vm.Greater)
+			c.emit(t, vm.Greater)
 
 		case lang.Less:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(pop(), pop())})
-			emit(t, vm.Lower)
+			c.emit(t, vm.Lower)
 
 		case lang.Call:
 			narg := t.Arg[0].(int)
@@ -159,7 +160,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				for i := 0; i < typ.Rtype.NumOut(); i++ {
 					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.Out(i)})
 				}
-				emit(t, vm.Call, narg)
+				c.emit(t, vm.Call, narg)
 				break
 			}
 			fallthrough // A symValue must be called through callX.
@@ -172,7 +173,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			for i := 0; i < rtyp.NumOut(); i++ {
 				push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtyp.Out(i)}})
 			}
-			emit(t, vm.CallX, narg)
+			c.emit(t, vm.CallX, narg)
 
 		case lang.Colon:
 			pop()
@@ -187,25 +188,25 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				switch ts.Type.Rtype.Kind() {
 				case reflect.Struct:
 					if v := ks.Value.Value; v.CanInt() {
-						emit(t, vm.FieldFset)
+						c.emit(t, vm.FieldFset)
 					}
 				case reflect.Slice:
 					if ts.Type.Elem().IsPtr() {
-						emit(t, vm.Addr)
+						c.emit(t, vm.Addr)
 					}
-					emit(t, vm.IndexSet)
+					c.emit(t, vm.IndexSet)
 				case reflect.Map:
-					emit(t, vm.MapSet)
+					c.emit(t, vm.MapSet)
 				}
 			case symbol.Unset:
 				j := top().Type.FieldIndex(ks.Name)
-				emit(t, vm.FieldSet, j...)
+				c.emit(t, vm.FieldSet, j...)
 			}
 
 		case lang.Composite:
 
 		case lang.Grow:
-			emit(t, vm.Grow, t.Arg[0].(int))
+			c.emit(t, vm.Grow, t.Arg[0].(int))
 
 		case lang.Define:
 			rhs := pop()
@@ -216,17 +217,17 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			lhs := pop()
 			lhs.Type = typ
 			c.Data[lhs.Index] = vm.NewValue(typ)
-			emit(t, vm.Vassign)
+			c.emit(t, vm.Vassign)
 
 		case lang.Assign:
 			rhs := pop()
 			lhs := pop()
 			if lhs.Local {
 				if !lhs.Used {
-					emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
+					c.emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
 					lhs.Used = true
 				}
-				emit(t, vm.Fassign, lhs.Index)
+				c.emit(t, vm.Fassign, lhs.Index)
 				break
 			}
 			// TODO check source type against var type
@@ -234,15 +235,15 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				c.Data[lhs.Index] = vm.NewValue(rhs.Type)
 				c.Symbols[lhs.Name].Type = rhs.Type
 			}
-			emit(t, vm.Vassign)
+			c.emit(t, vm.Vassign)
 
 		case lang.IndexAssign:
 			s := stack[len(stack)-3]
 			switch s.Type.Rtype.Kind() {
 			case reflect.Array, reflect.Slice:
-				emit(t, vm.IndexSet)
+				c.emit(t, vm.IndexSet)
 			case reflect.Map:
-				emit(t, vm.MapSet)
+				c.emit(t, vm.MapSet)
 			default:
 				return errorf("not a map or array: %s", s.Name)
 			}
@@ -250,11 +251,11 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 
 		case lang.Equal:
 			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
-			emit(t, vm.Equal)
+			c.emit(t, vm.Equal)
 
 		case lang.EqualSet:
 			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
-			emit(t, vm.EqualSet)
+			c.emit(t, vm.EqualSet)
 
 		case lang.Ident:
 			s, ok := c.Symbols[t.Str]
@@ -268,7 +269,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				break
 			}
 			if s.Local {
-				emit(t, vm.Fdup, s.Index)
+				c.emit(t, vm.Fdup, s.Index)
 			} else {
 				if s.Index == symbol.UnsetAddr {
 					s.Index = len(c.Data)
@@ -277,14 +278,14 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				if s.Kind == symbol.Type {
 					switch s.Type.Rtype.Kind() {
 					case reflect.Slice:
-						emit(t, vm.Fnew, s.Index, s.SliceLen)
+						c.emit(t, vm.Fnew, s.Index, s.SliceLen)
 					case reflect.Pointer:
-						emit(t, vm.FnewE, s.Index, 1)
+						c.emit(t, vm.FnewE, s.Index, 1)
 					default:
-						emit(t, vm.Fnew, s.Index, 1)
+						c.emit(t, vm.Fnew, s.Index, 1)
 					}
 				} else {
-					emit(t, vm.Dup, s.Index)
+					c.emit(t, vm.Dup, s.Index)
 				}
 			}
 
@@ -314,7 +315,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 
 		case lang.Len:
 			push(&symbol.Symbol{Type: c.Symbols["int"].Type})
-			emit(t, vm.Len, t.Arg[0].(int))
+			c.emit(t, vm.Len, t.Arg[0].(int))
 
 		case lang.JumpFalse:
 			var i int
@@ -324,7 +325,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
 			}
-			emit(t, vm.JumpFalse, i)
+			c.emit(t, vm.JumpFalse, i)
 
 		case lang.JumpSetFalse:
 			var i int
@@ -334,7 +335,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
 			}
-			emit(t, vm.JumpSetFalse, i)
+			c.emit(t, vm.JumpSetFalse, i)
 
 		case lang.JumpSetTrue:
 			var i int
@@ -344,7 +345,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
 			}
-			emit(t, vm.JumpSetTrue, i)
+			c.emit(t, vm.JumpSetTrue, i)
 
 		case lang.Goto:
 			var i int
@@ -354,7 +355,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
 			}
-			emit(t, vm.Jump, i)
+			c.emit(t, vm.Jump, i)
 
 		case lang.Period:
 			if len(stack) < 1 {
@@ -384,7 +385,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					sym = c.Symbols[name]
 				}
 				push(sym)
-				emit(t, vm.Dup, l)
+				c.emit(t, vm.Dup, l)
 			case symbol.Unset:
 				return errorf("invalid symbol: %s", s.Name)
 			default:
@@ -395,10 +396,10 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				}
 				if f, ok := typ.FieldByName(t.Str[1:]); ok {
 					if isPtr {
-						emit(t, vm.FieldE, f.Index...)
+						c.emit(t, vm.FieldE, f.Index...)
 						push(&symbol.Symbol{Type: s.Type.Elem().FieldType(t.Str[1:])})
 					} else {
-						emit(t, vm.Field, f.Index...)
+						c.emit(t, vm.Field, f.Index...)
 						push(&symbol.Symbol{Type: s.Type.FieldType(t.Str[1:])})
 					}
 					break
@@ -408,7 +409,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 
 		case lang.Next:
 			k := stack[len(stack)-2]
-			emit(t, vm.Next, k.Index)
+			c.emit(t, vm.Next, k.Index)
 
 		case lang.Range:
 			// FIXME: handle all iterator types.
@@ -421,21 +422,21 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			case reflect.Map:
 				// FIXME: handle map
 			}
-			emit(t, vm.Pull)
+			c.emit(t, vm.Pull)
 
 		case lang.Stop:
-			emit(t, vm.Stop)
+			c.emit(t, vm.Stop)
 
 		case lang.Return:
 			numOut, numIn := t.Arg[0].(int), t.Arg[1].(int)
-			emit(t, vm.Return, numOut, numIn)
+			c.emit(t, vm.Return, numOut, numIn)
 
 		case lang.Slice:
 			if stack[len(stack)-3].IsInt() {
-				emit(t, vm.Slice3)
+				c.emit(t, vm.Slice3)
 				stack = stack[:len(stack)-4]
 			} else {
-				emit(t, vm.Slice)
+				c.emit(t, vm.Slice)
 				stack = stack[:len(stack)-3]
 			}
 
