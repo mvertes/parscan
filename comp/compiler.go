@@ -319,8 +319,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.JumpFalse:
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				// t.Beg contains the position in code which needs to be fixed.
-				t.Beg = len(c.Code)
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
@@ -330,8 +329,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.JumpSetFalse:
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				// t.Beg contains the position in code which needs to be fixed.
-				t.Beg = len(c.Code)
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
@@ -341,8 +339,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.JumpSetTrue:
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				// t.Beg contains the position in code which needs to be fixed.
-				t.Beg = len(c.Code)
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
@@ -352,7 +349,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		case lang.Goto:
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Beg = len(c.Code)
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
@@ -430,7 +427,8 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			emit(t, vm.Stop)
 
 		case lang.Return:
-			emit(t, vm.Return, t.Beg, t.End)
+			numOut, numIn := t.Arg[0].(int), t.Arg[1].(int)
+			emit(t, vm.Return, numOut, numIn)
 
 		case lang.Slice:
 			if stack[len(stack)-3].IsInt() {
@@ -452,7 +450,8 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 		if !ok {
 			return fmt.Errorf("label not found: %q", t.Str)
 		}
-		c.Code[t.Beg].Arg[0] = int(s.Value.Int()) - t.Beg
+		loc := t.Arg[0].(int)
+		c.Code[loc].Arg[0] = int(s.Value.Int()) - loc // relative code position
 	}
 	return err
 }
