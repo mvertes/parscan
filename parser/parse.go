@@ -145,13 +145,39 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	case lang.Var:
 		return p.parseVar(in)
 	case lang.Ident:
-		if len(in) == 2 && in[1].Tok == lang.Colon {
+		if in.Index(lang.Colon) == 1 {
 			return p.parseLabel(in)
+		}
+		if i := in.Index(lang.Assign); i > 0 {
+			return p.parseAssign(in, i)
 		}
 		fallthrough
 	default:
 		return p.parseExpr(in, "")
 	}
+}
+
+func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
+	rhs := in[aindex+1:].Split(lang.Comma)
+	lr := len(rhs)
+	if lr == 1 {
+		return p.parseExpr(in, "")
+	}
+	lhs := in[:aindex].Split(lang.Comma)
+	for i, e := range rhs {
+		toks, err := p.parseExpr(lhs[i], "")
+		if err != nil {
+			return out, err
+		}
+		out = append(out, toks...)
+		toks, err = p.parseExpr(e, "")
+		if err != nil {
+			return out, err
+		}
+		out = append(out, toks...)
+		out = append(out, newAssign(in[aindex].Pos))
+	}
+	return out, err
 }
 
 func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {

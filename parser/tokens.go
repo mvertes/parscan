@@ -94,3 +94,4 @@ func newInt(i, pos int) Token                         { return newToken(lang.Int
 func newColon(pos int) Token                          { return newToken(lang.Colon, "", pos) }
 func newLen(i, pos int) Token                         { return newToken(lang.Len, "", pos, i) }
 func newSlice(pos int) Token                          { return newToken(lang.Slice, "", pos) }
+func newAssign(pos int) Token                         { return newToken(lang.Assign, "", pos) }
