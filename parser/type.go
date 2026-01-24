@@ -172,7 +172,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 				// Type was omitted, apply the previous one from the right.
 				types = append([]*vm.Type{types[0]}, types...)
 				p.addSymVar(i, param, types[0], flag, local)
-				vars = append(vars, param)
+				vars = append([]string{param}, vars...)
 				continue
 			}
 		}
@@ -184,7 +184,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 			p.addSymVar(i, param, typ, flag, local)
 		}
 		types = append([]*vm.Type{typ}, types...)
-		vars = append(vars, param)
+		vars = append([]string{param}, vars...)
 	}
 	return types, vars, err
 }

@@ -70,6 +70,13 @@ func TestExpr(t *testing.T) {
 	})
 }
 
+func TestAssign(t *testing.T) {
+	run(t, []etest{
+		{src: "var a int = 1; a", res: "1"},       // #00
+		{src: "var a, b int = 1, 2; b", res: "2"}, // #01
+	})
+}
+
 func TestCompare(t *testing.T) {
 	run(t, []etest{
 		{src: "a := 1; a < 2", res: "true"},
