@@ -11,6 +11,7 @@ import (
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scanner"
 	"github.com/mvertes/parscan/symbol"
+	"github.com/mvertes/parscan/vm"
 )
 
 // Parser represents the state of a parser.
@@ -151,6 +152,9 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		if i := in.Index(lang.Assign); i > 0 {
 			return p.parseAssign(in, i)
 		}
+		if i := in.Index(lang.Define); i > 0 {
+			return p.parseAssign(in, i)
+		}
 		fallthrough
 	default:
 		return p.parseExpr(in, "")
@@ -159,23 +163,30 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 	rhs := in[aindex+1:].Split(lang.Comma)
-	lr := len(rhs)
-	if lr == 1 {
+	if len(rhs) == 1 {
 		return p.parseExpr(in, "")
 	}
 	lhs := in[:aindex].Split(lang.Comma)
+	define := in[aindex].Tok == lang.Define
 	for i, e := range rhs {
 		toks, err := p.parseExpr(lhs[i], "")
 		if err != nil {
 			return out, err
 		}
 		out = append(out, toks...)
+		if define {
+			for _, t := range toks {
+				if t.Tok == lang.Ident {
+					p.Symbols.Add(symbol.UnsetAddr, t.Str, vm.Value{}, symbol.Var, nil, p.funcScope != "")
+				}
+			}
+		}
 		toks, err = p.parseExpr(e, "")
 		if err != nil {
 			return out, err
 		}
 		out = append(out, toks...)
-		out = append(out, newAssign(in[aindex].Pos))
+		out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos))
 	}
 	return out, err
 }

@@ -75,6 +75,7 @@ func TestAssign(t *testing.T) {
 		{src: "var a int = 1; a", res: "1"},             // #00
 		{src: "var a, b int = 1, 2; b", res: "2"},       // #01
 		{src: "var a, b int; a, b = 1, 2; b", res: "2"}, // #02
+		{src: "a, b := 1, 2; b", res: "2"},              // #03
 	})
 }
 
