@@ -262,7 +262,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				// It could be either an undefined symbol or a key ident in a literal composite expr.
 				s = &symbol.Symbol{Name: t.Str}
 			}
-			log.Println("Ident symbol", t.Str, s.Local, s.Index, s.Type)
 			push(s)
 			if s.Kind == symbol.Pkg || s.Kind == symbol.Unset {
 				break

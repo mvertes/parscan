@@ -163,11 +163,37 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 	rhs := in[aindex+1:].Split(lang.Comma)
-	if len(rhs) == 1 {
-		return p.parseExpr(in, "")
-	}
 	lhs := in[:aindex].Split(lang.Comma)
 	define := in[aindex].Tok == lang.Define
+	if len(rhs) == 1 {
+		for _, e := range lhs {
+			toks, err := p.parseExpr(e, "")
+			if err != nil {
+				return out, err
+			}
+			if define && len(e) == 1 && e[0].Tok == lang.Ident {
+				p.Symbols.Add(symbol.UnsetAddr, e[0].Str, vm.Value{}, symbol.Var, nil, false)
+			}
+			out = append(out, toks...)
+		}
+		toks, err := p.parseExpr(rhs[0], "")
+		if err != nil {
+			return out, err
+		}
+		if out[len(out)-1].Tok == lang.Index {
+			// Map elements cannot be assigned directly, but only through IndexAssign.
+			out = out[:len(out)-1]
+			out = append(out, toks...)
+			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos))
+		} else {
+			out = append(out, toks...)
+			if out[len(out)-1].Tok != lang.Range {
+				out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos))
+			}
+		}
+		return out, err
+	}
+	// Multiple values in right hand side.
 	for i, e := range rhs {
 		toks, err := p.parseExpr(lhs[i], "")
 		if err != nil {
@@ -185,8 +211,15 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 		if err != nil {
 			return out, err
 		}
-		out = append(out, toks...)
-		out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos))
+		if out[len(out)-1].Tok == lang.Index {
+			// Map elements cannot be assigned directly, but only through IndexAssign.
+			out = out[:len(out)-1]
+			out = append(out, toks...)
+			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos))
+		} else {
+			out = append(out, toks...)
+			out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos))
+		}
 	}
 	return out, err
 }

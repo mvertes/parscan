@@ -88,7 +88,6 @@ func newReturn(pos int) Token                         { return newToken(lang.Ret
 func newJumpSetFalse(label string, pos int) Token     { return newToken(lang.JumpSetFalse, label, pos) }
 func newJumpSetTrue(label string, pos int) Token      { return newToken(lang.JumpSetTrue, label, pos) }
 func newComposite(pos int) Token                      { return newToken(lang.Composite, "", pos) }
-func newIndexAssign(pos int) Token                    { return newToken(lang.IndexAssign, "", pos) }
 func newIndex(pos int) Token                          { return newToken(lang.Index, "", pos) }
 func newInt(i, pos int) Token                         { return newToken(lang.Int, strconv.Itoa(i), pos) }
 func newColon(pos int) Token                          { return newToken(lang.Colon, "", pos) }

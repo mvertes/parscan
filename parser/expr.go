@@ -62,14 +62,13 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			out = append(out, t)
 
 		case lang.Range:
-			ops = ops[:len(ops)-1] // Suppress previous assign or define.
 			addop(t)
 
 		case lang.Colon:
 			t.Str = typeStr
 			addop(t)
 
-		case lang.Add, lang.And, lang.Assign, lang.Define, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Not, lang.Sub, lang.Shl, lang.Shr:
+		case lang.Add, lang.And, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Not, lang.Sub, lang.Shl, lang.Shr:
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				// An operator preceded by an operator or no token is unary.
 				t.Tok = lang.UnaryOp[t.Tok]
@@ -100,10 +99,6 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				ctype = s.Type.String()
 			}
 			out = append(out, t)
-			if i+1 < len(in) && in[i+1].Tok == lang.Define {
-				// Ident is to be assigned next. Define it as a var.
-				p.Symbols.Add(symbol.UnsetAddr, t.Str, vm.Value{}, symbol.Var, nil, false)
-			}
 
 		case lang.ParenBlock:
 			toks, err := p.parseBlock(t, typeStr)
@@ -145,7 +140,6 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 					return out, err
 				}
 				ctype = typ.String()
-				// p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
 				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, false)
 				out = append(out, newIdent(ctype, t.Pos))
 				i += n - 1
@@ -159,12 +153,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				break
 			}
 			out = append(out, toks...)
-			if i < len(in)-2 && in[i+1].Tok == lang.Assign {
-				// A bracket block followed by assign implies an IndexAssign token,
-				// as assignement to a map element cannot be implemented through a normal Assign.
-				ops = append(ops, newIndexAssign(t.Pos))
-				i++
-			} else if toks[len(toks)-1].Tok != lang.Slice {
+			if toks[len(toks)-1].Tok != lang.Slice {
 				ops = append(ops, newIndex(t.Pos))
 			}
 

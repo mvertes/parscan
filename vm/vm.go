@@ -150,8 +150,7 @@ func (m *Machine) Run() (err error) {
 		case Deref:
 			mem[sp-1].Value = mem[sp-1].Value.Elem()
 		case Dup:
-			k := c.Arg[0]
-			mem = append(mem, mem[k])
+			mem = append(mem, mem[c.Arg[0]])
 		case New:
 			mem[c.Arg[0]+fp-1] = NewValue(mem[c.Arg[1]].Type)
 		case Equal:

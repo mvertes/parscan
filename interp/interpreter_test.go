@@ -72,10 +72,13 @@ func TestExpr(t *testing.T) {
 
 func TestAssign(t *testing.T) {
 	run(t, []etest{
-		{src: "var a int = 1; a", res: "1"},             // #00
-		{src: "var a, b int = 1, 2; b", res: "2"},       // #01
-		{src: "var a, b int; a, b = 1, 2; b", res: "2"}, // #02
-		{src: "a, b := 1, 2; b", res: "2"},              // #03
+		{src: "var a int = 1; a", res: "1"},                     // #00
+		{src: "var a, b int = 1, 2; b", res: "2"},               // #01
+		{src: "var a, b int; a, b = 1, 2; b", res: "2"},         // #02
+		{src: "a, b := 1, 2; b", res: "2"},                      // #03
+		{src: "func f() int {return 2}; a := f(); a", res: "2"}, // #04
+		// {src: "func f() (int, int) {return 2, 3}; a, b := f(), b", res: "3"},    // #05
+		// {src: "func f() (int, int) {return 2, 3}; var a, b = f(), b", res: "3"}, // #06
 	})
 }
 
@@ -114,6 +117,7 @@ func TestFunc(t *testing.T) {
 		{src: "func f(a, b, c int) int {return a+b-c} ; f(7, 1, 3)", res: "5"},  // #07
 		{src: "var a int; func f() {a = a+2}; f(); a", res: "2"},                // #08
 		{src: "var f = func(a int) int {return a+3}; f(2)", res: "5"},           // #09
+		{src: "var a int; func f(a int) {a = a+2}; f(); a", res: "0"},           // #10
 	})
 }
 
