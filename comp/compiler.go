@@ -208,15 +208,25 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			c.emit(t, vm.Grow, t.Arg[0].(int))
 
 		case lang.Define:
-			rhs := pop()
-			typ := rhs.Type
-			if typ == nil {
-				typ = rhs.Value.Type
+			showStack(stack)
+			n := t.Arg[0].(int)
+			l := len(stack)
+			rhs := stack[l-n:]
+			stack = stack[:l-n]
+			l = len(stack)
+			lhs := stack[l-n:]
+			stack = stack[:l-n]
+			showStack(stack)
+			for i, r := range rhs {
+				// Propage type of rhs to lhs.
+				typ := r.Type
+				if typ == nil {
+					typ = r.Value.Type
+				}
+				lhs[i].Type = typ
+				c.Data[lhs[i].Index] = vm.NewValue(typ)
 			}
-			lhs := pop()
-			lhs.Type = typ
-			c.Data[lhs.Index] = vm.NewValue(typ)
-			c.emit(t, vm.Vassign)
+			c.emit(t, vm.Vassign, n)
 
 		case lang.Assign:
 			rhs := pop()
@@ -234,7 +244,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				c.Data[lhs.Index] = vm.NewValue(rhs.Type)
 				c.Symbols[lhs.Name].Type = rhs.Type
 			}
-			c.emit(t, vm.Vassign)
+			c.emit(t, vm.Vassign, t.Arg[0].(int))
 
 		case lang.IndexAssign:
 			s := stack[len(stack)-3]

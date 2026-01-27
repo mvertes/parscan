@@ -358,7 +358,7 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		}
 		out = append(out, newIdent(vars[i], 0))
 		out = append(out, v...)
-		out = append(out, newToken(lang.Assign, "", 0))
+		out = append(out, newToken(lang.Assign, "", 0, 1))
 	}
 	return out, err
 }

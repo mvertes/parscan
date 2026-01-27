@@ -184,11 +184,11 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 			// Map elements cannot be assigned directly, but only through IndexAssign.
 			out = out[:len(out)-1]
 			out = append(out, toks...)
-			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos))
+			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos, len(lhs)))
 		} else {
 			out = append(out, toks...)
 			if out[len(out)-1].Tok != lang.Range {
-				out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos))
+				out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos, len(lhs)))
 			}
 		}
 		return out, err
@@ -215,10 +215,10 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 			// Map elements cannot be assigned directly, but only through IndexAssign.
 			out = out[:len(out)-1]
 			out = append(out, toks...)
-			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos))
+			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos, 1))
 		} else {
 			out = append(out, toks...)
-			out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos))
+			out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos, 1))
 		}
 	}
 	return out, err
