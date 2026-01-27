@@ -332,8 +332,10 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		decl = decl[:i]
 	}
 	var vars []string
+	var undefinedType bool
 	if _, vars, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
 		if errors.Is(err, ErrMissingType) {
+			undefinedType = true
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
 				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
@@ -349,8 +351,24 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		}
 	}
 	values := assign.Split(lang.Comma)
-	if len(values) == 1 && len(values[0]) == 0 {
-		values = nil
+	if len(values) == 1 {
+		if len(values[0]) == 0 {
+			return out, err
+		}
+		for _, v := range vars {
+			out = append(out, newIdent(v, 0))
+		}
+		toks, err := p.parseExpr(values[0], "")
+		if err != nil {
+			return out, err
+		}
+		out = append(out, toks...)
+		if undefinedType {
+			out = append(out, newToken(lang.Define, "", 0, len(vars)))
+		} else {
+			out = append(out, newToken(lang.Assign, "", 0, len(vars)))
+		}
+		return out, err
 	}
 	for i, v := range values {
 		if v, err = p.parseExpr(v, ""); err != nil {
@@ -358,7 +376,11 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		}
 		out = append(out, newIdent(vars[i], 0))
 		out = append(out, v...)
-		out = append(out, newToken(lang.Assign, "", 0, 1))
+		if undefinedType {
+			out = append(out, newToken(lang.Define, "", 0, len(vars)))
+		} else {
+			out = append(out, newToken(lang.Assign, "", 0, 1))
+		}
 	}
 	return out, err
 }

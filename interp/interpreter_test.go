@@ -72,13 +72,13 @@ func TestExpr(t *testing.T) {
 
 func TestAssign(t *testing.T) {
 	run(t, []etest{
-		{src: "var a int = 1; a", res: "1"},                                  // #00
-		{src: "var a, b int = 1, 2; b", res: "2"},                            // #01
-		{src: "var a, b int; a, b = 1, 2; b", res: "2"},                      // #02
-		{src: "a, b := 1, 2; b", res: "2"},                                   // #03
-		{src: "func f() int {return 2}; a := f(); a", res: "2"},              // #04
-		{src: "func f() (int, int) {return 2, 3}; a, b := f(); b", res: "3"}, // #05
-		// {src: "func f() (int, int) {return 2, 3}; var a, b = f(); b", res: "3"}, // #06
+		{src: "var a int = 1; a", res: "1"},                                     // #00
+		{src: "var a, b int = 1, 2; b", res: "2"},                               // #01
+		{src: "var a, b int; a, b = 1, 2; b", res: "2"},                         // #02
+		{src: "a, b := 1, 2; b", res: "2"},                                      // #03
+		{src: "func f() int {return 2}; a := f(); a", res: "2"},                 // #04
+		{src: "func f() (int, int) {return 2, 3}; a, b := f(); b", res: "3"},    // #05
+		{src: "func f() (int, int) {return 2, 3}; var a, b = f(); b", res: "3"}, // #06
 	})
 }
 
