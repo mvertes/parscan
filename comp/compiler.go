@@ -36,14 +36,6 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 	}
 }
 
-// AddSym adds a new named value to the compiler symbol table, and returns its index in memory.
-func (c *Compiler) AddSym(name string, value vm.Value) int {
-	p := len(c.Data)
-	c.Data = append(c.Data, value)
-	c.Symbols.Add(p, name, value, symbol.Value, nil, false)
-	return p
-}
-
 func errorf(format string, v ...any) error {
 	_, file, line, _ := runtime.Caller(1)
 	loc := fmt.Sprintf("%s:%d: ", path.Base(file), line)
@@ -96,7 +88,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				c.strings[s] = i
 			}
 			push(&symbol.Symbol{Kind: symbol.Const, Value: v, Type: vm.TypeOf("")})
-			c.emit(t, vm.Dup, i)
+			c.emit(t, vm.Get, vm.Global, i)
 
 		case lang.Add:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
@@ -277,7 +269,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				break
 			}
 			if s.Local {
-				c.emit(t, vm.Fdup, s.Index)
+				c.emit(t, vm.Get, vm.Local, s.Index)
 			} else {
 				if s.Index == symbol.UnsetAddr {
 					s.Index = len(c.Data)
@@ -293,7 +285,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 						c.emit(t, vm.Fnew, s.Index, 1)
 					}
 				} else {
-					c.emit(t, vm.Dup, s.Index)
+					c.emit(t, vm.Get, vm.Global, s.Index)
 				}
 			}
 
@@ -392,7 +384,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					sym = c.Symbols[name]
 				}
 				push(sym)
-				c.emit(t, vm.Dup, l)
+				c.emit(t, vm.Get, vm.Global, l)
 			case symbol.Unset:
 				return errorf("invalid symbol: %s", s.Name)
 			default:
@@ -501,7 +493,7 @@ func (c *Compiler) PrintCode() {
 			if d, ok := labels[i+l.Arg[0]]; ok {
 				extra = "// " + d[0]
 			}
-		case vm.Dup, vm.Assign, vm.Fdup, vm.Fassign:
+		case vm.Get, vm.Assign, vm.Fassign:
 			if d, ok := data[l.Arg[0]]; ok {
 				extra = "// " + d
 			}

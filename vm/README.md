@@ -28,7 +28,8 @@ Structurally, the vm implements logical and arithmetic operators,
 condional jumps for `if`, `for` and `switch` control flow, and function
 call, return and frame management.
 
-the memory state of the vm is a slice of (`[]Value`), where `Value` is similar to a `reflect.Value`, containing pointers to value data and type.
+the memory state of the vm is a slice of (`[]Value`), where `Value` is similar
+to a `reflect.Value`, containing pointers to value data and type.
 
 The whole vm is coded in a single function of 80 lines with no
 dependencies. The size will grow as we add missing instructions, but the
@@ -36,3 +37,16 @@ code complexity will remain the same.
 
 the vm1 package is totally standalone and could be used for any purpose
 outside of parscan and/or gno.
+
+## Instructions
+
+| Opcode | Parameters   | Stack (before : after) | Description                          |
+|--------|--------------|------------------------|--------------------------------------|
+| `Get`  | local, index | ` : v`                 | Push value at address on the stack   |
+| `Set`  | local, index | `v : `                 | Pop stack and set value at address   |
+| `Add`  |              | `a b : c`              | Pop `a`, `b` and push (a+b)          |
+
+Memory addresses passed to instructions are computed from a tuple
+of integers: `local` and `index`. `local` can be 0 or 1. if 0,
+`index` is the offset from the start of memory, else `index` is
+the offset from the frame pointer (`fp` register).
