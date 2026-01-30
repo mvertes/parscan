@@ -79,6 +79,7 @@ func TestAssign(t *testing.T) {
 		{src: "func f() int {return 2}; a := f(); a", res: "2"},                 // #04
 		{src: "func f() (int, int) {return 2, 3}; a, b := f(); b", res: "3"},    // #05
 		{src: "func f() (int, int) {return 2, 3}; var a, b = f(); b", res: "3"}, // #06
+		//		{src: "func f() (int, int) {return 2, 3}; _, b := f(); b", res: "3"},    // #07
 	})
 }
 

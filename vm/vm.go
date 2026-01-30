@@ -29,8 +29,7 @@ const (
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallX                  // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
 	Deref                  // x -- *x ;
-	Dup                    // addr -- value ; value = mem[addr]
-	Fdup                   // addr -- value ; value = mem[addr]
+	Get                    // addr -- value ; value = mem[addr]
 	Fnew                   // -- x; x = new mem[$1]
 	FnewE                  // -- x; x = new mem[$1].Elem()
 	Equal                  // n1 n2 -- cond ; cond = n1 == n2
@@ -64,11 +63,18 @@ const (
 	Pull                   // a -- a s n; pull iterator next and stop function
 	Pull2                  // a -- a s n; pull iterator next and stop function
 	Return                 // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
+	Set                    // v --  ; mem[$1,$2] = v
 	Slice                  // a l h -- a; a = a [l:h]
 	Slice3                 // a l h m -- a; a = a[l:h:m]
 	Stop                   // -- iterator stop
 	Sub                    // n1 n2 -- diff ; diff = n1 - n2
 	Swap                   // --
+)
+
+// Memory attributes.
+const (
+	Global = 0
+	Local  = 1
 )
 
 // Pos is the source code position of instruction.
@@ -125,6 +131,9 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-1]
 		case Addr:
 			mem[sp-1].Value = mem[sp-1].Addr()
+		case Set:
+			mem[c.Arg[0]*(fp-1)+c.Arg[1]].Set(mem[sp-1].Value)
+			mem = mem[:sp-1]
 		case Assign:
 			mem[c.Arg[0]].Set(mem[sp-1].Value)
 			mem = mem[:sp-1]
@@ -149,8 +158,8 @@ func (m *Machine) Run() (err error) {
 			}
 		case Deref:
 			mem[sp-1].Value = mem[sp-1].Value.Elem()
-		case Dup:
-			mem = append(mem, mem[c.Arg[0]])
+		case Get:
+			mem = append(mem, mem[c.Arg[0]*(fp-1)+c.Arg[1]])
 		case New:
 			mem[c.Arg[0]+fp-1] = NewValue(mem[c.Arg[1]].Type)
 		case Equal:
@@ -168,8 +177,6 @@ func (m *Machine) Run() (err error) {
 			}
 		case Exit:
 			return err
-		case Fdup:
-			mem = append(mem, mem[c.Arg[0]+fp-1])
 		case Fnew:
 			mem = append(mem, NewValue(mem[c.Arg[0]].Type, c.Arg[1:]...))
 		case FnewE:
@@ -311,6 +318,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp-3].SetMapIndex(mem[sp-2].Value, mem[sp-1].Value)
 			mem = mem[:sp-2]
 		case Vassign:
+			log.Println("## Vassign", c.Arg)
 			n := c.Arg[0]
 			for i := 0; i < n; i++ {
 				mem[sp-n-i-1].Set(mem[sp-n+i].Value)

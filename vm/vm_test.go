@@ -141,15 +141,15 @@ var tests = []struct {
 		{Op: Grow, Arg: []int{1}},
 		{Op: New, Arg: []int{2, 0}},
 		{Op: Push, Arg: []int{2}},
-		{Op: Assign, Arg: []int{1}},
+		{Op: Set, Arg: []int{0, 1}},
 		{Op: Exit},
 	},
 	start: 1, end: 2, mem: "[2]",
 }, { // #11 -- Calling a function defined outside the VM.
 	sym: []Value{ValueOf(fmt.Println), ValueOf("Hello")},
 	code: []Instruction{
-		{Op: Dup, Arg: []int{0}},
-		{Op: Dup, Arg: []int{1}},
+		{Op: Get, Arg: []int{0, 0}},
+		{Op: Get, Arg: []int{0, 1}},
 		{Op: CallX, Arg: []int{1}},
 		{Op: Exit},
 	},
@@ -169,8 +169,8 @@ var tests = []struct {
 	code: []Instruction{
 		{Op: Jump, Arg: []int{5}},      // 0
 		{Op: Push, Arg: []int{3}},      // 1
-		{Op: Fassign, Arg: []int{-2}},  // 2
-		{Op: Fdup, Arg: []int{-2}},     // 3
+		{Op: Set, Arg: []int{1, -2}},   // 2
+		{Op: Get, Arg: []int{1, -2}},   // 3
 		{Op: Return, Arg: []int{1, 1}}, // 4
 		{Op: Push, Arg: []int{1}},      // 5
 		{Op: Push, Arg: []int{1}},      // 6
@@ -181,23 +181,23 @@ var tests = []struct {
 }, { // #14 -- Fibonacci numbers, hand written. Showcase recursivity.
 	code: []Instruction{
 		{Op: Jump, Arg: []int{19}},     // 0
-		{Op: Fdup, Arg: []int{-2}},     // 1  [2 i]
+		{Op: Get, Arg: []int{1, -2}},   // 1  [2 i]
 		{Op: Push, Arg: []int{2}},      // 2  [2]
 		{Op: Lower},                    // 3  [true/false]
 		{Op: JumpTrue, Arg: []int{13}}, // 4  [], goto 17
 		{Op: Push, Arg: []int{1}},      // 5
-		{Op: Fdup, Arg: []int{-2}},     // 6  [i]
+		{Op: Get, Arg: []int{1, -2}},   // 6  [i]
 		{Op: Push, Arg: []int{2}},      // 7  [i 2]
 		{Op: Sub},                      // 8  [(i-2)]
 		{Op: Call, Arg: []int{1}},      // 9  [fib(i-2)]
 		{Op: Push, Arg: []int{1}},      // 10
-		{Op: Fdup, Arg: []int{-2}},     // 11 [fib(i-2) i]
+		{Op: Get, Arg: []int{1, -2}},   // 11 [fib(i-2) i]
 		{Op: Push, Arg: []int{1}},      // 12 [(i-2) i 1]
 		{Op: Sub},                      // 13 [(i-2) (i-1)]
 		{Op: Call, Arg: []int{1}},      // 14 [fib(i-2) fib(i-1)]
 		{Op: Add},                      // 15 [fib(i-2)+fib(i-1)]
 		{Op: Return, Arg: []int{1, 1}}, // 16 return i
-		{Op: Fdup, Arg: []int{-2}},     // 17 [i]
+		{Op: Get, Arg: []int{1, -2}},   // 17 [i]
 		{Op: Return, Arg: []int{1, 1}}, // 18 return i
 		{Op: Push, Arg: []int{1}},      // 19
 		{Op: Push, Arg: []int{6}},      // 20 [1]
