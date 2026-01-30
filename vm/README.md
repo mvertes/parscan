@@ -40,11 +40,11 @@ outside of parscan and/or gno.
 
 ## Instructions
 
-| Opcode | Parameters   | Stack (before : after) | Description                          |
-|--------|--------------|------------------------|--------------------------------------|
-| `Get`  | local, index | ` : v`                 | Push value at address on the stack   |
-| `Set`  | local, index | `v : `                 | Pop stack and set value at address   |
-| `Add`  |              | `a b : c`              | Pop `a`, `b` and push (a+b)          |
+| Opcode | Parameters   | Stack (before : after) | Description                                   |
+|--------|--------------|------------------------|-----------------------------------------------|
+| `Get`  | local, index | ` : v`                 | Get value at address and push it on the stack |
+| `Set`  | local, index | `v : `                 | Pop stack and set value at address            |
+| `Add`  |              | `a b : c`              | Pop `a`, `b` and push (a+b)                   |
 
 Memory addresses passed to instructions are computed from a tuple
 of integers: `local` and `index`. `local` can be 0 or 1. if 0,
