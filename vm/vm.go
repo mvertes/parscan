@@ -25,7 +25,7 @@ const (
 	Addr                   // a -- &a ;
 	Assign                 // val -- ; mem[$1] = val
 	Fassign                // val -- ; mem[$1] = val
-	Vassign                // dest val -- ; dest.Set(val)
+	SetS                   // dest val -- ; dest.Set(val)
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallX                  // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
 	Deref                  // x -- *x ;
@@ -317,7 +317,7 @@ func (m *Machine) Run() (err error) {
 		case MapSet:
 			mem[sp-3].SetMapIndex(mem[sp-2].Value, mem[sp-1].Value)
 			mem = mem[:sp-2]
-		case Vassign:
+		case SetS:
 			log.Println("## Vassign", c.Arg)
 			n := c.Arg[0]
 			for i := 0; i < n; i++ {

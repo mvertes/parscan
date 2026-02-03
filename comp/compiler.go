@@ -218,7 +218,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				lhs[i].Type = typ
 				c.Data[lhs[i].Index] = vm.NewValue(typ)
 			}
-			c.emit(t, vm.Vassign, n)
+			c.emit(t, vm.SetS, n)
 
 		case lang.Assign:
 			rhs := pop()
@@ -236,7 +236,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				c.Data[lhs.Index] = vm.NewValue(rhs.Type)
 				c.Symbols[lhs.Name].Type = rhs.Type
 			}
-			c.emit(t, vm.Vassign, t.Arg[0].(int))
+			c.emit(t, vm.SetS, t.Arg[0].(int))
 
 		case lang.IndexAssign:
 			s := stack[len(stack)-3]
