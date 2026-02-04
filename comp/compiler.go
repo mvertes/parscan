@@ -228,7 +228,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 					c.emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
 					lhs.Used = true
 				}
-				c.emit(t, vm.Fassign, lhs.Index)
+				c.emit(t, vm.Set, 1, lhs.Index)
 				break
 			}
 			// TODO check source type against var type
@@ -493,7 +493,7 @@ func (c *Compiler) PrintCode() {
 			if d, ok := labels[i+l.Arg[0]]; ok {
 				extra = "// " + d[0]
 			}
-		case vm.Get, vm.Assign, vm.Fassign:
+		case vm.Get, vm.Set:
 			if d, ok := data[l.Arg[0]]; ok {
 				extra = "// " + d
 			}

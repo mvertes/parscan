@@ -79,7 +79,7 @@ func TestAssign(t *testing.T) {
 		{n: "#04", src: "func f() int {return 2}; a := f(); a", res: "2"},
 		{n: "#05", src: "func f() (int, int) {return 2, 3}; a, b := f(); b", res: "3"},
 		{n: "#06", src: "func f() (int, int) {return 2, 3}; var a, b = f(); b", res: "3"},
-		// {n: "#07", src: "func f() (int, int) {return 2, 3}; _, b := f(); b", res: "3"},
+		{n: "#07", src: "func f() (int, int) {return 2, 3}; _, b := f(); b", res: "3"},
 	})
 }
 
@@ -119,6 +119,7 @@ func TestFunc(t *testing.T) {
 		{n: "#08", src: "var a int; func f() {a = a+2}; f(); a", res: "2"},
 		{n: "#09", src: "var f = func(a int) int {return a+3}; f(2)", res: "5"},
 		{n: "#10", src: "var a int; func f(a int) {a = a+2}; f(); a", res: "0"},
+		{n: "#11", src: "func f(a int) {a = a+2}; a := 1; f(); a", res: "1"},
 	})
 }
 

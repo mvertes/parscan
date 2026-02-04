@@ -23,9 +23,6 @@ const (
 	Nop          Op = iota // --
 	Add                    // n1 n2 -- sum ; sum = n1+n2
 	Addr                   // a -- &a ;
-	Assign                 // val -- ; mem[$1] = val
-	Fassign                // val -- ; mem[$1] = val
-	SetS                   // dest val -- ; dest.Set(val)
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallX                  // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
 	Deref                  // x -- *x ;
@@ -64,6 +61,7 @@ const (
 	Pull2                  // a -- a s n; pull iterator next and stop function
 	Return                 // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
 	Set                    // v --  ; mem[$1,$2] = v
+	SetS                   // dest val -- ; dest.Set(val)
 	Slice                  // a l h -- a; a = a [l:h]
 	Slice3                 // a l h m -- a; a = a[l:h:m]
 	Stop                   // -- iterator stop
@@ -133,12 +131,6 @@ func (m *Machine) Run() (err error) {
 			mem[sp-1].Value = mem[sp-1].Addr()
 		case Set:
 			mem[c.Arg[0]*(fp-1)+c.Arg[1]].Set(mem[sp-1].Value)
-			mem = mem[:sp-1]
-		case Assign:
-			mem[c.Arg[0]].Set(mem[sp-1].Value)
-			mem = mem[:sp-1]
-		case Fassign:
-			mem[fp+c.Arg[0]-1].Set(mem[sp-1].Value)
 			mem = mem[:sp-1]
 		case Call:
 			nip := int(mem[sp-1-c.Arg[0]].Int())
