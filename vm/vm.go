@@ -310,7 +310,6 @@ func (m *Machine) Run() (err error) {
 			mem[sp-3].SetMapIndex(mem[sp-2].Value, mem[sp-1].Value)
 			mem = mem[:sp-2]
 		case SetS:
-			log.Println("## Vassign", c.Arg)
 			n := c.Arg[0]
 			for i := 0; i < n; i++ {
 				mem[sp-n-i-1].Set(mem[sp-n+i].Value)

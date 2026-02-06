@@ -407,6 +407,8 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			}
 
 		case lang.Next:
+			showStack(stack)
+			n := t.Arg[0].(int)
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
 				t.Arg = []any{len(c.Code)} // current code location
@@ -414,22 +416,41 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
 			}
-			k := stack[len(stack)-2]
-			c.emit(t, vm.Next, i, k.Index)
+			if n == 2 {
+				v := stack[len(stack)-2]
+				k := stack[len(stack)-3]
+				c.emit(t, vm.Next2, i, k.Index, v.Index)
+			} else {
+				k := stack[len(stack)-2]
+				c.emit(t, vm.Next, i, k.Index)
+			}
 
 		case lang.Range:
+			n := t.Arg[0].(int)
+			log.Println("### Range:", n)
 			showStack(stack)
 			// FIXME: handle all iterator types.
 			// set the correct type to the iterator variables.
-			switch t := top().Type; t.Rtype.Kind() {
+			switch typ := top().Type; typ.Rtype.Kind() {
 			case reflect.Slice:
-				k := stack[len(stack)-2]
-				k.Type = c.Symbols["int"].Type
-				c.Data[k.Index] = vm.NewValue(k.Type)
+				switch n {
+				case 1:
+					k := stack[len(stack)-2]
+					k.Type = c.Symbols["int"].Type
+					c.Data[k.Index] = vm.NewValue(k.Type)
+					c.emit(t, vm.Pull)
+				case 2:
+					k, v := stack[len(stack)-3], stack[len(stack)-2]
+					k.Type = c.Symbols["int"].Type
+					v.Type = typ.Elem()
+					c.Data[k.Index] = vm.NewValue(k.Type)
+					c.Data[v.Index] = vm.NewValue(v.Type)
+					c.emit(t, vm.Pull2)
+				default:
+				}
 			case reflect.Map:
 				// FIXME: handle map
 			}
-			c.emit(t, vm.Pull)
 
 		case lang.Stop:
 			c.emit(t, vm.Stop)

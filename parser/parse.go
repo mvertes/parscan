@@ -187,7 +187,10 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos, len(lhs)))
 		} else {
 			out = append(out, toks...)
-			if out[len(out)-1].Tok != lang.Range {
+			if out[len(out)-1].Tok == lang.Range {
+				// Pass the the number of values to set to range.
+				out[len(out)-1].Arg = []any{len(lhs)}
+			} else {
 				out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos, len(lhs)))
 			}
 		}
@@ -286,21 +289,23 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	case 1:
 		if hasRange {
 			init = pre[0]
-			cond = Tokens{newNext(p.breakLabel, in[1].Pos)}
+			if init, err = p.parseStmt(init); err != nil {
+				return nil, err
+			}
+			out = init
+			cond = Tokens{newNext(p.breakLabel, in[1].Pos, out[len(out)-1].Arg[0].(int))}
 			final = Tokens{newStop(in[1].Pos)}
 		} else {
 			cond = pre[0]
 		}
 	case 3:
 		init, cond, post = pre[0], pre[1], pre[2]
-	default:
-		return nil, ErrFor
-	}
-	if len(init) > 0 {
 		if init, err = p.parseStmt(init); err != nil {
 			return nil, err
 		}
 		out = init
+	default:
+		return nil, ErrFor
 	}
 	out = append(out, newLabel(p.continueLabel, in[0].Pos))
 	if len(cond) > 0 {
