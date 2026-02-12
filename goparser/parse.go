@@ -1,5 +1,5 @@
-// Package spar implements a structured parser.
-package spar
+// Package goparser implements a structured parser for Go.
+package goparser
 
 import (
 	"errors"

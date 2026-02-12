@@ -1,4 +1,4 @@
-package spar
+package goparser
 
 import (
 	"errors"

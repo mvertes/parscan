@@ -11,15 +11,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mvertes/parscan/goparser"
 	"github.com/mvertes/parscan/lang"
-	"github.com/mvertes/parscan/spar"
 	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
 
 // Compiler represents the state of a compiler.
 type Compiler struct {
-	*spar.Parser
+	*goparser.Parser
 	vm.Code            // produced code, to fill VM with
 	Data    []vm.Value // produced data, will be at the bottom of VM stack
 	Entry   int        // offset in Code to start execution from (skip function defintions)
@@ -30,7 +30,7 @@ type Compiler struct {
 // NewCompiler returns a new compiler state for a given scanner.
 func NewCompiler(spec *lang.Spec) *Compiler {
 	return &Compiler{
-		Parser:  spar.NewParser(spec, true),
+		Parser:  goparser.NewParser(spec, true),
 		Entry:   -1,
 		strings: map[string]int{},
 	}
@@ -50,18 +50,18 @@ func showStack(stack []*symbol.Symbol) {
 	}
 }
 
-func (c *Compiler) emit(t spar.Token, op vm.Op, arg ...int) {
+func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 	_, file, line, _ := runtime.Caller(1)
 	fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
 }
 
 // Generate generates vm code and data from parsed tokens.
-func (c *Compiler) Generate(tokens spar.Tokens) (err error) {
+func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
-	fixList := spar.Tokens{}    // list of tokens to fix after all necessary information is gathered
-	stack := []*symbol.Symbol{} // for symbolic evaluation and type checking
-	flen := []int{}             // stack length according to function scopes
+	fixList := goparser.Tokens{} // list of tokens to fix after all necessary information is gathered
+	stack := []*symbol.Symbol{}  // for symbolic evaluation and type checking
+	flen := []int{}              // stack length according to function scopes
 
 	push := func(s *symbol.Symbol) { stack = append(stack, s) }
 	top := func() *symbol.Symbol { return stack[len(stack)-1] }
@@ -364,7 +364,7 @@ func (c *Compiler) Generate(tokens spar.Tokens) (err error) {
 			s := pop()
 			switch s.Kind {
 			case symbol.Pkg:
-				p, ok := spar.Packages[s.PkgPath]
+				p, ok := goparser.Packages[s.PkgPath]
 				if !ok {
 					return fmt.Errorf("package not found: %s", s.PkgPath)
 				}
