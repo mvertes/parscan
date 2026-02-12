@@ -12,14 +12,14 @@ import (
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
-	"github.com/mvertes/parscan/parser"
+	"github.com/mvertes/parscan/parse"
 	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
 
 // Compiler represents the state of a compiler.
 type Compiler struct {
-	*parser.Parser
+	*parse.Parser
 	vm.Code            // produced code, to fill VM with
 	Data    []vm.Value // produced data, will be at the bottom of VM stack
 	Entry   int        // offset in Code to start execution from (skip function defintions)
@@ -30,7 +30,7 @@ type Compiler struct {
 // NewCompiler returns a new compiler state for a given scanner.
 func NewCompiler(spec *lang.Spec) *Compiler {
 	return &Compiler{
-		Parser:  parser.NewParser(spec, true),
+		Parser:  parse.NewParser(spec, true),
 		Entry:   -1,
 		strings: map[string]int{},
 	}
@@ -50,16 +50,16 @@ func showStack(stack []*symbol.Symbol) {
 	}
 }
 
-func (c *Compiler) emit(t parser.Token, op vm.Op, arg ...int) {
+func (c *Compiler) emit(t parse.Token, op vm.Op, arg ...int) {
 	_, file, line, _ := runtime.Caller(1)
 	fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
 }
 
 // Generate generates vm code and data from parsed tokens.
-func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
+func (c *Compiler) Generate(tokens parse.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
-	fixList := parser.Tokens{}  // list of tokens to fix after all necessary information is gathered
+	fixList := parse.Tokens{}   // list of tokens to fix after all necessary information is gathered
 	stack := []*symbol.Symbol{} // for symbolic evaluation and type checking
 	flen := []int{}             // stack length according to function scopes
 
@@ -364,7 +364,7 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			s := pop()
 			switch s.Kind {
 			case symbol.Pkg:
-				p, ok := parser.Packages[s.PkgPath]
+				p, ok := parse.Packages[s.PkgPath]
 				if !ok {
 					return fmt.Errorf("package not found: %s", s.PkgPath)
 				}

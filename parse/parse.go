@@ -1,5 +1,5 @@
-// Package parser implements a parser and compiler.
-package parser
+// Package parse implements a parser and compiler.
+package parse
 
 import (
 	"errors"
@@ -9,14 +9,14 @@ import (
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
-	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/scan"
 	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
 
 // Parser represents the state of a parser.
 type Parser struct {
-	*scanner.Scanner
+	*scan.Scanner
 
 	Symbols  symbol.SymMap
 	function *symbol.Symbol
@@ -45,7 +45,7 @@ var (
 // NewParser returns a new parser.
 func NewParser(spec *lang.Spec, noPkg bool) *Parser {
 	p := &Parser{
-		Scanner:    scanner.NewScanner(spec),
+		Scanner:    scan.NewScanner(spec),
 		Symbols:    symbol.SymMap{},
 		noPkg:      noPkg,
 		framelen:   map[string]int{},
@@ -81,14 +81,14 @@ func (p *Parser) parseStmts(in Tokens) (out Tokens, err error) {
 	for len(in) > 0 {
 		endstmt := in.Index(lang.Semicolon)
 		if endstmt == -1 {
-			return out, scanner.ErrBlock
+			return out, scan.ErrBlock
 		}
 		// Skip over simple init statements for some tokens (if, for, ...)
 		if p.TokenProps[in[0].Tok].HasInit {
 			for in[endstmt-1].Tok != lang.BraceBlock {
 				e2 := in[endstmt+1:].Index(lang.Semicolon)
 				if e2 == -1 {
-					return out, scanner.ErrBlock
+					return out, scan.ErrBlock
 				}
 				endstmt += 1 + e2
 			}

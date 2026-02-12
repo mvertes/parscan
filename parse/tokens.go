@@ -1,16 +1,16 @@
-package parser
+package parse
 
 import (
 	"strconv"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
-	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/scan"
 )
 
 // Token represents a parser token.
 type Token struct {
-	scanner.Token
+	scan.Token
 	Arg []any
 }
 
@@ -71,7 +71,7 @@ func (toks Tokens) SplitStart(tok lang.Token) (result []Tokens) {
 }
 
 func newToken(tok lang.Token, str string, pos int, arg ...any) Token {
-	return Token{Token: scanner.Token{Tok: tok, Str: str, Pos: pos}, Arg: arg}
+	return Token{Token: scan.Token{Tok: tok, Str: str, Pos: pos}, Arg: arg}
 }
 
 func newIdent(name string, pos int, arg ...any) Token { return newToken(lang.Ident, name, pos, arg...) }

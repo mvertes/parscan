@@ -1,4 +1,4 @@
-package scanner_test
+package scan_test
 
 import (
 	"log"
@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/mvertes/parscan/lang/golang"
-	"github.com/mvertes/parscan/scanner"
+	"github.com/mvertes/parscan/scan"
 )
 
-var GoScanner *scanner.Scanner
+var GoScanner *scan.Scanner
 
 func init() {
 	log.SetFlags(log.Lshortfile)
-	GoScanner = scanner.NewScanner(golang.GoSpec)
+	GoScanner = scan.NewScanner(golang.GoSpec)
 }
 
 func TestScan(t *testing.T) {
@@ -35,7 +35,7 @@ func TestScan(t *testing.T) {
 	}
 }
 
-func tokStr(tokens []scanner.Token) (s string) {
+func tokStr(tokens []scan.Token) (s string) {
 	var sb strings.Builder
 	for _, t := range tokens {
 		sb.WriteString(t.String() + " ")

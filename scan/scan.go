@@ -1,5 +1,5 @@
-// Package scanner provide a language independent scanner.
-package scanner
+// Package scan provide a language independent scanner.
+package scan
 
 import (
 	"errors"
