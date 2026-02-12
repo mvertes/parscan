@@ -1,5 +1,5 @@
-// Package parse implements a parser and compiler.
-package parse
+// Package spar implements a structured parser.
+package spar
 
 import (
 	"errors"
