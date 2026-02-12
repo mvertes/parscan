@@ -388,6 +388,11 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 			case symbol.Unset:
 				return errorf("invalid symbol: %s", s.Name)
 			default:
+				if m := c.Symbols.MethodByName(s, t.Str[1:]); m != nil {
+					push(m)
+					c.emit(t, vm.Get, vm.Global, m.Index)
+					break
+				}
 				typ := s.Type.Rtype
 				isPtr := typ.Kind() == reflect.Pointer
 				if isPtr {
@@ -395,12 +400,11 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 				}
 				if f, ok := typ.FieldByName(t.Str[1:]); ok {
 					if isPtr {
-						c.emit(t, vm.FieldE, f.Index...)
 						push(&symbol.Symbol{Type: s.Type.Elem().FieldType(t.Str[1:])})
 					} else {
-						c.emit(t, vm.Field, f.Index...)
 						push(&symbol.Symbol{Type: s.Type.FieldType(t.Str[1:])})
 					}
+					c.emit(t, vm.Field, f.Index...)
 					break
 				}
 				return fmt.Errorf("field or method not found: %s", t.Str[1:])
@@ -427,8 +431,6 @@ func (c *Compiler) Generate(tokens parser.Tokens) (err error) {
 
 		case lang.Range:
 			n := t.Arg[0].(int)
-			log.Println("### Range:", n)
-			showStack(stack)
 			// FIXME: handle all iterator types.
 			// set the correct type to the iterator variables.
 			switch typ := top().Type; typ.Rtype.Kind() {

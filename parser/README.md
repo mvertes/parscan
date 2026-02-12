@@ -50,7 +50,7 @@ Go language support:
 - [ ] deterministic maps
 - [ ] channel types
 - [ ] channel operations
-- [ ] multi-assign expressions
+- [x] multi-assign expressions
 - [x] var defined by assign :=
 - [x] var assign =
 - [x] var declaration

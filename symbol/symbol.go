@@ -98,6 +98,17 @@ func (sm SymMap) Get(name, scope string) (sym *Symbol, sc string, ok bool) {
 	return sym, scope, ok
 }
 
+// MethodByName returns the method symbol corresponding to name, or nil if not found.
+func (sm SymMap) MethodByName(sym *Symbol, name string) *Symbol {
+	switch sym.Kind {
+	case Type:
+		return sm[sym.Name+"."+name]
+	case Var:
+		return sm[sym.Type.Name+"."+name]
+	}
+	return nil
+}
+
 // Init fills the symbol map with default Go symbols.
 func (sm SymMap) Init() {
 	sm["any"] = &Symbol{Name: "any", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*any)(nil)).Elem()}

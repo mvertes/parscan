@@ -1,6 +1,8 @@
 package vm
 
-import "reflect"
+import (
+	"reflect"
+)
 
 // Runtime type and value representations (based on reflect).
 

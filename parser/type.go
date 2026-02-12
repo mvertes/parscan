@@ -29,6 +29,8 @@ var (
 	ErrNotImplemented = errors.New("not implemented")
 )
 
+// parseTypeExpr returns the expression type from its tokens, the number of consumed tokens
+// for the type and the parse error.
 func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 	switch in[0].Tok {
 	case lang.BracketBlock:
@@ -66,8 +68,11 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		// TODO: handle variadics
 		var out Tokens
 		var indexArgs int
+		var recvr string
 		switch l, in1 := len(in), in[1]; {
 		case l >= 4 && in1.Tok == lang.ParenBlock && in[2].Tok == lang.Ident:
+			// TODO: make sure that it is not an anonymous closure output type.
+			recvr = in1.Block()
 			indexArgs, out = 3, in[4:]
 		case l >= 3 && in1.Tok == lang.Ident:
 			indexArgs, out = 2, in[3:]
@@ -79,7 +84,8 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 
 		// We can now parse function input and output parameter types.
 		// Input parameters are always enclosed by parenthesis.
-		iargs, err := p.Scan(in[indexArgs].Block(), false)
+		as := strings.Trim(recvr+","+in[indexArgs].Block(), ",")
+		iargs, err := p.Scan(as, false)
 		if err != nil {
 			return nil, 0, err
 		}

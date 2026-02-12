@@ -336,17 +336,35 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 }
 
 func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
-	// TODO: handle anonymous functions (no function name)
-	// TODO: handle receiver (methods)
 	// TODO: handle parametric types (generics)
 	// TODO: handle variadic parameters
-	var fname string
-	if in[1].Tok == lang.Ident {
+	var fname string // function name
+
+	switch in[1].Tok {
+	case lang.Ident:
 		fname = in[1].Str
-	} else {
-		fname = "#f" + strconv.Itoa(p.clonum)
+	case lang.ParenBlock:
+		// receiver, or anonymous function parameters.
+		if t := in[2]; t.Tok == lang.Ident {
+			if s, _, ok := p.Symbols.Get(t.Str, p.scope); ok && s.IsType() {
+				fname = "#f" + strconv.Itoa(p.clonum) // Generated closure symbol name.
+				p.clonum++
+				break
+			}
+			// Parse receiver declaration and determine its type.
+			if recvr, err := p.Scan(in[1].Block(), false); err != nil {
+				return nil, err
+			} else if rtyp, _, err := p.parseParamTypes(recvr, parseTypeIn); err == nil {
+				fname = rtyp[0].String() + "." + in[2].Str // Method name prefixed by receiver type.
+			} else {
+				return nil, err
+			}
+		}
+	default:
+		fname = "#f" + strconv.Itoa(p.clonum) // Generated closure symbol name.
 		p.clonum++
 	}
+
 	ofname := p.fname
 	p.fname = fname
 	ofunc := p.function
@@ -359,14 +377,14 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	p.pushScope(fname)
 	p.funcScope = p.scope
 	defer func() {
-		p.fname = ofname // TODO remove if favor of function.
+		p.fname = ofname // TODO remove in favor of function.
 		p.function = ofunc
 		p.funcScope = funcScope
 		p.popScope()
 	}()
 
 	out = Tokens{
-		newGoto(fname+"_end", in[0].Pos), // Skuo function definition.
+		newGoto(fname+"_end", in[0].Pos), // Skip function definition.
 		newLabel(fname, in[0].Pos),
 	}
 

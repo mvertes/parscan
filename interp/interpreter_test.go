@@ -330,3 +330,9 @@ func TestComposite(t *testing.T) {
 		{n: "#16", src: `type T *struct {b bool}; m := []T{{true}}; m[0].b`, res: `true`},
 	})
 }
+
+func TestMethod(t *testing.T) {
+	run(t, []etest{
+		{n: "#00", src: "type I int; func(i I) F(a int) int { return a+i}; var i I = 1; i.F(2)", res: "3"},
+	})
+}
