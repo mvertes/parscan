@@ -88,7 +88,7 @@ func (i Instruction) String() (s string) {
 	s = fmt.Sprintf("%3d: %v", i.Pos, i.Op)
 	var sb strings.Builder
 	for _, a := range i.Arg {
-		sb.WriteString(fmt.Sprintf(" %v", a))
+		fmt.Fprintf(&sb, " %v", a)
 	}
 	s += sb.String()
 	return s

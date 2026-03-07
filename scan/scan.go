@@ -76,7 +76,7 @@ func NewScanner(spec *lang.Spec) *Scanner {
 		}
 		// TODO: sort keys in decreasing length order.
 		for _, b := range []byte(s) {
-			sb.WriteString(fmt.Sprintf("\\x%02x", b))
+			fmt.Fprintf(&sb, "\\x%02x", b)
 		}
 		sb.WriteString("|")
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/mvertes/parscan/interp"
 	"github.com/mvertes/parscan/lang/golang"
@@ -39,7 +40,7 @@ func run(arg []string) error {
 	if len(args) == 0 {
 		return i.Repl(os.Stdin)
 	}
-	buf, err := os.ReadFile(arg[0])
+	buf, err := os.ReadFile(filepath.Clean(args[0]))
 	if err != nil {
 		return err
 	}
