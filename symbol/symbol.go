@@ -40,8 +40,11 @@ type Symbol struct {
 	Value    vm.Value       //
 	SliceLen int            // initial slice length (slice types only)
 	Cval     constant.Value //
-	Local    bool           // if true address is relative to local frame, otherwise global
-	Used     bool           //
+	Local      bool           // if true address is relative to local frame, otherwise global
+	Used       bool           //
+	Captured   bool           // true if this variable escapes to a heap cell
+	FreeVars   []string       // closure: scoped names of captured outer-scope locals, in Env order
+	CapturedAs map[string]int // closure: maps scoped name → index in Closure.Env
 }
 
 // func (s *Symbol) String() string {

@@ -17,6 +17,12 @@ type Op int
 
 //go:generate stringer -type=Op
 
+// Closure bundles a function code address with its captured variable cells.
+type Closure struct {
+	Code int      // code address (same as the plain-int function value)
+	Env  []*Value // heap-allocated cells, one per captured variable
+}
+
 // Byte-code instruction set.
 const (
 	// Instruction effect on stack: values consumed -- values produced.
@@ -66,6 +72,11 @@ const (
 	Stop                   // -- iterator stop
 	Sub                    // n1 n2 -- diff ; diff = n1 - n2
 	Swap                   // --
+	HAlloc                 // -- &cell ; cell = new(Value), push its pointer
+	HGet                   // -- v    ; v = *State.Env[$1]
+	HSet                   // v --    ; *State.Env[$1] = v
+	HPtr                   // -- &cell ; push State.Env[$1] itself (transitive capture)
+	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, env}
 )
 
 // Memory attributes.
@@ -99,10 +110,12 @@ type Code []Instruction
 
 // Machine represents a virtual machine.
 type Machine struct {
-	code   Code    // code to execute
-	mem    []Value // memory, as a stack
-	ip, fp int     // instruction pointer and frame pointer
-	ic     uint64  // instruction counter, incremented at each instruction executed
+	code     Code      // code to execute
+	mem      []Value   // memory, as a stack
+	ip, fp   int       // instruction pointer and frame pointer
+	ic       uint64    // instruction counter, incremented at each instruction executed
+	env      []*Value  // active closure's captured cells (nil for plain functions)
+	captured [][]*Value // saved env per call frame
 	// flags  uint      // to set options such as restrict CallX, etc...
 }
 
@@ -132,7 +145,17 @@ func (m *Machine) Run() (err error) {
 			mem[c.Arg[0]*(fp-1)+c.Arg[1]].Set(mem[sp-1].Value)
 			mem = mem[:sp-1]
 		case Call:
-			nip := int(mem[sp-1-c.Arg[0]].Int())
+			fval := mem[sp-1-c.Arg[0]]
+			prevEnv := m.env
+			var nip int
+			if clo, ok := fval.Interface().(Closure); ok {
+				nip = clo.Code
+				m.env = clo.Env
+			} else {
+				nip = int(fval.Int())
+				m.env = nil
+			}
+			m.captured = append(m.captured, prevEnv)
 			mem = append(mem, ValueOf(ip+1), ValueOf(fp))
 			ip = nip
 			fp = sp + 2
@@ -272,7 +295,19 @@ func (m *Machine) Run() (err error) {
 			ip = int(mem[fp-2].Int())
 			ofp := fp
 			fp = int(mem[fp-1].Int())
-			mem = append(mem[:ofp-c.Arg[0]-c.Arg[1]-2], mem[sp-c.Arg[0]:]...)
+			nret := c.Arg[0]
+			newBase := ofp - nret - c.Arg[1] - 2
+			copy(mem[newBase:], mem[sp-nret:sp])
+			newSP := newBase + nret
+			for i := newSP; i < sp; i++ {
+				mem[i] = Value{} // zero stale slots so GC can reclaim references
+			}
+			mem = mem[:newSP]
+			if top := len(m.captured) - 1; top >= 0 {
+				m.env = m.captured[top]
+				m.captured[top] = nil // zero for GC
+				m.captured = m.captured[:top]
+			}
 			continue
 		case Slice:
 			mem[sp-3].Value = mem[sp-3].Slice(int(mem[sp-2].Int()), int(mem[sp-1].Int()))
@@ -289,6 +324,29 @@ func (m *Machine) Run() (err error) {
 		case Swap:
 			a, b := sp-c.Arg[0]-1, sp-c.Arg[1]-1
 			mem[a], mem[b] = mem[b], mem[a]
+		case HAlloc:
+			cell := new(Value)
+			mem = append(mem, ValueOf(cell))
+		case HGet:
+			mem = append(mem, *m.env[c.Arg[0]])
+		case HSet:
+			*m.env[c.Arg[0]] = mem[sp-1]
+			mem = mem[:sp-1]
+		case HPtr:
+			mem = append(mem, ValueOf(m.env[c.Arg[0]]))
+		case MkClosure:
+			n := c.Arg[0]
+			codeAddr := int(mem[sp-n-1].Int())
+			env := make([]*Value, n)
+			for i := range n {
+				env[i] = mem[sp-n+i].Interface().(*Value)
+			}
+			clo := ValueOf(Closure{Code: codeAddr, Env: env})
+			for i := sp - n - 1; i < sp; i++ {
+				mem[i] = Value{} // zero code addr + cell ptr slots
+			}
+			mem = mem[:sp-n-1]
+			mem = append(mem, clo)
 		case Index:
 			mem[sp-2].Value = mem[sp-2].Index(int(mem[sp-1].Int()))
 			mem = mem[:sp-1]

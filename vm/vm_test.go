@@ -177,7 +177,7 @@ var tests = []struct {
 		{Op: Call, Arg: []int{0}},      // 7
 		{Op: Exit},                     // 8
 	},
-	start: 1, end: 2, mem: "[3]",
+	start: 0, end: 1, mem: "[3]",
 }, { // #14 -- Fibonacci numbers, hand written. Showcase recursivity.
 	code: []Instruction{
 		{Op: Jump, Arg: []int{19}},     // 0

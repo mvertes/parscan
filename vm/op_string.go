@@ -54,11 +54,16 @@ func _() {
 	_ = x[Stop-43]
 	_ = x[Sub-44]
 	_ = x[Swap-45]
+	_ = x[HAlloc-46]
+	_ = x[HGet-47]
+	_ = x[HSet-48]
+	_ = x[HPtr-49]
+	_ = x[MkClosure-50]
 }
 
-const _Op_name = "NopAddAddrCallCallXDerefGetFnewFnewEEqualEqualSetExitFieldFieldSetFieldFsetGreaterGrowIndexIndexSetJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLenLowerMapIndexMapSetMulNewNegateNextNext2NotPopPushPullPull2ReturnSetSetSSliceSlice3StopSubSwap"
+const _Op_name = "NopAddAddrCallCallXDerefGetFnewFnewEEqualEqualSetExitFieldFieldSetFieldFsetGreaterGrowIndexIndexSetJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLenLowerMapIndexMapSetMulNewNegateNextNext2NotPopPushPullPull2ReturnSetSetSSliceSlice3StopSubSwapHAllocHGetHSetHPtrMkClosure"
 
-var _Op_index = [...]uint8{0, 3, 6, 10, 14, 19, 24, 27, 31, 36, 41, 49, 53, 58, 66, 75, 82, 86, 91, 99, 103, 111, 120, 131, 143, 146, 151, 159, 165, 168, 171, 177, 181, 186, 189, 192, 196, 200, 205, 211, 214, 218, 223, 229, 233, 236, 240}
+var _Op_index = [...]uint16{0, 3, 6, 10, 14, 19, 24, 27, 31, 36, 41, 49, 53, 58, 66, 75, 82, 86, 91, 99, 103, 111, 120, 131, 143, 146, 151, 159, 165, 168, 171, 177, 181, 186, 189, 192, 196, 200, 205, 211, 214, 218, 223, 229, 233, 236, 240, 246, 250, 254, 258, 267}
 
 func (i Op) String() string {
 	idx := int(i) - 0
