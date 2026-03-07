@@ -9,7 +9,7 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
-const debug = true
+const debug = false
 
 // Interp represents the state of an interpreter.
 type Interp struct {

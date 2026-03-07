@@ -62,11 +62,18 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 	fixList := goparser.Tokens{} // list of tokens to fix after all necessary information is gathered
 	stack := []*symbol.Symbol{}  // for symbolic evaluation and type checking
 	flen := []int{}              // stack length according to function scopes
+	funcStack := []string{}      // names of functions currently being compiled
 
 	push := func(s *symbol.Symbol) { stack = append(stack, s) }
 	top := func() *symbol.Symbol { return stack[len(stack)-1] }
 	pop := func() *symbol.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
 	popflen := func() int { le := len(flen) - 1; l := flen[le]; flen = flen[:le]; return l }
+	curFunc := func() string {
+		if n := len(funcStack); n > 0 {
+			return funcStack[n-1]
+		}
+		return ""
+	}
 
 	for _, t := range tokens {
 		switch t.Tok {
@@ -224,6 +231,16 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			rhs := pop()
 			lhs := pop()
 			if lhs.Local {
+				// Captured variable write inside closure body: use HSet.
+				if cf := curFunc(); cf != "" {
+					if cloSym := c.Symbols[cf]; cloSym != nil {
+						if idx, captOK := cloSym.CapturedAs[lhs.Name]; captOK {
+							c.emit(t, vm.HSet, idx)
+							c.emit(t, vm.Pop, 1) // pop stale value pushed by HGet in Ident
+							break
+						}
+					}
+				}
 				if !lhs.Used {
 					c.emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
 					lhs.Used = true
@@ -269,6 +286,34 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			if s.Kind == symbol.Pkg || s.Kind == symbol.Unset {
 				break
 			}
+			// Closure creation: emit code address + captured cell pointers + MkClosure.
+			if s.Kind == symbol.Func && len(s.FreeVars) > 0 {
+				c.emit(t, vm.Get, vm.Global, s.Index)
+				for _, fvName := range s.FreeVars {
+					fvSym := c.Symbols[fvName]
+					if fvSym == nil {
+						return errorf("free variable not found: %s", fvName)
+					}
+					if fvSym.Local {
+						c.emit(t, vm.Get, vm.Local, fvSym.Index)
+					} else {
+						c.emit(t, vm.Get, vm.Global, fvSym.Index)
+					}
+					c.emit(t, vm.HAlloc)
+				}
+				c.emit(t, vm.MkClosure, len(s.FreeVars))
+				break
+			}
+			// Captured variable read inside a closure body: use HGet.
+			if cf := curFunc(); cf != "" {
+				if cloSym := c.Symbols[cf]; cloSym != nil {
+					if idx, captOK := cloSym.CapturedAs[t.Str]; captOK {
+						c.emit(t, vm.HGet, idx)
+						break
+					}
+				}
+			}
+			// Regular local or global access.
 			if s.Local {
 				c.emit(t, vm.Get, vm.Local, s.Index)
 			} else {
@@ -300,15 +345,17 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 					s.Index = len(c.Data)
 					c.Data = append(c.Data, s.Value)
 					flen = append(flen, len(stack))
+					funcStack = append(funcStack, t.Str)
 				} else {
 					c.Data[s.Index] = s.Value
 				}
 			} else {
 				if strings.HasSuffix(t.Str, "_end") {
 					if s, ok = c.Symbols[strings.TrimSuffix(t.Str, "_end")]; ok && s.Kind == symbol.Func {
-						// Exit function: restore caller stack
+						// Exit function: restore caller stack and function name tracking.
 						l := popflen()
 						stack = stack[:l]
+						funcStack = funcStack[:len(funcStack)-1]
 					}
 				}
 				c.Symbols[t.Str] = &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)}

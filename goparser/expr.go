@@ -95,6 +95,19 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if ok && sc != "" {
 				t.Str = sc + "/" + t.Str
 			}
+			// Free variable detection: local defined in an enclosing function scope.
+			if ok && s != nil && s.Local && sc != "" && p.fname != "" && sc != p.funcScope {
+				if cloSym := p.Symbols[p.fname]; cloSym != nil {
+					if cloSym.CapturedAs == nil {
+						cloSym.CapturedAs = map[string]int{}
+					}
+					if _, already := cloSym.CapturedAs[t.Str]; !already {
+						cloSym.CapturedAs[t.Str] = len(cloSym.FreeVars)
+						cloSym.FreeVars = append(cloSym.FreeVars, t.Str)
+						s.Captured = true
+					}
+				}
+			}
 			if s != nil && s.Kind == symbol.Type {
 				ctype = s.Type.String()
 			}

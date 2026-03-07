@@ -10,7 +10,7 @@ import (
 	"unsafe" // to allow setting unexported struct fields
 )
 
-const debug = true
+const debug = false
 
 // Op is a VM opcode (bytecode instruction).
 type Op int
@@ -110,11 +110,11 @@ type Code []Instruction
 
 // Machine represents a virtual machine.
 type Machine struct {
-	code     Code      // code to execute
-	mem      []Value   // memory, as a stack
-	ip, fp   int       // instruction pointer and frame pointer
-	ic       uint64    // instruction counter, incremented at each instruction executed
-	env      []*Value  // active closure's captured cells (nil for plain functions)
+	code     Code       // code to execute
+	mem      []Value    // memory, as a stack
+	ip, fp   int        // instruction pointer and frame pointer
+	ic       uint64     // instruction counter, incremented at each instruction executed
+	env      []*Value   // active closure's captured cells (nil for plain functions)
 	captured [][]*Value // saved env per call frame
 	// flags  uint      // to set options such as restrict CallX, etc...
 }
@@ -151,7 +151,12 @@ func (m *Machine) Run() (err error) {
 			if clo, ok := fval.Interface().(Closure); ok {
 				nip = clo.Code
 				m.env = clo.Env
+			} else if iv, ok := fval.Interface().(int); ok {
+				// Function variable slot holds a plain code address boxed as interface{}.
+				nip = iv
+				m.env = nil
 			} else {
+				// Direct int on stack (e.g. from Push in vm-level tests).
 				nip = int(fval.Int())
 				m.env = nil
 			}
@@ -326,7 +331,8 @@ func (m *Machine) Run() (err error) {
 			mem[a], mem[b] = mem[b], mem[a]
 		case HAlloc:
 			cell := new(Value)
-			mem = append(mem, ValueOf(cell))
+			*cell = mem[sp-1]         // initialise cell with top-of-stack value
+			mem[sp-1] = ValueOf(cell) // replace value with cell pointer
 		case HGet:
 			mem = append(mem, *m.env[c.Arg[0]])
 		case HSet:

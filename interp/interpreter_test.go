@@ -363,10 +363,10 @@ func TestClosure(t *testing.T) {
 		{n: "#04", src: `var f func(int) int; f = func(n int) int { return n*2 }; f(6)`, res: "12"},
 		// two closures sharing the same outer var
 		{n: "#05", src: `n := 0; inc := func() { n = n+1 }; get := func() int { return n }; inc(); inc(); get()`, res: "2"},
-		// closure capturing param of enclosing named func (requires heap capture — skip)
-		{n: "#06", src: `func makeAdder(x int) func(int) int { return func(n int) int { return x + n } }; add5 := makeAdder(5); add5(3)`, res: "8", skip: true},
-		// counter pattern (requires heap capture — skip)
-		{n: "#07", src: `func makeCounter() func() int { n := 0; return func() int { n = n+1; return n } }; c := makeCounter(); c(); c()`, res: "2", skip: true},
+		// closure capturing param of enclosing named func
+		{n: "#06", src: `func makeAdder(x int) func(int) int { return func(n int) int { return x + n } }; add5 := makeAdder(5); add5(3)`, res: "8"},
+		// counter pattern: closure captures and mutates enclosing local
+		{n: "#07", src: `func makeCounter() func() int { n := 0; return func() int { n = n+1; return n } }; c := makeCounter(); c(); c()`, res: "2"},
 	})
 }
 

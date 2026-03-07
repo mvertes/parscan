@@ -55,7 +55,10 @@ func NewValue(typ *Type, arg ...int) Value {
 			return Value{Type: typ, Value: v}
 		}
 	case reflect.Func:
-		typ = TypeOf(0) // Function value is its index in the code segment.
+		// Function variables hold either a plain code address (int) or a Closure.
+		// Use interface{} so reflect.Set can write either type through the shared pointer.
+		ifaceType := reflect.TypeOf((*interface{})(nil)).Elem()
+		return Value{Type: &Type{Rtype: ifaceType}, Value: reflect.New(ifaceType).Elem()}
 	}
 	return Value{Type: typ, Value: reflect.New(typ.Rtype).Elem()}
 }
