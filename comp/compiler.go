@@ -498,6 +498,9 @@ func (c *Compiler) PrintCode() {
 
 	for name, sym := range c.Symbols {
 		if sym.Kind == symbol.Label || sym.Kind == symbol.Func {
+			if !sym.Value.IsValid() {
+				continue
+			}
 			i := int(sym.Value.Int())
 			labels[i] = append(labels[i], name)
 		}

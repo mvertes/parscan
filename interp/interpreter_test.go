@@ -349,6 +349,27 @@ func TestComposite(t *testing.T) {
 	})
 }
 
+func TestClosure(t *testing.T) {
+	run(t, []etest{
+		// reading outer scope (module-level) variable
+		{n: "#00", src: `a := 10; f := func() int { return a }; f()`, res: "10"},
+		// mutating outer scope variable
+		{n: "#01", src: `a := 5; f := func() { a = 20 }; f(); a`, res: "20"},
+		// closure with own params, also captures outer var
+		{n: "#02", src: `x := 3; f := func(n int) int { return x + n }; f(4)`, res: "7"},
+		// closure returned from anonymous func (inner captures global)
+		{n: "#03", src: `a := 1; makeInc := func() func() int { return func() int { a = a+1; return a } }; inc := makeInc(); inc(); inc()`, res: "3"},
+		// closure stored as var then called
+		{n: "#04", src: `var f func(int) int; f = func(n int) int { return n*2 }; f(6)`, res: "12"},
+		// two closures sharing the same outer var
+		{n: "#05", src: `n := 0; inc := func() { n = n+1 }; get := func() int { return n }; inc(); inc(); get()`, res: "2"},
+		// closure capturing param of enclosing named func (requires heap capture — skip)
+		{n: "#06", src: `func makeAdder(x int) func(int) int { return func(n int) int { return x + n } }; add5 := makeAdder(5); add5(3)`, res: "8", skip: true},
+		// counter pattern (requires heap capture — skip)
+		{n: "#07", src: `func makeCounter() func() int { n := 0; return func() int { n = n+1; return n } }; c := makeCounter(); c(); c()`, res: "2", skip: true},
+	})
+}
+
 func TestMethod(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "type I int; func(i I) F(a int) int { return a+i}; var i I = 1; i.F(2)", res: "3"},

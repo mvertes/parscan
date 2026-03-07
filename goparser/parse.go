@@ -361,6 +361,11 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 				return nil, err
 			}
 		}
+		if fname == "" {
+			// Anonymous function whose return type starts with a keyword (e.g. func() func() int {}).
+			fname = "#f" + strconv.Itoa(p.clonum)
+			p.clonum++
+		}
 	default:
 		fname = "#f" + strconv.Itoa(p.clonum) // Generated closure symbol name.
 		p.clonum++
@@ -375,7 +380,11 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	s, _, ok := p.Symbols.Get(fname, p.scope)
 	if !ok {
 		s = &symbol.Symbol{Used: true}
-		p.Symbols[p.scope+fname] = s
+		key := fname
+		if !strings.HasPrefix(fname, "#") {
+			key = p.scope + fname
+		}
+		p.Symbols[key] = s
 	}
 	p.pushScope(fname)
 	p.funcScope = p.scope
