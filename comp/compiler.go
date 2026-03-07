@@ -229,6 +229,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 					lhs.Used = true
 				}
 				c.emit(t, vm.Set, 1, lhs.Index)
+				c.emit(t, vm.Pop, 1) // pop stale lhs value left by Ident's Get
 				break
 			}
 			// TODO check source type against var type

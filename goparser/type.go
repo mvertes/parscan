@@ -203,6 +203,9 @@ func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, 
 	case parseTypeOut:
 		p.Symbols.Add(p.framelen[p.funcScope], name, zv, symbol.Var, typ, true)
 		p.framelen[p.funcScope]++
+		if name != "" {
+			p.namedOut = append(p.namedOut, name)
+		}
 	case parseTypeVar:
 		if !local {
 			p.Symbols.Add(symbol.UnsetAddr, name, zv, symbol.Var, typ, local)

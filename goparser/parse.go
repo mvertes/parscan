@@ -30,7 +30,8 @@ type Parser struct {
 	labelCount    map[string]int
 	breakLabel    string
 	continueLabel string
-	clonum        int // closure instance number
+	clonum        int      // closure instance number
+	namedOut      []string // scoped names of named return vars for current function
 }
 
 // Parser errors.
@@ -369,6 +370,8 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	p.fname = fname
 	ofunc := p.function
 	funcScope := p.funcScope
+	onamedOut := p.namedOut
+	p.namedOut = nil
 	s, _, ok := p.Symbols.Get(fname, p.scope)
 	if !ok {
 		s = &symbol.Symbol{Used: true}
@@ -380,6 +383,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 		p.fname = ofname // TODO remove in favor of function.
 		p.function = ofunc
 		p.funcScope = funcScope
+		p.namedOut = onamedOut
 		p.popScope()
 	}()
 
@@ -586,8 +590,14 @@ func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 		if out, err = p.parseExpr(in[1:], ""); err != nil {
 			return out, err
 		}
-	} else if l == 0 {
-		in = Tokens{newReturn(0)} // Implicit return in functions with no return parameters.
+	} else {
+		if l == 0 {
+			in = Tokens{newReturn(0)} // Implicit return in functions with no return parameters.
+		}
+		// Bare return: push named return vars in declaration order (reverse of namedOut).
+		for i := len(p.namedOut) - 1; i >= 0; i-- {
+			out = append(out, newIdent(p.namedOut[i], in[0].Pos))
+		}
 	}
 
 	// TODO: the function symbol should be already present in the parser context.

@@ -120,6 +120,24 @@ func TestFunc(t *testing.T) {
 		{n: "#09", src: "var f = func(a int) int {return a+3}; f(2)", res: "5"},
 		{n: "#10", src: "var a int; func f(a int) {a = a+2}; f(); a", res: "0"},
 		{n: "#11", src: "func f(a int) {a = a+2}; a := 1; f(); a", res: "1"},
+		// local variables
+		{n: "#12", src: "func f(a int) int { b := a + 1; return b }; f(3)", res: "4"},
+		{n: "#13", src: "func f(a int) int { var b int = a + 1; return b }; f(3)", res: "4"},
+		{n: "#14", src: "func f() int { a := 1; b := 2; c := 3; return a+b+c }; f()", res: "6"},
+		{n: "#15", src: "func f(a int) int { b := 0; b = a + 1; return b }; f(4)", res: "5"},
+		// input parameters are pass-by-value
+		{n: "#16", src: "func inc(a int) { a = 100 }; x := 5; inc(x); x", res: "5"},
+		// recursion (requires correct local frame isolation per call)
+		{n: "#17", src: "func fib(n int) int { if n < 2 { return n }; return fib(n-1) + fib(n-2) }; fib(6)", res: "8"},
+	})
+}
+
+func TestFuncNamedReturn(t *testing.T) {
+	run(t, []etest{
+		{n: "#00", src: "func f(a int) (r int) { r = a + 2; return }; f(3)", res: "5"},
+		{n: "#01", src: "func f(a int) (r int) { r = a; r = r + 2; return }; f(3)", res: "5"},
+		{n: "#02", src: "func f(a int) (x, y int) { x = a; y = a + 1; return }; a, b := f(3); a+b", res: "7"},
+		{n: "#03", src: "func f(a int) (r int) { return a + 2 }; f(3)", res: "5"},
 	})
 }
 
