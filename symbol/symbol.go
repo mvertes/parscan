@@ -107,7 +107,10 @@ func (sm SymMap) MethodByName(sym *Symbol, name string) *Symbol {
 	case Type:
 		return sm[sym.Name+"."+name]
 	case Var:
-		return sm[sym.Type.Name+"."+name]
+		if m := sm[sym.Type.Name+"."+name]; m != nil {
+			return m
+		}
+		return sm["*"+sym.Type.Name+"."+name]
 	}
 	return nil
 }

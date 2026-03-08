@@ -379,14 +379,14 @@ func TestMethod(t *testing.T) {
 		// multiple params
 		{n: "#01", src: `type I int; func(i I) Add(a, b int) int { return a + b }; var i I = 0; i.Add(3, 4)`, res: "7"},
 
-		// --- Tier 2: struct value receiver (currently broken — struct field access panics) ---
+		// --- Tier 2: struct value receiver ---
 
 		// read single field
-		{n: "#02", src: `type T struct{n int}; func(t T) N() int { return t.n }; x := T{5}; x.N()`, res: "5", skip: true},
+		{n: "#02", src: `type T struct{n int}; func(t T) N() int { return t.n }; x := T{5}; x.N()`, res: "5"},
 		// read field, add param
-		{n: "#03", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; x := T{3}; x.Add(4)`, res: "7", skip: true},
+		{n: "#03", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; x := T{3}; x.Add(4)`, res: "7"},
 		// two fields
-		{n: "#04", src: `type T struct{a, b int}; func(t T) Sum() int { return t.a + t.b }; x := T{2, 3}; x.Sum()`, res: "5", skip: true},
+		{n: "#04", src: `type T struct{a, b int}; func(t T) Sum() int { return t.a + t.b }; x := T{2, 3}; x.Sum()`, res: "5"},
 
 		// --- Tier 3: method values (receiver bound at expression time) ---
 
@@ -402,13 +402,13 @@ func TestMethod(t *testing.T) {
 		// --- Tier 4: pointer receiver (auto address-taking, mutation visible to caller) ---
 
 		// pointer receiver increments field
-		{n: "#09", src: `type T struct{n int}; func(t *T) Inc() { t.n = t.n + 1 }; var x T; x.Inc(); x.Inc(); x.n`, res: "2", skip: true},
+		{n: "#09", src: `type T struct{n int}; func(t *T) Inc() { t.n = t.n + 1 }; var x T; x.Inc(); x.Inc(); x.n`, res: "2"},
 		// pointer receiver method value
-		{n: "#10", src: `type T struct{n int}; func(t *T) Inc() { t.n = t.n + 1 }; var x T; f := x.Inc; f(); f(); x.n`, res: "2", skip: true},
+		{n: "#10", src: `type T struct{n int}; func(t *T) Inc() { t.n = t.n + 1 }; var x T; f := x.Inc; f(); f(); x.n`, res: "2"},
 
 		// --- Tier 5: methods combined with closures ---
 
 		// method returning a closure that captures the receiver
-		{n: "#11", src: `type T struct{n int}; func(t T) Adder() func(int) int { return func(a int) int { return t.n + a } }; x := T{3}; add := x.Adder(); add(4)`, res: "7", skip: true},
+		{n: "#11", src: `type T struct{n int}; func(t T) Adder() func(int) int { return func(a int) int { return t.n + a } }; x := T{3}; add := x.Adder(); add(4)`, res: "7"},
 	})
 }

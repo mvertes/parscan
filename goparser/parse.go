@@ -358,7 +358,22 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 			if recvr, err := p.Scan(in[1].Block(), false); err != nil {
 				return nil, err
 			} else if rtyp, vars, err := p.parseParamTypes(recvr, parseTypeRecv); err == nil {
-				fname = rtyp[0].String() + "." + in[2].Str // Method name prefixed by receiver type.
+				// Extract the base type name from the receiver tokens (e.g. [t, *, T]).
+				// reflect.Type.Name() is empty for dynamically created structs, so we
+				// cannot rely on rtyp[0].Rtype.Elem().Name(); use the token stream instead.
+				typeName := rtyp[0].String()
+				isPtr := rtyp[0].IsPtr()
+				for i := len(recvr) - 1; i >= 0; i-- {
+					if recvr[i].Tok == lang.Ident {
+						if isPtr {
+							typeName = "*" + recvr[i].Str
+						} else {
+							typeName = recvr[i].Str
+						}
+						break
+					}
+				}
+				fname = typeName + "." + in[2].Str // Method name prefixed by receiver type.
 				if len(vars) > 0 && vars[0] != "" {
 					recvName = path.Base(vars[0])
 				}

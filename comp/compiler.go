@@ -289,17 +289,29 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			// Closure creation: emit code address + captured cell pointers + MkClosure.
 			if s.Kind == symbol.Func && len(s.FreeVars) > 0 {
 				c.emit(t, vm.Get, vm.Global, s.Index)
+				// Determine the current function's CapturedAs map for transitive capture.
+				var outerCapturedAs map[string]int
+				if cf := curFunc(); cf != "" {
+					if cloSym := c.Symbols[cf]; cloSym != nil {
+						outerCapturedAs = cloSym.CapturedAs
+					}
+				}
 				for _, fvName := range s.FreeVars {
 					fvSym := c.Symbols[fvName]
 					if fvSym == nil {
 						return errorf("free variable not found: %s", fvName)
 					}
-					if fvSym.Local {
+					if idx, ok := outerCapturedAs[fvName]; ok {
+						// The free variable is already captured in the enclosing closure's Env.
+						// Use HPtr to push the existing cell pointer (transitive capture).
+						c.emit(t, vm.HPtr, idx)
+					} else if fvSym.Local {
 						c.emit(t, vm.Get, vm.Local, fvSym.Index)
+						c.emit(t, vm.HAlloc)
 					} else {
 						c.emit(t, vm.Get, vm.Global, fvSym.Index)
+						c.emit(t, vm.HAlloc)
 					}
-					c.emit(t, vm.HAlloc)
 				}
 				c.emit(t, vm.MkClosure, len(s.FreeVars))
 				break
