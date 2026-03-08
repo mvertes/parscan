@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path"
 	"strconv"
 	"strings"
 
@@ -339,7 +340,8 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	// TODO: handle parametric types (generics)
 	// TODO: handle variadic parameters
-	var fname string // function name
+	var fname string    // function name
+	var recvName string // receiver variable name (non-empty for methods)
 
 	switch in[1].Tok {
 	case lang.Ident:
@@ -352,11 +354,14 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 				p.clonum++
 				break
 			}
-			// Parse receiver declaration and determine its type.
+			// Parse receiver declaration: get type and variable name.
 			if recvr, err := p.Scan(in[1].Block(), false); err != nil {
 				return nil, err
-			} else if rtyp, _, err := p.parseParamTypes(recvr, parseTypeIn); err == nil {
+			} else if rtyp, vars, err := p.parseParamTypes(recvr, parseTypeRecv); err == nil {
 				fname = rtyp[0].String() + "." + in[2].Str // Method name prefixed by receiver type.
+				if len(vars) > 0 && vars[0] != "" {
+					recvName = path.Base(vars[0])
+				}
 			} else {
 				return nil, err
 			}
@@ -388,6 +393,13 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	}
 	p.pushScope(fname)
 	p.funcScope = p.scope
+	// For methods, the receiver is Env[0] of the method closure.
+	// Register it so the compiler emits HGet 0 for the receiver inside the body.
+	if recvName != "" {
+		recvScoped := p.scope + "/" + recvName
+		s.FreeVars = []string{recvScoped}
+		s.CapturedAs = map[string]int{recvScoped: 0}
+	}
 	defer func() {
 		p.fname = ofname // TODO remove in favor of function.
 		p.function = ofunc

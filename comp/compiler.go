@@ -438,7 +438,16 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			default:
 				if m := c.Symbols.MethodByName(s, t.Str[1:]); m != nil {
 					push(m)
+					// Closure-based method dispatch.
+					// VM stack before Period: [..., receiver_value]
+					// HAlloc: wrap receiver in a heap cell.
+					// Get Global m.Index: push method code address above the cell.
+					// Swap 0 1: put code addr below cell (MkClosure convention: code at sp-n-1).
+					// MkClosure 1: produce Closure{code, [receiver_cell]}.
+					c.emit(t, vm.HAlloc)
 					c.emit(t, vm.Get, vm.Global, m.Index)
+					c.emit(t, vm.Swap, 0, 1)
+					c.emit(t, vm.MkClosure, 1)
 					break
 				}
 				typ := s.Type.Rtype

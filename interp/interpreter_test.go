@@ -376,8 +376,8 @@ func TestMethod(t *testing.T) {
 
 		// value receiver, direct call
 		{n: "#00", src: `type I int; func(i I) F(a int) int { return a+i }; var i I = 1; i.F(2)`, res: "3"},
-		// multi-param method: broken — receiver index and code-addr slot corrupt param offsets
-		{n: "#01", src: `type I int; func(i I) Add(a, b int) int { return a + b }; var i I = 0; i.Add(3, 4)`, res: "7", skip: true},
+		// multiple params
+		{n: "#01", src: `type I int; func(i I) Add(a, b int) int { return a + b }; var i I = 0; i.Add(3, 4)`, res: "7"},
 
 		// --- Tier 2: struct value receiver (currently broken — struct field access panics) ---
 
@@ -391,11 +391,11 @@ func TestMethod(t *testing.T) {
 		// --- Tier 3: method values (receiver bound at expression time) ---
 
 		// store method value, call later
-		{n: "#05", src: `type I int; func(i I) F(a int) int { return a+i }; var i I = 2; f := i.F; f(3)`, res: "5", skip: true},
+		{n: "#05", src: `type I int; func(i I) F(a int) int { return a+i }; var i I = 2; f := i.F; f(3)`, res: "5"},
 		// two independent method values from different receivers
-		{n: "#06", src: `type I int; func(i I) Val() int { return int(i) }; var a I = 1; var b I = 2; fa := a.Val; fb := b.Val; fa() + fb()`, res: "3", skip: true},
+		{n: "#06", src: `type I int; func(i I) Val() I { return i }; var a I = 1; var b I = 2; fa := a.Val; fb := b.Val; fa() + fb()`, res: "3"},
 		// pass method value to higher-order function
-		{n: "#07", src: `type I int; func(i I) F(a int) int { return a+i }; apply := func(f func(int) int, n int) int { return f(n) }; var i I = 5; apply(i.F, 3)`, res: "8", skip: true},
+		{n: "#07", src: `type I int; func(i I) F(a int) int { return a+i }; apply := func(f func(int) int, n int) int { return f(n) }; var i I = 5; apply(i.F, 3)`, res: "8"},
 		// method value on struct receiver
 		{n: "#08", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; x := T{3}; f := x.Add; f(4)`, res: "7", skip: true},
 

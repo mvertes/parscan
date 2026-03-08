@@ -17,6 +17,7 @@ const (
 	parseTypeOut
 	parseTypeVar
 	parseTypeType
+	parseTypeRecv // method receiver: Env[0], not a stack param
 )
 
 // Type parsing error definitions.
@@ -84,8 +85,18 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 
 		// We can now parse function input and output parameter types.
 		// Input parameters are always enclosed by parenthesis.
-		as := strings.Trim(recvr+","+in[indexArgs].Block(), ",")
-		iargs, err := p.Scan(as, false)
+		// For methods, parse the receiver separately as Env[0] (not a stack param),
+		// so explicit params get the correct frame indices (-2, -3, ...).
+		if recvr != "" {
+			recvrToks, err := p.Scan(recvr, false)
+			if err != nil {
+				return nil, 0, err
+			}
+			if _, _, err = p.parseParamTypes(recvrToks, parseTypeRecv); err != nil {
+				return nil, 0, err
+			}
+		}
+		iargs, err := p.Scan(in[indexArgs].Block(), false)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -198,6 +209,14 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, local bool) {
 	zv := vm.NewValue(typ)
 	switch flag {
+	case parseTypeRecv:
+		// Receiver lives in Env[0] of the method closure, not on the call stack.
+		// Index is irrelevant; the compiler emits HGet 0 via CapturedAs.
+		p.Symbols[name] = &symbol.Symbol{
+			Kind: symbol.Var, Name: name, Index: symbol.UnsetAddr,
+			Local: true, Captured: true, Used: true,
+			Type: typ, Value: zv,
+		}
 	case parseTypeIn:
 		p.Symbols.Add(-index-2, name, zv, symbol.Var, typ, true)
 	case parseTypeOut:
