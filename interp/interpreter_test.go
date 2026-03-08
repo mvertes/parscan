@@ -372,6 +372,43 @@ func TestClosure(t *testing.T) {
 
 func TestMethod(t *testing.T) {
 	run(t, []etest{
-		{n: "#00", src: "type I int; func(i I) F(a int) int { return a+i}; var i I = 1; i.F(2)", res: "3"},
+		// --- Tier 1: named-type receiver (currently works) ---
+
+		// value receiver, direct call
+		{n: "#00", src: `type I int; func(i I) F(a int) int { return a+i }; var i I = 1; i.F(2)`, res: "3"},
+		// multi-param method: broken — receiver index and code-addr slot corrupt param offsets
+		{n: "#01", src: `type I int; func(i I) Add(a, b int) int { return a + b }; var i I = 0; i.Add(3, 4)`, res: "7", skip: true},
+
+		// --- Tier 2: struct value receiver (currently broken — struct field access panics) ---
+
+		// read single field
+		{n: "#02", src: `type T struct{n int}; func(t T) N() int { return t.n }; x := T{5}; x.N()`, res: "5", skip: true},
+		// read field, add param
+		{n: "#03", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; x := T{3}; x.Add(4)`, res: "7", skip: true},
+		// two fields
+		{n: "#04", src: `type T struct{a, b int}; func(t T) Sum() int { return t.a + t.b }; x := T{2, 3}; x.Sum()`, res: "5", skip: true},
+
+		// --- Tier 3: method values (receiver bound at expression time) ---
+
+		// store method value, call later
+		{n: "#05", src: `type I int; func(i I) F(a int) int { return a+i }; var i I = 2; f := i.F; f(3)`, res: "5", skip: true},
+		// two independent method values from different receivers
+		{n: "#06", src: `type I int; func(i I) Val() int { return int(i) }; var a I = 1; var b I = 2; fa := a.Val; fb := b.Val; fa() + fb()`, res: "3", skip: true},
+		// pass method value to higher-order function
+		{n: "#07", src: `type I int; func(i I) F(a int) int { return a+i }; apply := func(f func(int) int, n int) int { return f(n) }; var i I = 5; apply(i.F, 3)`, res: "8", skip: true},
+		// method value on struct receiver
+		{n: "#08", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; x := T{3}; f := x.Add; f(4)`, res: "7", skip: true},
+
+		// --- Tier 4: pointer receiver (auto address-taking, mutation visible to caller) ---
+
+		// pointer receiver increments field
+		{n: "#09", src: `type T struct{n int}; func(t *T) Inc() { t.n = t.n + 1 }; var x T; x.Inc(); x.Inc(); x.n`, res: "2", skip: true},
+		// pointer receiver method value
+		{n: "#10", src: `type T struct{n int}; func(t *T) Inc() { t.n = t.n + 1 }; var x T; f := x.Inc; f(); f(); x.n`, res: "2", skip: true},
+
+		// --- Tier 5: methods combined with closures ---
+
+		// method returning a closure that captures the receiver
+		{n: "#11", src: `type T struct{n int}; func(t T) Adder() func(int) int { return func(a int) int { return t.n + a } }; x := T{3}; add := x.Adder(); add(4)`, res: "7", skip: true},
 	})
 }
