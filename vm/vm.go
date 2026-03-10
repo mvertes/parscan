@@ -12,27 +12,6 @@ import (
 
 const debug = false
 
-// forceSettable returns fv as-is if settable, or makes an unexported field settable via unsafe.
-func forceSettable(fv reflect.Value) reflect.Value {
-	if !fv.CanSet() {
-		fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
-	}
-	return fv
-}
-
-// assignSlot writes src into the memory slot dst, updating both num and ref
-// for numeric types to maintain the dual-storage invariant.
-func assignSlot(dst *Value, src Value) {
-	if isNum(src.ref.Kind()) {
-		dst.num = src.num
-		if dst.ref.CanSet() {
-			dst.ref.Set(src.Reflect())
-		}
-	} else {
-		dst.ref.Set(src.ref)
-	}
-}
-
 // Op is a VM opcode (bytecode instruction).
 type Op int
 
@@ -462,4 +441,26 @@ func Vstring(lv []Value) string {
 	}
 	sb.WriteByte(']')
 	return sb.String()
+}
+
+// forceSettable returns fv as-is if settable, or makes it settable via unsafe.
+// Use it only on unexported struct fields.
+func forceSettable(fv reflect.Value) reflect.Value {
+	if !fv.CanSet() {
+		fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
+	}
+	return fv
+}
+
+// assignSlot writes src into the memory slot dst, updating both num and ref
+// for numeric types to maintain the dual-storage invariant.
+func assignSlot(dst *Value, src Value) {
+	if isNum(src.ref.Kind()) {
+		dst.num = src.num
+		if dst.ref.CanSet() {
+			dst.ref.Set(src.Reflect())
+		}
+	} else {
+		dst.ref.Set(src.ref)
+	}
 }
