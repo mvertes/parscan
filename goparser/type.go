@@ -207,7 +207,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 }
 
 func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, local bool) {
-	zv := vm.NewValue(typ)
+	zv := vm.NewValue(typ.Rtype)
 	switch flag {
 	case parseTypeRecv:
 		// Receiver lives in Env[0] of the method closure, not on the call stack.

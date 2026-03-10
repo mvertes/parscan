@@ -52,5 +52,5 @@ func (i *Interp) Eval(src string) (res reflect.Value, err error) {
 		i.PrintCode()
 	}
 	err = i.Run()
-	return i.Top().Value, err
+	return i.Top().Reflect(), err
 }

@@ -87,7 +87,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 
 		case lang.String:
 			s := t.Block()
-			v := vm.Value{Type: vm.TypeOf(s), Value: reflect.ValueOf(s)}
+			v := vm.ValueOf(s)
 			i, ok := c.strings[s]
 			if !ok {
 				i = len(c.Data)
@@ -166,7 +166,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 		case lang.CallX:
 			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
-			rtyp := s.Value.Value.Type()
+			rtyp := s.Value.Reflect().Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {
 				push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtyp.Out(i)}})
@@ -185,7 +185,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			case symbol.Const:
 				switch ts.Type.Rtype.Kind() {
 				case reflect.Struct:
-					if v := ks.Value.Value; v.CanInt() {
+					if ks.Value.CanInt() {
 						c.emit(t, vm.FieldFset)
 					}
 				case reflect.Slice:
@@ -220,10 +220,10 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				// Propage type of rhs to lhs.
 				typ := r.Type
 				if typ == nil {
-					typ = r.Value.Type
+					typ = vm.TypeOf(r.Value.Interface())
 				}
 				lhs[i].Type = typ
-				c.Data[lhs[i].Index] = vm.NewValue(typ)
+				c.Data[lhs[i].Index] = vm.NewValue(typ.Rtype)
 			}
 			c.emit(t, vm.SetS, n)
 
@@ -251,7 +251,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			}
 			// TODO check source type against var type
 			if v := c.Data[lhs.Index]; !v.IsValid() {
-				c.Data[lhs.Index] = vm.NewValue(rhs.Type)
+				c.Data[lhs.Index] = vm.NewValue(rhs.Type.Rtype)
 				c.Symbols[lhs.Name].Type = rhs.Type
 			}
 			c.emit(t, vm.SetS, t.Arg[0].(int))
@@ -440,7 +440,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				} else {
 					l = len(c.Data)
 					c.Data = append(c.Data, v)
-					c.Symbols.Add(l, name, v, symbol.Value, v.Type, false)
+					c.Symbols.Add(l, name, v, symbol.Value, vm.TypeOf(v.Interface()), false)
 					sym = c.Symbols[name]
 				}
 				push(sym)
@@ -508,14 +508,14 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				case 1:
 					k := stack[len(stack)-2]
 					k.Type = c.Symbols["int"].Type
-					c.Data[k.Index] = vm.NewValue(k.Type)
+					c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
 					c.emit(t, vm.Pull)
 				case 2:
 					k, v := stack[len(stack)-3], stack[len(stack)-2]
 					k.Type = c.Symbols["int"].Type
 					v.Type = typ.Elem()
-					c.Data[k.Index] = vm.NewValue(k.Type)
-					c.Data[v.Index] = vm.NewValue(v.Type)
+					c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
+					c.Data[v.Index] = vm.NewValue(v.Type.Rtype)
 					c.emit(t, vm.Pull2)
 				default:
 				}
@@ -616,9 +616,9 @@ func (c *Compiler) PrintData() {
 	fmt.Fprintln(os.Stderr, "# Data:")
 	for i, d := range c.Data {
 		if d.IsValid() {
-			fmt.Fprintf(os.Stderr, "%4d %T %v, Symbol: %v\n", i, d.Interface(), d.Value, dict[i])
+			fmt.Fprintf(os.Stderr, "%4d %T %v, Symbol: %v\n", i, d.Interface(), d.Reflect(), dict[i])
 		} else {
-			fmt.Fprintf(os.Stderr, "%4d %v %v\n", i, d.Value, dict[i])
+			fmt.Fprintf(os.Stderr, "%4d %v %v\n", i, d.Reflect(), dict[i])
 		}
 	}
 }
@@ -642,7 +642,7 @@ func (c *Compiler) typeSym(t *vm.Type) *symbol.Symbol {
 	}
 	if tsym.Index == symbol.UnsetAddr {
 		tsym.Index = len(c.Data)
-		c.Data = append(c.Data, vm.NewValue(t))
+		c.Data = append(c.Data, vm.NewValue(t.Rtype))
 	}
 	return tsym
 }

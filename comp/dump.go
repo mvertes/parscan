@@ -66,10 +66,6 @@ func (c *Compiler) ApplyDump(d *Dump) error {
 			return fmt.Errorf("index (%d) bigger than memory (%d)", dv.Index, len(c.Data))
 		}
 
-		if !c.Data[dv.Index].CanSet() {
-			return fmt.Errorf("value %v cannot be set", dv.Value)
-		}
-
 		c.Data[dv.Index].Set(reflect.ValueOf(dv.Value))
 	}
 	return nil

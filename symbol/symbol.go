@@ -71,7 +71,10 @@ func Vtype(s *Symbol) *vm.Type {
 	if s.Type != nil {
 		return s.Type
 	}
-	return vm.TypeOf(s.Value)
+	if s.Value.IsValid() {
+		return &vm.Type{Rtype: s.Value.Type()}
+	}
+	return nil
 }
 
 // SymMap is a map of Symbols.

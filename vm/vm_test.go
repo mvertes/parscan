@@ -3,7 +3,6 @@ package vm
 import (
 	"fmt"
 	"log"
-	"reflect"
 	"testing"
 )
 
@@ -136,7 +135,7 @@ var tests = []struct {
 	},
 	start: 0, end: 1, mem: "[3]",
 }, { // #10 -- Assign a variable.
-	sym: []Value{{Type: TypeOf(0), Value: reflect.ValueOf(0)}},
+	sym: []Value{ValueOf(0)},
 	code: []Instruction{
 		{Op: Grow, Arg: []int{1}},
 		{Op: New, Arg: []int{2, 0}},

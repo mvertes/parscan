@@ -301,7 +301,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	typ.Name = in[0].Str
-	p.Symbols.Add(symbol.UnsetAddr, in[0].Str, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+	p.Symbols.Add(symbol.UnsetAddr, in[0].Str, vm.NewValue(typ.Rtype), symbol.Type, typ, p.funcScope != "")
 	return out, err
 }
 

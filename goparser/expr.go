@@ -135,7 +135,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				// Infer composite inner type from passed typeStr
 				typ := p.Symbols[typeStr].Type.Elem()
 				ctype = typ.String()
-				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, p.funcScope != "")
 				out = append(out, newIdent(ctype, t.Pos))
 			}
 			toks, err := p.parseComposite(t.Block(), ctype)
@@ -153,7 +153,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 					return out, err
 				}
 				ctype = typ.String()
-				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, false)
+				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, false)
 				out = append(out, newIdent(ctype, t.Pos))
 				i += n - 1
 				break
@@ -176,7 +176,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				return out, err
 			}
 			ctype = typ.String()
-			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, p.funcScope != "")
 			out = append(out, newIdent(ctype, t.Pos))
 			i++
 
@@ -186,7 +186,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				return out, err
 			}
 			ctype = typ.String()
-			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ), symbol.Type, typ, p.funcScope != "")
+			p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, p.funcScope != "")
 			out = append(out, newIdent(ctype, t.Pos))
 			i += n - 1
 

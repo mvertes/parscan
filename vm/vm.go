@@ -7,10 +7,31 @@ import (
 	"log"     // for tracing only
 	"reflect" // for optional CallX only
 	"strings"
-	"unsafe" // to allow setting unexported struct fields
+	"unsafe" // to allow setting unexported struct fields //nolint:depguard
 )
 
 const debug = false
+
+// forceSettable returns fv as-is if settable, or makes an unexported field settable via unsafe.
+func forceSettable(fv reflect.Value) reflect.Value {
+	if !fv.CanSet() {
+		fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
+	}
+	return fv
+}
+
+// assignSlot writes src into the memory slot dst, updating both num and ref
+// for numeric types to maintain the dual-storage invariant.
+func assignSlot(dst *Value, src Value) {
+	if isNum(src.ref.Kind()) {
+		dst.num = src.num
+		if dst.ref.CanSet() {
+			dst.ref.Set(src.Reflect())
+		}
+	} else {
+		dst.ref.Set(src.ref)
+	}
+}
 
 // Op is a VM opcode (bytecode instruction).
 type Op int
@@ -134,30 +155,41 @@ func (m *Machine) Run() (err error) {
 		ic++
 		switch c.Op {
 		case Add:
-			mem[sp-2] = ValueOf(int(mem[sp-2].Int() + mem[sp-1].Int()))
+			mem[sp-2].num = uint64(int64(mem[sp-2].num) + int64(mem[sp-1].num)) //nolint:gosec
+			resetNumRef(&mem[sp-2])
 			mem = mem[:sp-1]
 		case Mul:
-			mem[sp-2] = ValueOf(int(mem[sp-2].Int() * mem[sp-1].Int()))
+			mem[sp-2].num = uint64(int64(mem[sp-2].num) * int64(mem[sp-1].num)) //nolint:gosec
+			resetNumRef(&mem[sp-2])
 			mem = mem[:sp-1]
 		case Addr:
-			mem[sp-1].Value = mem[sp-1].Addr()
+			v := mem[sp-1]
+			if v.ref.CanAddr() {
+				mem[sp-1] = Value{ref: v.ref.Addr()}
+			} else {
+				// Materialize via Reflect() to get an addressable value, then take its address.
+				mem[sp-1] = Value{ref: v.Reflect().Addr()}
+			}
 		case Set:
-			mem[c.Arg[0]*(fp-1)+c.Arg[1]].Set(mem[sp-1].Value)
+			assignSlot(&mem[c.Arg[0]*(fp-1)+c.Arg[1]], mem[sp-1])
 			mem = mem[:sp-1]
 		case Call:
 			fval := mem[sp-1-c.Arg[0]]
 			prevEnv := m.env
 			var nip int
-			if clo, ok := fval.Interface().(Closure); ok {
+			if isNum(fval.ref.Kind()) {
+				// Plain int code address stored inline in num.
+				nip = int(fval.num) //nolint:gosec
+				m.env = nil
+			} else if clo, ok := fval.ref.Interface().(Closure); ok {
 				nip = clo.Code
 				m.env = clo.Env
-			} else if iv, ok := fval.Interface().(int); ok {
+			} else if iv, ok := fval.ref.Interface().(int); ok {
 				// Function variable slot holds a plain code address boxed as interface{}.
 				nip = iv
 				m.env = nil
 			} else {
-				// Direct int on stack (e.g. from Push in vm-level tests).
-				nip = int(fval.Int())
+				nip = int(fval.num) //nolint:gosec
 				m.env = nil
 			}
 			m.captured = append(m.captured, prevEnv)
@@ -168,24 +200,28 @@ func (m *Machine) Run() (err error) {
 		case CallX: // Should be made optional.
 			in := make([]reflect.Value, c.Arg[0])
 			for i := range in {
-				in[i] = mem[sp-1-i].Value
+				in[i] = mem[sp-1-i].Reflect()
 			}
-			f := mem[sp-1-c.Arg[0]].Value
+			f := mem[sp-1-c.Arg[0]].ref
 			mem = mem[:sp-c.Arg[0]-1]
 			for _, v := range f.Call(in) {
-				mem = append(mem, Value{Value: v})
+				mem = append(mem, fromReflect(v))
 			}
 		case Deref:
-			mem[sp-1].Value = mem[sp-1].Value.Elem()
+			mem[sp-1] = Value{ref: mem[sp-1].ref.Elem()}
 		case Get:
-			mem = append(mem, mem[c.Arg[0]*(fp-1)+c.Arg[1]])
+			v := mem[c.Arg[0]*(fp-1)+c.Arg[1]]
+			if isNum(v.ref.Kind()) && v.ref.CanAddr() {
+				v.num = numBits(v.ref)
+			}
+			mem = append(mem, v)
 		case New:
-			mem[c.Arg[0]+fp-1] = NewValue(mem[c.Arg[1]].Type)
+			mem[c.Arg[0]+fp-1] = NewValue(mem[c.Arg[1]].ref.Type())
 		case Equal:
-			mem[sp-2] = ValueOf(mem[sp-2].Equal(mem[sp-1].Value))
+			mem[sp-2] = ValueOf(mem[sp-2].Equal(mem[sp-1]))
 			mem = mem[:sp-1]
 		case EqualSet:
-			if mem[sp-2].Equal(mem[sp-1].Value) {
+			if mem[sp-2].Equal(mem[sp-1]) {
 				// If equal then lhs and rhs are popped, replaced by test result, as in Equal.
 				mem[sp-2] = ValueOf(true)
 				mem = mem[:sp-1]
@@ -197,51 +233,43 @@ func (m *Machine) Run() (err error) {
 		case Exit:
 			return err
 		case Fnew:
-			mem = append(mem, NewValue(mem[c.Arg[0]].Type, c.Arg[1:]...))
+			mem = append(mem, NewValue(mem[c.Arg[0]].ref.Type(), c.Arg[1:]...))
 		case FnewE:
-			mem = append(mem, NewValue(mem[c.Arg[0]].Type.Elem(), c.Arg[1:]...))
+			mem = append(mem, NewValue(mem[c.Arg[0]].ref.Type().Elem(), c.Arg[1:]...))
 		case Field:
-			fv := reflect.Indirect(mem[sp-1].Value).FieldByIndex(c.Arg)
-			if !fv.CanSet() {
-				// Normally private fields can not bet set via reflect. Override this limitation.
-				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
+			fv := forceSettable(reflect.Indirect(mem[sp-1].ref).FieldByIndex(c.Arg))
+			if isNum(fv.Kind()) {
+				// Preserve addressable ref for write-through on struct field mutations.
+				mem[sp-1] = Value{num: numBits(fv), ref: fv}
+			} else {
+				mem[sp-1] = Value{ref: fv}
 			}
-			mem[sp-1].Value = fv
 		case FieldSet:
-			fv := mem[sp-2].FieldByIndex(c.Arg)
-			if !fv.CanSet() {
-				// Normally private fields can not bet set via reflect. Override this limitation.
-				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
-			}
-			fv.Set(mem[sp-1].Value)
+			forceSettable(mem[sp-2].ref.FieldByIndex(c.Arg)).Set(mem[sp-1].Reflect())
 			mem = mem[:sp-1]
 		case FieldFset:
-			fv := mem[sp-3].Field(int(mem[sp-2].Int()))
-			if !fv.CanSet() {
-				// Normally private fields can not bet set via reflect. Override this limitation.
-				fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
-			}
-			fv.Set(mem[sp-1].Value)
+			fv := forceSettable(mem[sp-3].ref.Field(int(mem[sp-2].num))) //nolint:gosec
+			fv.Set(mem[sp-1].Reflect())
 			mem = mem[:sp-2]
 		case Jump:
 			ip += c.Arg[0]
 			continue
 		case JumpTrue:
-			cond := mem[sp-1].Bool()
+			cond := mem[sp-1].num != 0
 			mem = mem[:sp-1]
 			if cond {
 				ip += c.Arg[0]
 				continue
 			}
 		case JumpFalse:
-			cond := mem[sp-1].Bool()
+			cond := mem[sp-1].num != 0
 			mem = mem[:sp-1]
 			if !cond {
 				ip += c.Arg[0]
 				continue
 			}
 		case JumpSetTrue:
-			cond := mem[sp-1].Bool()
+			cond := mem[sp-1].num != 0
 			if cond {
 				ip += c.Arg[0]
 				// Note that the stack is not modified if cond is true.
@@ -249,7 +277,7 @@ func (m *Machine) Run() (err error) {
 			}
 			mem = mem[:sp-1]
 		case JumpSetFalse:
-			cond := mem[sp-1].Bool()
+			cond := mem[sp-1].num != 0
 			if !cond {
 				ip += c.Arg[0]
 				// Note that the stack is not modified if cond is false.
@@ -257,24 +285,25 @@ func (m *Machine) Run() (err error) {
 			}
 			mem = mem[:sp-1]
 		case Greater:
-			mem[sp-2] = ValueOf(mem[sp-2].Int() > mem[sp-1].Int())
+			mem[sp-2] = ValueOf(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
 			mem = mem[:sp-1]
 		case Lower:
-			mem[sp-2] = ValueOf(mem[sp-2].Int() < mem[sp-1].Int())
+			mem[sp-2] = ValueOf(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
 			mem = mem[:sp-1]
 		case Len:
-			mem = append(mem, ValueOf(mem[sp-1-c.Arg[0]].Len()))
+			mem = append(mem, ValueOf(mem[sp-1-c.Arg[0]].ref.Len()))
 		case Negate:
-			mem[sp-1] = ValueOf(-mem[sp-1].Int())
+			mem[sp-1].num = uint64(-int64(mem[sp-1].num)) //nolint:gosec
+			resetNumRef(&mem[sp-1])
 		case Next:
-			if k, ok := mem[sp-2].Interface().(func() (reflect.Value, bool))(); ok {
+			if k, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); ok {
 				mem[c.Arg[1]].Set(k)
 			} else {
 				ip += c.Arg[0]
 				continue
 			}
 		case Next2:
-			if k, v, ok := mem[sp-2].Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
+			if k, v, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
 				mem[c.Arg[1]].Set(k)
 				mem[c.Arg[2]].Set(v)
 			} else {
@@ -282,12 +311,16 @@ func (m *Machine) Run() (err error) {
 				continue
 			}
 		case Not:
-			mem[sp-1] = ValueOf(!mem[sp-1].Bool())
+			if mem[sp-1].num != 0 {
+				mem[sp-1].num = 0
+			} else {
+				mem[sp-1].num = 1
+			}
+			mem[sp-1].ref = zeroBool
 		case Pop:
 			mem = mem[:sp-c.Arg[0]]
 		case Push:
-			mem = append(mem, NewValue(TypeOf(0)))
-			mem[sp].SetInt(int64(c.Arg[0]))
+			mem = append(mem, Value{num: uint64(c.Arg[0]), ref: zeroInt}) //nolint:gosec
 		case Pull:
 			next, stop := iter.Pull(mem[sp-1].Seq())
 			mem = append(mem, ValueOf(next), ValueOf(stop))
@@ -297,9 +330,9 @@ func (m *Machine) Run() (err error) {
 		case Grow:
 			mem = append(mem, make([]Value, c.Arg[0])...)
 		case Return:
-			ip = int(mem[fp-2].Int())
+			ip = int(mem[fp-2].num) //nolint:gosec
 			ofp := fp
-			fp = int(mem[fp-1].Int())
+			fp = int(mem[fp-1].num) //nolint:gosec
 			nret := c.Arg[0]
 			newBase := ofp - nret - c.Arg[1] - 2
 			copy(mem[newBase:], mem[sp-nret:sp])
@@ -315,16 +348,22 @@ func (m *Machine) Run() (err error) {
 			}
 			continue
 		case Slice:
-			mem[sp-3].Value = mem[sp-3].Slice(int(mem[sp-2].Int()), int(mem[sp-1].Int()))
+			low := int(mem[sp-2].num)  //nolint:gosec
+			high := int(mem[sp-1].num) //nolint:gosec
+			mem[sp-3] = Value{ref: mem[sp-3].ref.Slice(low, high)}
 			mem = mem[:sp-2]
 		case Slice3:
-			mem[sp-4].Value = mem[sp-4].Slice3(int(mem[sp-3].Int()), int(mem[sp-2].Int()), int(mem[sp-1].Int()))
+			low := int(mem[sp-3].num)  //nolint:gosec
+			high := int(mem[sp-2].num) //nolint:gosec
+			hi := int(mem[sp-1].num)   //nolint:gosec
+			mem[sp-4] = Value{ref: mem[sp-4].ref.Slice3(low, high, hi)}
 			mem = mem[:sp-3]
 		case Stop:
-			mem[sp-1].Interface().(func())()
+			mem[sp-1].ref.Interface().(func())()
 			mem = mem[:sp-4]
 		case Sub:
-			mem[sp-2] = ValueOf(int(mem[sp-2].Int() - mem[sp-1].Int()))
+			mem[sp-2].num = uint64(int64(mem[sp-2].num) - int64(mem[sp-1].num)) //nolint:gosec
+			resetNumRef(&mem[sp-2])
 			mem = mem[:sp-1]
 		case Swap:
 			a, b := sp-c.Arg[0]-1, sp-c.Arg[1]-1
@@ -342,10 +381,10 @@ func (m *Machine) Run() (err error) {
 			mem = append(mem, ValueOf(m.env[c.Arg[0]]))
 		case MkClosure:
 			n := c.Arg[0]
-			codeAddr := int(mem[sp-n-1].Int())
+			codeAddr := int(mem[sp-n-1].num) //nolint:gosec
 			env := make([]*Value, n)
 			for i := range n {
-				env[i] = mem[sp-n+i].Interface().(*Value)
+				env[i] = mem[sp-n+i].ref.Interface().(*Value)
 			}
 			clo := ValueOf(Closure{Code: codeAddr, Env: env})
 			for i := sp - n - 1; i < sp; i++ {
@@ -354,25 +393,26 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-n-1]
 			mem = append(mem, clo)
 		case Index:
-			mem[sp-2].Value = mem[sp-2].Index(int(mem[sp-1].Int()))
+			idx := int(mem[sp-1].num) //nolint:gosec
+			mem[sp-2] = fromReflect(mem[sp-2].ref.Index(idx))
 			mem = mem[:sp-1]
 		case IndexSet:
-			mem[sp-3].Value.Index(int(mem[sp-2].Int())).Set(mem[sp-1].Value)
+			idx := int(mem[sp-2].num) //nolint:gosec
+			mem[sp-3].ref.Index(idx).Set(mem[sp-1].Reflect())
 			mem = mem[:sp-2]
 		case MapIndex:
-			mem[sp-2].Value = mem[sp-2].MapIndex(mem[sp-1].Value)
+			rv := mem[sp-2].ref.MapIndex(mem[sp-1].Reflect())
+			mem[sp-2] = fromReflect(rv)
 			mem = mem[:sp-1]
 		case MapSet:
-			mem[sp-3].SetMapIndex(mem[sp-2].Value, mem[sp-1].Value)
+			mem[sp-3].ref.SetMapIndex(mem[sp-2].Reflect(), mem[sp-1].Reflect())
 			mem = mem[:sp-2]
 		case SetS:
 			n := c.Arg[0]
 			for i := 0; i < n; i++ {
-				mem[sp-n-i-1].Set(mem[sp-n+i].Value)
+				assignSlot(&mem[sp-n-i-1], mem[sp-n+i])
 			}
 			mem = mem[:sp-n-1]
-			// mem[sp-2].Set(mem[sp-1].Value)
-			// mem = mem[:sp-2]
 		}
 		ip++
 	}
@@ -395,14 +435,6 @@ func (m *Machine) Push(v ...Value) (l int) {
 	return l
 }
 
-// Pop removes and returns the value on the top of machine stack.
-// func (m *Machine) Pop() (v Value) {
-// 	l := len(m.mem) - 1
-// 	v = m.mem[l]
-// 	m.mem = m.mem[:l]
-// 	return v
-// }
-
 // Top returns (but not remove)  the value on the top of machine stack.
 func (m *Machine) Top() (v Value) {
 	if l := len(m.mem); l > 0 {
@@ -418,14 +450,16 @@ func (m *Machine) PopExit() {
 	}
 }
 
-// Vstring returns the string repreentation of a list of values.
+// Vstring returns the string representation of a list of values.
 func Vstring(lv []Value) string {
-	s := "["
-	for _, v := range lv {
-		if s != "[" {
-			s += " "
+	var sb strings.Builder
+	sb.WriteByte('[')
+	for i, v := range lv {
+		if i > 0 {
+			sb.WriteByte(' ')
 		}
-		s += fmt.Sprintf("%v", v.Value)
+		fmt.Fprintf(&sb, "%v", v.Interface())
 	}
-	return s + "]"
+	sb.WriteByte(']')
+	return sb.String()
 }
