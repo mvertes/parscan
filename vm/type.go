@@ -40,10 +40,50 @@ type Value struct {
 	ref reflect.Value // composite data OR reflect.Zero(t) for numeric type metadata
 }
 
-// Pre-computed zero reflect.Values for common numeric types (zero allocation).
+// NumTypes is the number of supported numeric types for per-type opcodes.
+const NumTypes = 12
+
+// NumKindOffset maps a reflect.Kind to a 0-based offset into per-type opcode blocks.
+// Returns -1 for non-numeric kinds.
+var NumKindOffset [reflect.Float64 + 1]int
+
+func init() {
+	for i := range NumKindOffset {
+		NumKindOffset[i] = -1
+	}
+	NumKindOffset[reflect.Int] = 0
+	NumKindOffset[reflect.Int8] = 1
+	NumKindOffset[reflect.Int16] = 2
+	NumKindOffset[reflect.Int32] = 3
+	NumKindOffset[reflect.Int64] = 4
+	NumKindOffset[reflect.Uint] = 5
+	NumKindOffset[reflect.Uint8] = 6
+	NumKindOffset[reflect.Uint16] = 7
+	NumKindOffset[reflect.Uint32] = 8
+	NumKindOffset[reflect.Uint64] = 9
+	NumKindOffset[reflect.Float32] = 10
+	NumKindOffset[reflect.Float64] = 11
+}
+
+// Pre-computed zero reflect.Values for all numeric types (zero allocation).
 var (
-	zeroInt  = reflect.Zero(reflect.TypeOf(int(0)))
 	zeroBool = reflect.Zero(reflect.TypeOf(false))
+
+	// numZero is indexed by NumKindOffset to get the reflect.Zero for each numeric type.
+	numZero = [NumTypes]reflect.Value{
+		reflect.Zero(reflect.TypeOf(int(0))),
+		reflect.Zero(reflect.TypeOf(int8(0))),
+		reflect.Zero(reflect.TypeOf(int16(0))),
+		reflect.Zero(reflect.TypeOf(int32(0))),
+		reflect.Zero(reflect.TypeOf(int64(0))),
+		reflect.Zero(reflect.TypeOf(uint(0))),
+		reflect.Zero(reflect.TypeOf(uint8(0))),
+		reflect.Zero(reflect.TypeOf(uint16(0))),
+		reflect.Zero(reflect.TypeOf(uint32(0))),
+		reflect.Zero(reflect.TypeOf(uint64(0))),
+		reflect.Zero(reflect.TypeOf(float32(0))),
+		reflect.Zero(reflect.TypeOf(float64(0))),
+	}
 )
 
 // isNum reports whether k is a numeric kind.

@@ -78,6 +78,88 @@ const (
 	HSet                   // v --    ; *State.Env[$1] = v
 	HPtr                   // -- &cell ; push State.Env[$1] itself (transitive capture)
 	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, env}
+
+	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
+	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
+	// The compiler computes: baseOp + Op(NumKindOffset[kind]).
+
+	AddInt // n1 n2 -- sum
+	AddInt8
+	AddInt16
+	AddInt32
+	AddInt64
+	AddUint
+	AddUint8
+	AddUint16
+	AddUint32
+	AddUint64
+	AddFloat32
+	AddFloat64
+
+	SubInt // n1 n2 -- diff
+	SubInt8
+	SubInt16
+	SubInt32
+	SubInt64
+	SubUint
+	SubUint8
+	SubUint16
+	SubUint32
+	SubUint64
+	SubFloat32
+	SubFloat64
+
+	MulInt // n1 n2 -- prod
+	MulInt8
+	MulInt16
+	MulInt32
+	MulInt64
+	MulUint
+	MulUint8
+	MulUint16
+	MulUint32
+	MulUint64
+	MulFloat32
+	MulFloat64
+
+	NegateInt // n -- -n
+	NegateInt8
+	NegateInt16
+	NegateInt32
+	NegateInt64
+	NegateUint
+	NegateUint8
+	NegateUint16
+	NegateUint32
+	NegateUint64
+	NegateFloat32
+	NegateFloat64
+
+	GreaterInt // n1 n2 -- cond
+	GreaterInt8
+	GreaterInt16
+	GreaterInt32
+	GreaterInt64
+	GreaterUint
+	GreaterUint8
+	GreaterUint16
+	GreaterUint32
+	GreaterUint64
+	GreaterFloat32
+	GreaterFloat64
+
+	LowerInt // n1 n2 -- cond
+	LowerInt8
+	LowerInt16
+	LowerInt32
+	LowerInt64
+	LowerUint
+	LowerUint8
+	LowerUint16
+	LowerUint32
+	LowerUint64
+	LowerFloat32
+	LowerFloat64
 )
 
 // Memory attributes.
@@ -320,7 +402,7 @@ func (m *Machine) Run() (err error) {
 		case Pop:
 			mem = mem[:sp-c.Arg[0]]
 		case Push:
-			mem = append(mem, Value{num: uint64(c.Arg[0]), ref: zeroInt}) //nolint:gosec
+			mem = append(mem, Value{num: uint64(c.Arg[0]), ref: numZero[0]}) //nolint:gosec
 		case Pull:
 			next, stop := iter.Pull(mem[sp-1].Seq())
 			mem = append(mem, ValueOf(next), ValueOf(stop))
@@ -417,6 +499,186 @@ func (m *Machine) Run() (err error) {
 				assignSlot(&mem[sp-n-i-1], mem[sp-n+i])
 			}
 			mem = mem[:sp-n-1]
+
+		// Per-type Add.
+		case AddInt, AddInt64:
+			mem[sp-2].num = uint64(int64(mem[sp-2].num) + int64(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddInt8:
+			mem[sp-2].num = uint64(int8(mem[sp-2].num) + int8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddInt16:
+			mem[sp-2].num = uint64(int16(mem[sp-2].num) + int16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddInt32:
+			mem[sp-2].num = uint64(int32(mem[sp-2].num) + int32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddUint, AddUint64:
+			mem[sp-2].num += mem[sp-1].num
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddUint8:
+			mem[sp-2].num = uint64(uint8(mem[sp-2].num) + uint8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddUint16:
+			mem[sp-2].num = uint64(uint16(mem[sp-2].num) + uint16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddUint32:
+			mem[sp-2].num = uint64(uint32(mem[sp-2].num) + uint32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddFloat64:
+			mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) + math.Float64frombits(mem[sp-1].num))
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+		case AddFloat32:
+			mem[sp-2].num = math.Float64bits(float64(float32(math.Float64frombits(mem[sp-2].num)) + float32(math.Float64frombits(mem[sp-1].num))))
+			mem[sp-2].ref = numZero[c.Op-AddInt]
+			mem = mem[:sp-1]
+
+		// Per-type Sub.
+		case SubInt, SubInt64:
+			mem[sp-2].num = uint64(int64(mem[sp-2].num) - int64(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubInt8:
+			mem[sp-2].num = uint64(int8(mem[sp-2].num) - int8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubInt16:
+			mem[sp-2].num = uint64(int16(mem[sp-2].num) - int16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubInt32:
+			mem[sp-2].num = uint64(int32(mem[sp-2].num) - int32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubUint, SubUint64:
+			mem[sp-2].num -= mem[sp-1].num
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubUint8:
+			mem[sp-2].num = uint64(uint8(mem[sp-2].num) - uint8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubUint16:
+			mem[sp-2].num = uint64(uint16(mem[sp-2].num) - uint16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubUint32:
+			mem[sp-2].num = uint64(uint32(mem[sp-2].num) - uint32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubFloat64:
+			mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) - math.Float64frombits(mem[sp-1].num))
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+		case SubFloat32:
+			mem[sp-2].num = math.Float64bits(float64(float32(math.Float64frombits(mem[sp-2].num)) - float32(math.Float64frombits(mem[sp-1].num))))
+			mem[sp-2].ref = numZero[c.Op-SubInt]
+			mem = mem[:sp-1]
+
+		// Per-type Mul.
+		case MulInt, MulInt64:
+			mem[sp-2].num = uint64(int64(mem[sp-2].num) * int64(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulInt8:
+			mem[sp-2].num = uint64(int8(mem[sp-2].num) * int8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulInt16:
+			mem[sp-2].num = uint64(int16(mem[sp-2].num) * int16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulInt32:
+			mem[sp-2].num = uint64(int32(mem[sp-2].num) * int32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulUint, MulUint64:
+			mem[sp-2].num *= mem[sp-1].num
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulUint8:
+			mem[sp-2].num = uint64(uint8(mem[sp-2].num) * uint8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulUint16:
+			mem[sp-2].num = uint64(uint16(mem[sp-2].num) * uint16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulUint32:
+			mem[sp-2].num = uint64(uint32(mem[sp-2].num) * uint32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulFloat64:
+			mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) * math.Float64frombits(mem[sp-1].num))
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+		case MulFloat32:
+			mem[sp-2].num = math.Float64bits(float64(float32(math.Float64frombits(mem[sp-2].num)) * float32(math.Float64frombits(mem[sp-1].num))))
+			mem[sp-2].ref = numZero[c.Op-MulInt]
+			mem = mem[:sp-1]
+
+		// Per-type Negate.
+		case NegateInt, NegateInt64:
+			mem[sp-1].num = uint64(-int64(mem[sp-1].num)) //nolint:gosec
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateInt8:
+			mem[sp-1].num = uint64(-int8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateInt16:
+			mem[sp-1].num = uint64(-int16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateInt32:
+			mem[sp-1].num = uint64(-int32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateUint, NegateUint64:
+			mem[sp-1].num = -mem[sp-1].num
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateUint8:
+			mem[sp-1].num = uint64(-uint8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateUint16:
+			mem[sp-1].num = uint64(-uint16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateUint32:
+			mem[sp-1].num = uint64(-uint32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateFloat64:
+			mem[sp-1].num = math.Float64bits(-math.Float64frombits(mem[sp-1].num))
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+		case NegateFloat32:
+			mem[sp-1].num = math.Float64bits(-float64(float32(math.Float64frombits(mem[sp-1].num))))
+			mem[sp-1].ref = numZero[c.Op-NegateInt]
+
+		// Per-type Greater.
+		case GreaterInt, GreaterInt8, GreaterInt16, GreaterInt32, GreaterInt64:
+			mem[sp-2] = ValueOf(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
+			mem = mem[:sp-1]
+		case GreaterUint, GreaterUint8, GreaterUint16, GreaterUint32, GreaterUint64:
+			mem[sp-2] = ValueOf(mem[sp-2].num > mem[sp-1].num)
+			mem = mem[:sp-1]
+		case GreaterFloat32, GreaterFloat64:
+			mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) > math.Float64frombits(mem[sp-1].num))
+			mem = mem[:sp-1]
+
+		// Per-type Lower.
+		case LowerInt, LowerInt8, LowerInt16, LowerInt32, LowerInt64:
+			mem[sp-2] = ValueOf(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
+			mem = mem[:sp-1]
+		case LowerUint, LowerUint8, LowerUint16, LowerUint32, LowerUint64:
+			mem[sp-2] = ValueOf(mem[sp-2].num < mem[sp-1].num)
+			mem = mem[:sp-1]
+		case LowerFloat32, LowerFloat64:
+			mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
+			mem = mem[:sp-1]
 		}
 		ip++
 	}
@@ -483,9 +745,28 @@ func assignSlot(dst *Value, src Value) {
 	if isNum(src.ref.Kind()) {
 		dst.num = src.num
 		if dst.ref.CanSet() {
-			dst.ref.Set(src.Reflect())
+			if isNum(dst.ref.Kind()) {
+				setNumReflect(dst.ref, src.num)
+			} else {
+				dst.ref.Set(src.Reflect())
+			}
 		}
 	} else {
 		dst.ref.Set(src.ref)
+	}
+}
+
+// setNumReflect writes the raw bits from num into a settable numeric reflect.Value,
+// handling cross-type assignment (e.g. int literal into uint16 slot).
+func setNumReflect(rv reflect.Value, num uint64) {
+	switch rv.Kind() {
+	case reflect.Bool:
+		rv.SetBool(num != 0)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		rv.SetInt(int64(num)) //nolint:gosec
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		rv.SetUint(num)
+	case reflect.Float32, reflect.Float64:
+		rv.SetFloat(math.Float64frombits(num))
 	}
 }

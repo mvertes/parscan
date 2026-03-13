@@ -109,19 +109,23 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.Get, vm.Global, i)
 
 		case lang.Add:
-			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
-			c.emit(t, vm.Add)
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, numericOp(vm.AddInt, vm.Add, typ))
 
 		case lang.Mul:
-			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
-			c.emit(t, vm.Mul)
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, numericOp(vm.MulInt, vm.Mul, typ))
 
 		case lang.Sub:
-			push(&symbol.Symbol{Kind: symbol.Value, Type: arithmeticOpType(pop(), pop())})
-			c.emit(t, vm.Sub)
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, numericOp(vm.SubInt, vm.Sub, typ))
 
 		case lang.Minus:
-			c.emit(t, vm.Negate)
+			typ := symbol.Vtype(top())
+			c.emit(t, numericOp(vm.NegateInt, vm.Negate, typ))
 
 		case lang.Not:
 			c.emit(t, vm.Not)
@@ -148,12 +152,16 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type.Elem()})
 
 		case lang.Greater:
-			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(pop(), pop())})
-			c.emit(t, vm.Greater)
+			s2, s1 := pop(), pop()
+			typ := symbol.Vtype(s1)
+			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
+			c.emit(t, numericOp(vm.GreaterInt, vm.Greater, typ))
 
 		case lang.Less:
-			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(pop(), pop())})
-			c.emit(t, vm.Lower)
+			s2, s1 := pop(), pop()
+			typ := symbol.Vtype(s1)
+			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
+			c.emit(t, numericOp(vm.LowerInt, vm.Lower, typ))
 
 		case lang.Call:
 			narg := t.Arg[0].(int)
@@ -569,6 +577,19 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 
 func arithmeticOpType(s, _ *symbol.Symbol) *vm.Type { return symbol.Vtype(s) }
 func booleanOpType(_, _ *symbol.Symbol) *vm.Type    { return vm.TypeOf(true) }
+
+// numericOp returns a per-type opcode computed as base + type offset.
+// If the type is not a numeric type, it returns the fallback opcode.
+func numericOp(base, fallback vm.Op, typ *vm.Type) vm.Op {
+	if typ == nil || int(typ.Rtype.Kind()) >= len(vm.NumKindOffset) { //nolint:gosec
+		return fallback
+	}
+	off := vm.NumKindOffset[typ.Rtype.Kind()]
+	if off < 0 {
+		return fallback
+	}
+	return base + vm.Op(off)
+}
 
 // PrintCode pretty prints the generated code.
 func (c *Compiler) PrintCode() {

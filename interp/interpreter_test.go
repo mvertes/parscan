@@ -523,9 +523,9 @@ func TestBitwiseInt(t *testing.T) {
 func TestArithUint(t *testing.T) {
 	run(t, []etest{
 		// Basic uint arithmetic.
-		{n: "add", src: "var a, b uint = 3, 4; a + b", res: "7", skip: true},
-		{n: "sub", src: "var a, b uint = 10, 3; a - b", res: "7", skip: true},
-		{n: "mul", src: "var a, b uint = 6, 7; a * b", res: "42", skip: true},
+		{n: "add", src: "var a, b uint = 3, 4; a + b", res: "7"},
+		{n: "sub", src: "var a, b uint = 10, 3; a - b", res: "7"},
+		{n: "mul", src: "var a, b uint = 6, 7; a * b", res: "42"},
 		{n: "div", src: "var a, b uint = 10, 3; a / b", res: "3", skip: true},
 		{n: "rem", src: "var a, b uint = 10, 3; a % b", res: "1", skip: true},
 
@@ -537,14 +537,14 @@ func TestArithUint(t *testing.T) {
 		{n: "max_uint", src: "var a uint = 18446744073709551615; a", res: "18446744073709551615", skip: true},
 
 		// Uint8 boundary.
-		{n: "uint8_max", src: "var a uint8 = 255; a", res: "255", skip: true},
-		{n: "uint8_add_wrap", src: "var a uint8 = 255; var b uint8 = 1; a + b", res: "0", skip: true},
+		{n: "uint8_max", src: "var a uint8 = 255; a", res: "255"},
+		{n: "uint8_add_wrap", src: "var a uint8 = 255; var b uint8 = 1; a + b", res: "0"},
 
 		// Uint16 boundary.
-		{n: "uint16_max", src: "var a uint16 = 65535; a", res: "65535", skip: true},
+		{n: "uint16_max", src: "var a uint16 = 65535; a", res: "65535"},
 
 		// Uint32 boundary.
-		{n: "uint32_max", src: "var a uint32 = 4294967295; a", res: "4294967295", skip: true},
+		{n: "uint32_max", src: "var a uint32 = 4294967295; a", res: "4294967295"},
 
 		// Right shift on unsigned is logical (zero-fill).
 		{n: "shr_logical", src: "var a uint = 18446744073709551615; a >> 60", res: "15", skip: true},
@@ -554,17 +554,17 @@ func TestArithUint(t *testing.T) {
 func TestArithFloat(t *testing.T) {
 	run(t, []etest{
 		// Basic float64 arithmetic.
-		{n: "add", src: "var a, b float64 = 1.5, 2.5; a + b", res: "4", skip: true},
-		{n: "sub", src: "var a, b float64 = 5.5, 2.0; a - b", res: "3.5", skip: true},
-		{n: "mul", src: "var a, b float64 = 2.5, 4.0; a * b", res: "10", skip: true},
+		{n: "add", src: "var a, b float64 = 1.5, 2.5; a + b", res: "4"},
+		{n: "sub", src: "var a, b float64 = 5.5, 2.0; a - b", res: "3.5"},
+		{n: "mul", src: "var a, b float64 = 2.5, 4.0; a * b", res: "10"},
 		{n: "div", src: "var a, b float64 = 7.0, 2.0; a / b", res: "3.5", skip: true},
-		{n: "negate", src: "var a float64 = 3.14; -a", res: "-3.14", skip: true},
+		{n: "negate", src: "var a float64 = 3.14; -a", res: "-3.14"},
 
 		// Float comparisons.
-		{n: "gt_true", src: "var a, b float64 = 3.14, 2.71; a > b", res: "true", skip: true},
-		{n: "gt_false", src: "var a, b float64 = 2.71, 3.14; a > b", res: "false", skip: true},
-		{n: "lt_true", src: "var a, b float64 = 2.71, 3.14; a < b", res: "true", skip: true},
-		{n: "eq_true", src: "var a, b float64 = 3.14, 3.14; a == b", res: "true", skip: true},
+		{n: "gt_true", src: "var a, b float64 = 3.14, 2.71; a > b", res: "true"},
+		{n: "gt_false", src: "var a, b float64 = 2.71, 3.14; a > b", res: "false"},
+		{n: "lt_true", src: "var a, b float64 = 2.71, 3.14; a < b", res: "true"},
+		{n: "eq_true", src: "var a, b float64 = 3.14, 3.14; a == b", res: "true"},
 		{n: "ne_true", src: "var a, b float64 = 3.14, 2.71; a != b", res: "true", skip: true},
 		{n: "ge_true", src: "var a, b float64 = 3.14, 3.14; a >= b", res: "true", skip: true},
 		{n: "le_true", src: "var a, b float64 = 2.71, 3.14; a <= b", res: "true", skip: true},
@@ -577,7 +577,7 @@ func TestArithFloat(t *testing.T) {
 		{n: "lit_neg", src: "-3.14", res: "-3.14"},
 
 		// Float32.
-		{n: "f32_add", src: "var a, b float32 = 1.5, 2.5; a + b", res: "4", skip: true},
+		{n: "f32_add", src: "var a, b float32 = 1.5, 2.5; a + b", res: "4"},
 
 		// Division by zero produces +Inf.
 		{n: "div_zero_pos", src: "var a, b float64 = 1.0, 0.0; a / b", res: "+Inf", skip: true},
@@ -594,27 +594,27 @@ func TestArithFloat(t *testing.T) {
 func TestArithTypedInt(t *testing.T) {
 	run(t, []etest{
 		// Int8.
-		{n: "int8_add", src: "var a, b int8 = 100, 20; a + b", res: "120", skip: true},
-		{n: "int8_max", src: "var a int8 = 127; a", res: "127", skip: true},
-		{n: "int8_min", src: "var a int8 = -128; a", res: "-128", skip: true},
-		{n: "int8_wrap", src: "var a int8 = 127; var b int8 = 1; a + b", res: "-128", skip: true},
+		{n: "int8_add", src: "var a, b int8 = 100, 20; a + b", res: "120"},
+		{n: "int8_max", src: "var a int8 = 127; a", res: "127"},
+		{n: "int8_min", src: "var a int8 = -128; a", res: "-128"},
+		{n: "int8_wrap", src: "var a int8 = 127; var b int8 = 1; a + b", res: "-128"},
 
 		// Int16.
-		{n: "int16_add", src: "var a, b int16 = 1000, 2000; a + b", res: "3000", skip: true},
-		{n: "int16_max", src: "var a int16 = 32767; a", res: "32767", skip: true},
-		{n: "int16_min", src: "var a int16 = -32768; a", res: "-32768", skip: true},
+		{n: "int16_add", src: "var a, b int16 = 1000, 2000; a + b", res: "3000"},
+		{n: "int16_max", src: "var a int16 = 32767; a", res: "32767"},
+		{n: "int16_min", src: "var a int16 = -32768; a", res: "-32768"},
 
 		// Int32.
-		{n: "int32_add", src: "var a, b int32 = 100000, 200000; a + b", res: "300000", skip: true},
-		{n: "int32_max", src: "var a int32 = 2147483647; a", res: "2147483647", skip: true},
+		{n: "int32_add", src: "var a, b int32 = 100000, 200000; a + b", res: "300000"},
+		{n: "int32_max", src: "var a int32 = 2147483647; a", res: "2147483647"},
 
 		// Int64.
-		{n: "int64_add", src: "var a, b int64 = 100, 200; a + b", res: "300", skip: true},
-		{n: "int64_max", src: "var a int64 = 9223372036854775807; a", res: "9223372036854775807", skip: true},
+		{n: "int64_add", src: "var a, b int64 = 100, 200; a + b", res: "300"},
+		{n: "int64_max", src: "var a int64 = 9223372036854775807; a", res: "9223372036854775807"},
 
 		// Typed operations preserve type.
-		{n: "int8_mul", src: "var a, b int8 = 10, 12; a * b", res: "120", skip: true},
-		{n: "int16_mul", src: "var a, b int16 = 200, 100; a * b", res: "20000", skip: true},
+		{n: "int8_mul", src: "var a, b int8 = 10, 12; a * b", res: "120"},
+		{n: "int16_mul", src: "var a, b int16 = 200, 100; a * b", res: "20000"},
 		{n: "int32_div", src: "var a, b int32 = 100, 3; a / b", res: "33", skip: true},
 		{n: "int64_rem", src: "var a, b int64 = 100, 7; a % b", res: "2", skip: true},
 	})

@@ -124,6 +124,19 @@ func (sm SymMap) Init() {
 	sm["bool"] = &Symbol{Name: "bool", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*bool)(nil)).Elem()}
 	sm["error"] = &Symbol{Name: "error", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*error)(nil)).Elem()}
 	sm["int"] = &Symbol{Name: "int", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*int)(nil)).Elem()}
+	sm["int8"] = &Symbol{Name: "int8", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*int8)(nil)).Elem()}
+	sm["int16"] = &Symbol{Name: "int16", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*int16)(nil)).Elem()}
+	sm["int32"] = &Symbol{Name: "int32", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*int32)(nil)).Elem()}
+	sm["int64"] = &Symbol{Name: "int64", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*int64)(nil)).Elem()}
+	sm["uint"] = &Symbol{Name: "uint", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uint)(nil)).Elem()}
+	sm["uint8"] = &Symbol{Name: "uint8", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uint8)(nil)).Elem()}
+	sm["uint16"] = &Symbol{Name: "uint16", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uint16)(nil)).Elem()}
+	sm["uint32"] = &Symbol{Name: "uint32", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uint32)(nil)).Elem()}
+	sm["uint64"] = &Symbol{Name: "uint64", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uint64)(nil)).Elem()}
+	sm["float32"] = &Symbol{Name: "float32", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*float32)(nil)).Elem()}
+	sm["float64"] = &Symbol{Name: "float64", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*float64)(nil)).Elem()}
+	sm["byte"] = sm["uint8"]
+	sm["rune"] = sm["int32"]
 	sm["string"] = &Symbol{Name: "string", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*string)(nil)).Elem()}
 
 	sm["nil"] = &Symbol{Name: "nil", Kind: Value, Index: UnsetAddr}
