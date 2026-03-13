@@ -46,7 +46,7 @@ var (
 	zeroBool = reflect.Zero(reflect.TypeOf(false))
 )
 
-// isNum reports whether k is a numeric kind (bool through float64).
+// isNum reports whether k is a numeric kind.
 func isNum(k reflect.Kind) bool { return k >= reflect.Bool && k <= reflect.Float64 }
 
 // numBits extracts the raw bits from a numeric reflect.Value.

@@ -28,7 +28,7 @@ Go language support:
 
 - [x] named functions
 - [x] anonymous functions (closures)
-- [ ] methods
+- [x] methods
 - [x] internal function calls
 - [x] external function calls (calling runtime symbols in interpreter)
 - [ ] export to runtime

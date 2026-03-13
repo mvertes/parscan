@@ -412,3 +412,210 @@ func TestMethod(t *testing.T) {
 		{n: "#11", src: `type T struct{n int}; func(t T) Adder() func(int) int { return func(a int) int { return t.n + a } }; x := T{3}; add := x.Adder(); add(4)`, res: "7"},
 	})
 }
+
+func TestArithInt(t *testing.T) {
+	run(t, []etest{
+		// Basic addition.
+		{n: "add", src: "3 + 4", res: "7"},
+		{n: "add_neg", src: "-3 + 4", res: "1"},
+		{n: "add_zero", src: "0 + 0", res: "0"},
+
+		// Subtraction.
+		{n: "sub", src: "10 - 3", res: "7"},
+		{n: "sub_neg_result", src: "3 - 10", res: "-7"},
+
+		// Multiplication.
+		{n: "mul", src: "6 * 7", res: "42"},
+		{n: "mul_zero", src: "42 * 0", res: "0"},
+		{n: "mul_neg", src: "-3 * 4", res: "-12"},
+
+		// Division.
+		{n: "div", src: "10 / 3", res: "3", skip: true},
+		{n: "div_exact", src: "12 / 4", res: "3", skip: true},
+		{n: "div_neg", src: "-7 / 2", res: "-3", skip: true},
+		{n: "div_neg2", src: "7 / -2", res: "-3", skip: true},
+
+		// Remainder.
+		{n: "rem", src: "10 % 3", res: "1", skip: true},
+		{n: "rem_neg", src: "-10 % 3", res: "-1", skip: true},
+		{n: "rem_exact", src: "12 % 4", res: "0", skip: true},
+
+		// Unary negate.
+		{n: "negate", src: "-42", res: "-42"},
+		{n: "negate_neg", src: "a := -1; -a", res: "1"},
+
+		// Comparisons (existing).
+		{n: "gt_true", src: "3 > 2", res: "true"},
+		{n: "gt_false", src: "2 > 3", res: "false"},
+		{n: "lt_true", src: "2 < 3", res: "true"},
+		{n: "lt_false", src: "3 < 2", res: "false"},
+		{n: "eq_true", src: "3 == 3", res: "true"},
+		{n: "eq_false", src: "3 == 4", res: "false"},
+
+		// Comparisons (missing).
+		{n: "ge_true", src: "3 >= 3", res: "true", skip: true},
+		{n: "ge_true2", src: "4 >= 3", res: "true", skip: true},
+		{n: "ge_false", src: "2 >= 3", res: "false", skip: true},
+		{n: "le_true", src: "3 <= 3", res: "true", skip: true},
+		{n: "le_true2", src: "2 <= 3", res: "true", skip: true},
+		{n: "le_false", src: "4 <= 3", res: "false", skip: true},
+		{n: "ne_true", src: "3 != 4", res: "true", skip: true},
+		{n: "ne_false", src: "3 != 3", res: "false", skip: true},
+
+		// Overflow boundary: int wraps on overflow (two's complement).
+		{n: "max_int", src: "var a int = 9223372036854775807; a", res: "9223372036854775807"},
+		{n: "min_int", src: "var a int = -9223372036854775808; a", res: "-9223372036854775808", skip: true},
+
+		// Increment / Decrement.
+		{n: "inc", src: "a := 5; a++; a", res: "6", skip: true},
+		{n: "dec", src: "a := 5; a--; a", res: "4", skip: true},
+
+		// Compound assignment.
+		{n: "add_assign", src: "a := 5; a += 3; a", res: "8", skip: true},
+		{n: "sub_assign", src: "a := 5; a -= 3; a", res: "2", skip: true},
+		{n: "mul_assign", src: "a := 5; a *= 3; a", res: "15", skip: true},
+		{n: "div_assign", src: "a := 12; a /= 4; a", res: "3", skip: true},
+		{n: "rem_assign", src: "a := 10; a %= 3; a", res: "1", skip: true},
+	})
+}
+
+func TestBitwiseInt(t *testing.T) {
+	run(t, []etest{
+		// Bitwise AND.
+		{n: "and", src: "0xff & 0x0f", res: "15", skip: true},
+		{n: "and_zero", src: "0xff & 0", res: "0", skip: true},
+
+		// Bitwise OR.
+		{n: "or", src: "0xf0 | 0x0f", res: "255", skip: true},
+		{n: "or_same", src: "0xff | 0xff", res: "255", skip: true},
+
+		// Bitwise XOR.
+		{n: "xor", src: "0xff ^ 0x0f", res: "240", skip: true},
+		{n: "xor_self", src: "a := 42; a ^ a", res: "0", skip: true},
+
+		// Bitwise AND NOT.
+		{n: "andnot", src: "0xff &^ 0x0f", res: "240", skip: true},
+
+		// Bitwise complement (unary ^).
+		{n: "comp", src: "^0", res: "-1", skip: true},
+		{n: "comp_neg1", src: "^-1", res: "0", skip: true},
+
+		// Left shift.
+		{n: "shl", src: "1 << 10", res: "1024", skip: true},
+		{n: "shl_zero", src: "42 << 0", res: "42", skip: true},
+
+		// Right shift (arithmetic for signed).
+		{n: "shr", src: "1024 >> 3", res: "128", skip: true},
+		{n: "shr_neg", src: "-8 >> 1", res: "-4", skip: true},
+
+		// Shift compound assignment.
+		{n: "shl_assign", src: "a := 1; a <<= 4; a", res: "16", skip: true},
+		{n: "shr_assign", src: "a := 16; a >>= 4; a", res: "1", skip: true},
+
+		// Bitwise compound assignment.
+		{n: "and_assign", src: "a := 0xff; a &= 0x0f; a", res: "15", skip: true},
+		{n: "or_assign", src: "a := 0xf0; a |= 0x0f; a", res: "255", skip: true},
+		{n: "xor_assign", src: "a := 0xff; a ^= 0x0f; a", res: "240", skip: true},
+		{n: "andnot_assign", src: "a := 0xff; a &^= 0x0f; a", res: "240", skip: true},
+	})
+}
+
+func TestArithUint(t *testing.T) {
+	run(t, []etest{
+		// Basic uint arithmetic.
+		{n: "add", src: "var a, b uint = 3, 4; a + b", res: "7", skip: true},
+		{n: "sub", src: "var a, b uint = 10, 3; a - b", res: "7", skip: true},
+		{n: "mul", src: "var a, b uint = 6, 7; a * b", res: "42", skip: true},
+		{n: "div", src: "var a, b uint = 10, 3; a / b", res: "3", skip: true},
+		{n: "rem", src: "var a, b uint = 10, 3; a % b", res: "1", skip: true},
+
+		// Unsigned comparisons: values > MaxInt64 must compare correctly.
+		{n: "gt_large", src: "var a uint = 18446744073709551615; var b uint = 0; a > b", res: "true", skip: true},
+		{n: "lt_large", src: "var a uint = 0; var b uint = 18446744073709551615; a < b", res: "true", skip: true},
+
+		// Max uint value.
+		{n: "max_uint", src: "var a uint = 18446744073709551615; a", res: "18446744073709551615", skip: true},
+
+		// Uint8 boundary.
+		{n: "uint8_max", src: "var a uint8 = 255; a", res: "255", skip: true},
+		{n: "uint8_add_wrap", src: "var a uint8 = 255; var b uint8 = 1; a + b", res: "0", skip: true},
+
+		// Uint16 boundary.
+		{n: "uint16_max", src: "var a uint16 = 65535; a", res: "65535", skip: true},
+
+		// Uint32 boundary.
+		{n: "uint32_max", src: "var a uint32 = 4294967295; a", res: "4294967295", skip: true},
+
+		// Right shift on unsigned is logical (zero-fill).
+		{n: "shr_logical", src: "var a uint = 18446744073709551615; a >> 60", res: "15", skip: true},
+	})
+}
+
+func TestArithFloat(t *testing.T) {
+	run(t, []etest{
+		// Basic float64 arithmetic.
+		{n: "add", src: "var a, b float64 = 1.5, 2.5; a + b", res: "4", skip: true},
+		{n: "sub", src: "var a, b float64 = 5.5, 2.0; a - b", res: "3.5", skip: true},
+		{n: "mul", src: "var a, b float64 = 2.5, 4.0; a * b", res: "10", skip: true},
+		{n: "div", src: "var a, b float64 = 7.0, 2.0; a / b", res: "3.5", skip: true},
+		{n: "negate", src: "var a float64 = 3.14; -a", res: "-3.14", skip: true},
+
+		// Float comparisons.
+		{n: "gt_true", src: "var a, b float64 = 3.14, 2.71; a > b", res: "true", skip: true},
+		{n: "gt_false", src: "var a, b float64 = 2.71, 3.14; a > b", res: "false", skip: true},
+		{n: "lt_true", src: "var a, b float64 = 2.71, 3.14; a < b", res: "true", skip: true},
+		{n: "eq_true", src: "var a, b float64 = 3.14, 3.14; a == b", res: "true", skip: true},
+		{n: "ne_true", src: "var a, b float64 = 3.14, 2.71; a != b", res: "true", skip: true},
+		{n: "ge_true", src: "var a, b float64 = 3.14, 3.14; a >= b", res: "true", skip: true},
+		{n: "le_true", src: "var a, b float64 = 2.71, 3.14; a <= b", res: "true", skip: true},
+
+		// Float literals.
+		{n: "lit_add", src: "1.5 + 2.5", res: "4", skip: true},
+		{n: "lit_sub", src: "5.0 - 1.5", res: "3.5", skip: true},
+		{n: "lit_mul", src: "2.5 * 4.0", res: "10", skip: true},
+		{n: "lit_div", src: "7.0 / 2.0", res: "3.5", skip: true},
+		{n: "lit_neg", src: "-3.14", res: "-3.14", skip: true},
+
+		// Float32.
+		{n: "f32_add", src: "var a, b float32 = 1.5, 2.5; a + b", res: "4", skip: true},
+
+		// Division by zero produces +Inf.
+		{n: "div_zero_pos", src: "var a, b float64 = 1.0, 0.0; a / b", res: "+Inf", skip: true},
+		{n: "div_zero_neg", src: "var a, b float64 = -1.0, 0.0; a / b", res: "-Inf", skip: true},
+
+		// Float compound assignment.
+		{n: "add_assign", src: "var a float64 = 1.5; a += 2.5; a", res: "4", skip: true},
+		{n: "sub_assign", src: "var a float64 = 5.0; a -= 1.5; a", res: "3.5", skip: true},
+		{n: "mul_assign", src: "var a float64 = 2.5; a *= 4.0; a", res: "10", skip: true},
+		{n: "div_assign", src: "var a float64 = 7.0; a /= 2.0; a", res: "3.5", skip: true},
+	})
+}
+
+func TestArithTypedInt(t *testing.T) {
+	run(t, []etest{
+		// Int8.
+		{n: "int8_add", src: "var a, b int8 = 100, 20; a + b", res: "120", skip: true},
+		{n: "int8_max", src: "var a int8 = 127; a", res: "127", skip: true},
+		{n: "int8_min", src: "var a int8 = -128; a", res: "-128", skip: true},
+		{n: "int8_wrap", src: "var a int8 = 127; var b int8 = 1; a + b", res: "-128", skip: true},
+
+		// Int16.
+		{n: "int16_add", src: "var a, b int16 = 1000, 2000; a + b", res: "3000", skip: true},
+		{n: "int16_max", src: "var a int16 = 32767; a", res: "32767", skip: true},
+		{n: "int16_min", src: "var a int16 = -32768; a", res: "-32768", skip: true},
+
+		// Int32.
+		{n: "int32_add", src: "var a, b int32 = 100000, 200000; a + b", res: "300000", skip: true},
+		{n: "int32_max", src: "var a int32 = 2147483647; a", res: "2147483647", skip: true},
+
+		// Int64.
+		{n: "int64_add", src: "var a, b int64 = 100, 200; a + b", res: "300", skip: true},
+		{n: "int64_max", src: "var a int64 = 9223372036854775807; a", res: "9223372036854775807", skip: true},
+
+		// Typed operations preserve type.
+		{n: "int8_mul", src: "var a, b int8 = 10, 12; a * b", res: "120", skip: true},
+		{n: "int16_mul", src: "var a, b int16 = 200, 100; a * b", res: "20000", skip: true},
+		{n: "int32_div", src: "var a, b int32 = 100, 3; a / b", res: "33", skip: true},
+		{n: "int64_rem", src: "var a, b int64 = 100, 7; a % b", res: "2", skip: true},
+	})
+}

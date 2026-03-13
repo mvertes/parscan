@@ -288,6 +288,7 @@ func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 	canEscape := prop&lang.StrEsc != 0
 	nonl := prop&lang.StrNonl != 0
 	excludeEnd := prop&lang.ExcludeEnd != 0
+	s = start
 	var esc bool
 
 	for i, r := range src[nstart:] {
