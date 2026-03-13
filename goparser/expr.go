@@ -38,7 +38,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	lin := len(in)
 	for i := 0; i < lin; i++ {
 		switch t := in[i]; t.Tok {
-		case lang.Int, lang.String:
+		case lang.Int, lang.Float, lang.String:
 			out = append(out, t)
 
 		case lang.Func:

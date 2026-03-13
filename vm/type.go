@@ -49,6 +49,9 @@ var (
 // isNum reports whether k is a numeric kind.
 func isNum(k reflect.Kind) bool { return k >= reflect.Bool && k <= reflect.Float64 }
 
+// isFloat reports whether k is a floating-point kind.
+func isFloat(k reflect.Kind) bool { return k == reflect.Float32 || k == reflect.Float64 }
+
 // numBits extracts the raw bits from a numeric reflect.Value.
 func numBits(rv reflect.Value) uint64 {
 	switch rv.Kind() {

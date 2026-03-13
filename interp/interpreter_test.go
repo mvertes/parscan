@@ -570,11 +570,11 @@ func TestArithFloat(t *testing.T) {
 		{n: "le_true", src: "var a, b float64 = 2.71, 3.14; a <= b", res: "true", skip: true},
 
 		// Float literals.
-		{n: "lit_add", src: "1.5 + 2.5", res: "4", skip: true},
-		{n: "lit_sub", src: "5.0 - 1.5", res: "3.5", skip: true},
-		{n: "lit_mul", src: "2.5 * 4.0", res: "10", skip: true},
+		{n: "lit_add", src: "1.5 + 2.5", res: "4"},
+		{n: "lit_sub", src: "5.0 - 1.5", res: "3.5"},
+		{n: "lit_mul", src: "2.5 * 4.0", res: "10"},
 		{n: "lit_div", src: "7.0 / 2.0", res: "3.5", skip: true},
-		{n: "lit_neg", src: "-3.14", res: "-3.14", skip: true},
+		{n: "lit_neg", src: "-3.14", res: "-3.14"},
 
 		// Float32.
 		{n: "f32_add", src: "var a, b float32 = 1.5, 2.5; a + b", res: "4", skip: true},

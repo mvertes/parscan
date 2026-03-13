@@ -85,6 +85,17 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(n), Type: vm.TypeOf(0)})
 			c.emit(t, vm.Push, n)
 
+		case lang.Float:
+			f, err := strconv.ParseFloat(t.Str, 64)
+			if err != nil {
+				return err
+			}
+			v := vm.ValueOf(f)
+			di := len(c.Data)
+			c.Data = append(c.Data, v)
+			push(&symbol.Symbol{Kind: symbol.Const, Value: v, Type: vm.TypeOf(0.0)})
+			c.emit(t, vm.Get, vm.Global, di)
+
 		case lang.String:
 			s := t.Block()
 			v := vm.ValueOf(s)

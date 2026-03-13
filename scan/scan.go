@@ -216,7 +216,8 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 				return Token{Tok: lang.Comment, Pos: p + i, Str: s, Beg: len(op), End: len(op)}, err
 			}
 		case isNum(r):
-			return Token{Tok: lang.Int, Pos: p + i, Str: sc.getNum(src[i:])}, nil
+			s, tok := sc.getNum(src[i:])
+			return Token{Tok: tok, Pos: p + i, Str: s}, nil
 		default:
 			t, isDefined := sc.getToken(src[i:])
 			if isDefined {
@@ -270,15 +271,53 @@ func (sc *Scanner) getOp(src string) (s string, isOp bool) {
 	return s, true
 }
 
-func (sc *Scanner) getNum(src string) (s string) {
-	// TODO: handle hexa, binary, octal, float and eng notations.
+func (sc *Scanner) getNum(src string) (s string, tok lang.Token) {
+	// TODO: handle hexa, binary, octal and eng notations.
+	tok = lang.Int
+	hasDot := false
+	hasExp := false
 	for i, r := range src {
-		if !isNum(r) {
-			break
+		switch {
+		case isNum(r):
+			// ok
+		case r == '.' && !hasDot && !hasExp:
+			// Check this is not a method call (e.g. 123.String()).
+			if i+1 < len(src) && isNum(rune(src[i+1])) {
+				hasDot = true
+				tok = lang.Float
+			} else {
+				return src[:i], tok
+			}
+		case (r == 'e' || r == 'E') && !hasExp:
+			hasExp = true
+			tok = lang.Float
+			// Allow optional +/- after exponent.
+			if i+1 < len(src) && (src[i+1] == '+' || src[i+1] == '-') {
+				s = src[:i+2]
+				continue
+			}
+		case r == '+' || r == '-':
+			// Only valid right after 'e'/'E', handled above via continue.
+			return s, tok
+		case r == 'x' || r == 'X' || r == 'o' || r == 'O' || r == 'b' || r == 'B':
+			if i == 1 && src[0] == '0' {
+				continue // hex/octal/binary prefix
+			}
+			return src[:i], tok
+		case (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F'):
+			// Hex digits: only valid after 0x prefix.
+			if len(src) > 2 && src[0] == '0' && (src[1] == 'x' || src[1] == 'X') {
+				continue
+			}
+			return src[:i], tok
+		case r == '_':
+			continue // digit separator
+		default:
+			return src[:i], tok
 		}
 		s = src[:i+1]
 	}
-	return s
+	return s, tok
 }
 
 func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {

@@ -5,6 +5,7 @@ import (
 	"fmt" // for tracing only
 	"iter"
 	"log"     // for tracing only
+	"math"    // for float arithmetic
 	"reflect" // for optional CallX only
 	"strings"
 	"unsafe" // to allow setting unexported struct fields //nolint:depguard
@@ -134,11 +135,19 @@ func (m *Machine) Run() (err error) {
 		ic++
 		switch c.Op {
 		case Add:
-			mem[sp-2].num = uint64(int64(mem[sp-2].num) + int64(mem[sp-1].num)) //nolint:gosec
+			if isFloat(mem[sp-2].ref.Kind()) {
+				mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) + math.Float64frombits(mem[sp-1].num))
+			} else {
+				mem[sp-2].num = uint64(int64(mem[sp-2].num) + int64(mem[sp-1].num)) //nolint:gosec
+			}
 			resetNumRef(&mem[sp-2])
 			mem = mem[:sp-1]
 		case Mul:
-			mem[sp-2].num = uint64(int64(mem[sp-2].num) * int64(mem[sp-1].num)) //nolint:gosec
+			if isFloat(mem[sp-2].ref.Kind()) {
+				mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) * math.Float64frombits(mem[sp-1].num))
+			} else {
+				mem[sp-2].num = uint64(int64(mem[sp-2].num) * int64(mem[sp-1].num)) //nolint:gosec
+			}
 			resetNumRef(&mem[sp-2])
 			mem = mem[:sp-1]
 		case Addr:
@@ -264,15 +273,27 @@ func (m *Machine) Run() (err error) {
 			}
 			mem = mem[:sp-1]
 		case Greater:
-			mem[sp-2] = ValueOf(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
+			if isFloat(mem[sp-2].ref.Kind()) {
+				mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) > math.Float64frombits(mem[sp-1].num))
+			} else {
+				mem[sp-2] = ValueOf(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
+			}
 			mem = mem[:sp-1]
 		case Lower:
-			mem[sp-2] = ValueOf(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
+			if isFloat(mem[sp-2].ref.Kind()) {
+				mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
+			} else {
+				mem[sp-2] = ValueOf(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
+			}
 			mem = mem[:sp-1]
 		case Len:
 			mem = append(mem, ValueOf(mem[sp-1-c.Arg[0]].ref.Len()))
 		case Negate:
-			mem[sp-1].num = uint64(-int64(mem[sp-1].num)) //nolint:gosec
+			if isFloat(mem[sp-1].ref.Kind()) {
+				mem[sp-1].num = math.Float64bits(-math.Float64frombits(mem[sp-1].num))
+			} else {
+				mem[sp-1].num = uint64(-int64(mem[sp-1].num)) //nolint:gosec
+			}
 			resetNumRef(&mem[sp-1])
 		case Next:
 			if k, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); ok {
@@ -341,7 +362,11 @@ func (m *Machine) Run() (err error) {
 			mem[sp-1].ref.Interface().(func())()
 			mem = mem[:sp-4]
 		case Sub:
-			mem[sp-2].num = uint64(int64(mem[sp-2].num) - int64(mem[sp-1].num)) //nolint:gosec
+			if isFloat(mem[sp-2].ref.Kind()) {
+				mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) - math.Float64frombits(mem[sp-1].num))
+			} else {
+				mem[sp-2].num = uint64(int64(mem[sp-2].num) - int64(mem[sp-1].num)) //nolint:gosec
+			}
 			resetNumRef(&mem[sp-2])
 			mem = mem[:sp-1]
 		case Swap:
