@@ -10,9 +10,30 @@ import (
 
 // Type is the representation of a runtime type.
 type Type struct {
-	PkgPath string
-	Name    string
-	Rtype   reflect.Type
+	PkgPath      string
+	Name         string
+	Rtype        reflect.Type
+	IfaceMethods []IfaceMethod // non-nil for interface types: required method signatures
+	Methods      []int         // concrete types: methods[methodID] = data index of code address
+}
+
+// IfaceMethod describes a method required by an interface type.
+type IfaceMethod struct {
+	Name string
+}
+
+// Iface represents a boxed interface value at runtime.
+// It preserves the concrete parscan type identity for dynamic method dispatch.
+type Iface struct {
+	Typ *Type // concrete parscan type (carries Name for method lookup)
+	Val Value // the concrete value
+}
+
+var ifaceRtype = reflect.TypeOf(Iface{})
+
+// IsInterface reports whether t represents an interface type.
+func (t *Type) IsInterface() bool {
+	return t != nil && t.Rtype.Kind() == reflect.Interface
 }
 
 func (t *Type) String() string {
@@ -128,9 +149,9 @@ func NewValue(typ reflect.Type, arg ...int) Value {
 			v.Set(reflect.MakeMapWithSize(typ, arg[0]))
 			return Value{ref: v}
 		}
-	case reflect.Func:
-		// Function variables hold either a plain code address (int) or a Closure.
-		// Use interface{} so reflect.Set can write either type through the shared pointer.
+	case reflect.Func, reflect.Interface:
+		// Func/interface variables hold heterogeneous values (int, Closure, Iface).
+		// Use interface{} so reflect.Set can accept any of them.
 		ifaceType := reflect.TypeOf((*any)(nil)).Elem()
 		return Value{ref: reflect.New(ifaceType).Elem()}
 	}
@@ -177,7 +198,12 @@ func (v Value) Float() float64 { return math.Float64frombits(v.num) }
 func (v Value) Bool() bool { return v.num != 0 }
 
 // Interface returns v's value as interface{}.
-func (v Value) Interface() any { return v.Reflect().Interface() }
+func (v Value) Interface() any {
+	if v.IsIface() {
+		return v.IfaceVal().Val.Interface()
+	}
+	return v.Reflect().Interface()
+}
 
 // CanInt reports whether Int can be called without panicking.
 func (v Value) CanInt() bool {
@@ -267,8 +293,40 @@ func resetNumRef(v *Value) {
 	}
 }
 
+// IsIface reports whether v holds a boxed interface value (Iface struct).
+func (v Value) IsIface() bool {
+	if !v.ref.IsValid() {
+		return false
+	}
+	if v.ref.Type() == ifaceRtype {
+		return true
+	}
+	// Check inside interface{} slots: v.ref is an any holding an Iface.
+	if v.ref.Kind() == reflect.Interface && v.ref.Elem().IsValid() && v.ref.Elem().Type() == ifaceRtype {
+		return true
+	}
+	return false
+}
+
+// IfaceVal extracts the Iface from a boxed interface value.
+func (v Value) IfaceVal() Iface {
+	if v.ref.Kind() == reflect.Interface {
+		return v.ref.Elem().Interface().(Iface)
+	}
+	return v.ref.Interface().(Iface)
+}
+
 // Equal reports whether v is equal to u.
 func (v Value) Equal(u Value) bool {
+	if v.IsIface() {
+		if !u.IsValid() {
+			return false // non-nil interface != nil
+		}
+		if u.IsIface() {
+			return v.IfaceVal().Val.Equal(u.IfaceVal().Val)
+		}
+		return v.IfaceVal().Val.Equal(u)
+	}
 	if isNum(v.ref.Kind()) && isNum(u.ref.Kind()) {
 		return v.num == u.num
 	}

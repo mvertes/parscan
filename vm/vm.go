@@ -79,6 +79,8 @@ const (
 	HPtr                   // -- &cell ; push State.Env[$1] itself (transitive capture)
 	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, env}
 	Convert                // v -- v' ; v' = convert(v, type at mem[$1])
+	IfaceWrap              // v -- iface ; wrap v in Iface{type at $1, v}
+	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -406,6 +408,20 @@ func (m *Machine) Run() (err error) {
 				// Fallback: use reflect.
 				mem[sp-1] = fromReflect(v.Reflect().Convert(dstType))
 			}
+
+		case IfaceWrap:
+			typ := mem[c.Arg[0]].ref.Interface().(*Type)
+			mem[sp-1] = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: mem[sp-1]})}
+
+		case IfaceCall:
+			ifc := mem[sp-1].IfaceVal()
+			dataIdx := ifc.Typ.Methods[c.Arg[0]]
+			codeAddr := int(mem[dataIdx].num) //nolint:gosec
+			// Build a closure with the concrete receiver as Env[0], replacing the
+			// interface value on the stack. Same result as HAlloc+Get+Swap+MkClosure.
+			cell := new(Value)
+			*cell = ifc.Val
+			mem[sp-1] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Env: []*Value{cell}})}
 
 		case Exit:
 			return err

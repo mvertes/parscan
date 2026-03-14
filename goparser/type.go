@@ -3,6 +3,7 @@ package goparser
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
@@ -161,6 +162,35 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			return nil, 0, err
 		}
 		return vm.MapOf(ktyp, etyp), 2 + i, nil
+
+	case lang.Interface:
+		if len(in) < 2 || in[1].Tok != lang.BraceBlock {
+			return nil, 0, fmt.Errorf("%w: %v", ErrSyntax, in)
+		}
+		block := in[1].Block()
+		if strings.TrimSpace(block) == "" {
+			// Empty interface (equivalent to any).
+			return &vm.Type{Rtype: reflect.TypeOf((*any)(nil)).Elem()}, 2, nil
+		}
+		toks, err := p.Scan(block, false)
+		if err != nil {
+			return nil, 0, err
+		}
+		var methods []vm.IfaceMethod
+		for _, lt := range toks.Split(lang.Semicolon) {
+			if len(lt) == 0 {
+				continue
+			}
+			if lt[0].Tok != lang.Ident {
+				return nil, 0, fmt.Errorf("%w: expected method name in interface", ErrSyntax)
+			}
+			methods = append(methods, vm.IfaceMethod{Name: lt[0].Str})
+		}
+		// Use any as underlying reflect type; method set is tracked in IfaceMethods.
+		return &vm.Type{
+			Rtype:        reflect.TypeOf((*any)(nil)).Elem(),
+			IfaceMethods: methods,
+		}, 2, nil
 
 	default:
 		return nil, 0, fmt.Errorf("%w: %v", ErrNotImplemented, in[0].Name())

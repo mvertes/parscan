@@ -22,18 +22,48 @@ type Compiler struct {
 	*goparser.Parser
 	vm.Code            // produced code, to fill VM with
 	Data    []vm.Value // produced data, will be at the bottom of VM stack
-	Entry   int        // offset in Code to start execution from (skip function defintions)
+	Entry   int        // offset in Code to start execution from
 
-	strings map[string]int // locations of strings in Data
+	strings   map[string]int // locations of strings in Data
+	methodIDs map[string]int // global method ID by method name
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
 func NewCompiler(spec *lang.Spec) *Compiler {
 	return &Compiler{
-		Parser:  goparser.NewParser(spec, true),
-		Entry:   -1,
-		strings: map[string]int{},
+		Parser:    goparser.NewParser(spec, true),
+		Entry:     -1,
+		strings:   map[string]int{},
+		methodIDs: map[string]int{},
 	}
+}
+
+// methodID returns the integer ID for a method name, assigning one if needed.
+func (c *Compiler) methodID(name string) int {
+	if id, ok := c.methodIDs[name]; ok {
+		return id
+	}
+	id := len(c.methodIDs)
+	c.methodIDs[name] = id
+	return id
+}
+
+// typeIndex returns the Data index for a *Type, adding it if needed.
+func (c *Compiler) typeIndex(typ *vm.Type) int {
+	i := len(c.Data)
+	c.Data = append(c.Data, vm.ValueOf(typ))
+	return i
+}
+
+// stringIndex returns the Data index for string s, adding it if needed.
+func (c *Compiler) stringIndex(s string) int {
+	i, ok := c.strings[s]
+	if !ok {
+		i = len(c.Data)
+		c.Data = append(c.Data, vm.ValueOf(s))
+		c.strings[s] = i
+	}
+	return i
 }
 
 func errorf(format string, v ...any) error {
@@ -99,15 +129,8 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 
 		case lang.String:
 			s := t.Block()
-			v := vm.ValueOf(s)
-			i, ok := c.strings[s]
-			if !ok {
-				i = len(c.Data)
-				c.Data = append(c.Data, v)
-				c.strings[s] = i
-			}
-			push(&symbol.Symbol{Kind: symbol.Const, Value: v, Type: vm.TypeOf("")})
-			c.emit(t, vm.Get, vm.Global, i)
+			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(s), Type: vm.TypeOf("")})
+			c.emit(t, vm.Get, vm.Global, c.stringIndex(s))
 
 		case lang.Add:
 			typ := arithmeticOpType(pop(), pop())
@@ -325,8 +348,14 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				if typ == nil {
 					typ = vm.TypeOf(r.Value.Interface())
 				}
-				lhs[i].Type = typ
-				c.Data[lhs[i].Index] = vm.NewValue(typ.Rtype)
+				// If lhs has an interface type, keep it and wrap the concrete value.
+				if lhs[i].Type != nil && lhs[i].Type.IsInterface() && !typ.IsInterface() {
+					c.emit(t, vm.IfaceWrap, c.typeIndex(typ))
+					c.Data[lhs[i].Index] = vm.NewValue(lhs[i].Type.Rtype)
+				} else {
+					lhs[i].Type = typ
+					c.Data[lhs[i].Index] = vm.NewValue(typ.Rtype)
+				}
 			}
 			c.emit(t, vm.SetS, n)
 
@@ -356,6 +385,10 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			if v := c.Data[lhs.Index]; !v.IsValid() {
 				c.Data[lhs.Index] = vm.NewValue(rhs.Type.Rtype)
 				c.Symbols[lhs.Name].Type = rhs.Type
+			}
+			// Wrap concrete value in Iface when assigning to interface variable.
+			if lhs.Type != nil && lhs.Type.IsInterface() && rhs.Type != nil && !rhs.Type.IsInterface() {
+				c.emit(t, vm.IfaceWrap, c.typeIndex(rhs.Type))
 			}
 			c.emit(t, vm.SetS, t.Arg[0].(int))
 
@@ -465,6 +498,17 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 					c.Data = append(c.Data, s.Value)
 					flen = append(flen, len(stack))
 					funcStack = append(funcStack, t.Str)
+					// Register method in its receiver type's method table.
+					if parts := strings.SplitN(t.Str, ".", 2); len(parts) == 2 {
+						typeName := strings.TrimPrefix(parts[0], "*")
+						if ts, ok := c.Symbols[typeName]; ok && ts.Kind == symbol.Type {
+							id := c.methodID(parts[1])
+							for len(ts.Type.Methods) <= id {
+								ts.Type.Methods = append(ts.Type.Methods, -1)
+							}
+							ts.Type.Methods[id] = s.Index
+						}
+					}
 				} else {
 					c.Data[s.Index] = s.Value
 				}
@@ -555,6 +599,25 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			case symbol.Unset:
 				return errorf("invalid symbol: %s", s.Name)
 			default:
+				// Dynamic dispatch for interface receiver.
+				if s.Type != nil && s.Type.IsInterface() {
+					methodName := t.Str[1:]
+					// Find the method signature from a concrete implementation.
+					// Look up any "TypeName.methodName" symbol in the table.
+					var methodSym *symbol.Symbol
+					for k, sym := range c.Symbols {
+						if strings.HasSuffix(k, "."+methodName) && sym.Kind == symbol.Func {
+							methodSym = sym
+							break
+						}
+					}
+					if methodSym == nil {
+						return fmt.Errorf("method not found: %s", methodName)
+					}
+					push(methodSym)
+					c.emit(t, vm.IfaceCall, c.methodID(methodName))
+					break
+				}
 				if m := c.Symbols.MethodByName(s, t.Str[1:]); m != nil {
 					push(m)
 					// Closure-based method dispatch.
