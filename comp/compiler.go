@@ -230,6 +230,26 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 		case lang.Call:
 			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
+			if s.Kind == symbol.Type {
+				if narg != 1 {
+					return errorf("type conversion requires exactly one argument")
+				}
+				// Find and remove the Fnew/FnewE instruction emitted by the Ident
+				// handler for the type. It precedes the argument instructions.
+				for i := len(c.Code) - 1; i >= 0; i-- {
+					op := c.Code[i].Op
+					if (op == vm.Fnew || op == vm.FnewE) && c.Code[i].Arg[0] == s.Index {
+						copy(c.Code[i:], c.Code[i+1:])
+						c.Code = c.Code[:len(c.Code)-1]
+						break
+					}
+				}
+				pop() // type symbol
+				pop() // argument
+				push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type})
+				c.emit(t, vm.Convert, s.Index)
+				break
+			}
 			if s.Kind != symbol.Value {
 				typ := s.Type
 				// TODO: pop input types (careful with variadic function).
@@ -414,7 +434,11 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			} else {
 				if s.Index == symbol.UnsetAddr {
 					s.Index = len(c.Data)
-					c.Data = append(c.Data, s.Value)
+					if s.Kind == symbol.Type {
+						c.Data = append(c.Data, vm.NewValue(s.Type.Rtype))
+					} else {
+						c.Data = append(c.Data, s.Value)
+					}
 				}
 				if s.Kind == symbol.Type {
 					switch s.Type.Rtype.Kind() {

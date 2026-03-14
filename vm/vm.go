@@ -78,6 +78,7 @@ const (
 	HSet                   // v --    ; *State.Env[$1] = v
 	HPtr                   // -- &cell ; push State.Env[$1] itself (transitive capture)
 	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, env}
+	Convert                // v -- v' ; v' = convert(v, type at mem[$1])
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -339,6 +340,73 @@ func (m *Machine) Run() (err error) {
 				// This is used to simplify bytecode in case clauses of switch statments.
 				mem[sp-1] = ValueOf(false)
 			}
+		case Convert:
+			v := mem[sp-1]
+			dstType := mem[c.Arg[0]].ref.Type()
+			srcKind := v.ref.Type().Kind()
+			dstKind := dstType.Kind()
+
+			switch {
+			case isNum(srcKind) && isNum(dstKind):
+				bits := v.num
+				switch {
+				case isFloat(srcKind) && isFloat(dstKind):
+					// float32 -> float64 or float64 -> float32: re-precision.
+					if srcKind != dstKind {
+						f := math.Float64frombits(bits)
+						if dstKind == reflect.Float32 {
+							bits = math.Float64bits(float64(float32(f)))
+						}
+					}
+				case isFloat(srcKind):
+					// float -> int: truncate.
+					f := math.Float64frombits(bits)
+					bits = uint64(int64(f)) //nolint:gosec
+				case isFloat(dstKind):
+					// int -> float.
+					if srcKind >= reflect.Uint && srcKind <= reflect.Uintptr {
+						bits = math.Float64bits(float64(bits))
+					} else {
+						bits = math.Float64bits(float64(int64(bits))) //nolint:gosec
+					}
+				}
+				// Truncate to target width for sub-word types.
+				switch dstKind {
+				case reflect.Int8:
+					bits = uint64(int8(bits)) //nolint:gosec
+				case reflect.Int16:
+					bits = uint64(int16(bits)) //nolint:gosec
+				case reflect.Int32:
+					bits = uint64(int32(bits)) //nolint:gosec
+				case reflect.Uint8:
+					bits = uint64(uint8(bits)) //nolint:gosec
+				case reflect.Uint16:
+					bits = uint64(uint16(bits)) //nolint:gosec
+				case reflect.Uint32:
+					bits = uint64(uint32(bits)) //nolint:gosec
+				case reflect.Float32:
+					bits = math.Float64bits(float64(float32(math.Float64frombits(bits))))
+				}
+				off := NumKindOffset[dstKind]
+				mem[sp-1] = Value{num: bits, ref: numZero[off]}
+
+			case isNum(srcKind) && dstKind == reflect.String:
+				// int/rune -> string (e.g. string(65) -> "A").
+				mem[sp-1] = Value{ref: reflect.ValueOf(string(rune(int64(v.num))))} //nolint:gosec
+
+			case srcKind == reflect.String && dstKind == reflect.Slice && dstType.Elem().Kind() == reflect.Uint8:
+				// string -> []byte.
+				mem[sp-1] = Value{ref: reflect.ValueOf([]byte(v.ref.String()))}
+
+			case srcKind == reflect.Slice && v.ref.Type().Elem().Kind() == reflect.Uint8 && dstKind == reflect.String:
+				// []byte -> string.
+				mem[sp-1] = Value{ref: reflect.ValueOf(string(v.ref.Bytes()))}
+
+			default:
+				// Fallback: use reflect.
+				mem[sp-1] = fromReflect(v.Reflect().Convert(dstType))
+			}
+
 		case Exit:
 			return err
 		case Fnew:

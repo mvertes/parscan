@@ -599,6 +599,39 @@ func TestArithFloat(t *testing.T) {
 	})
 }
 
+func TestConvert(t *testing.T) {
+	run(t, []etest{
+		// Float to int (truncation).
+		{n: "float64_to_int", src: "var a float64 = 3.14; int(a)", res: "3"},
+		{n: "float64_to_int_neg", src: "var a float64 = -3.14; int(a)", res: "-3"},
+
+		// Int to float.
+		{n: "int_to_float64", src: "var a int = 42; float64(a)", res: "42"},
+
+		// Int to smaller int (truncation / overflow wrap).
+		{n: "int_to_int8", src: "var a int = 200; int8(a)", res: "-56"},
+		{n: "int_to_uint8", src: "var a int = 256; uint8(a)", res: "0"},
+		{n: "int_to_int16", src: "var a int = 40000; int16(a)", res: "-25536"},
+
+		// Int to string (rune conversion).
+		{n: "int_to_string", src: `string(65)`, res: "A"},
+
+		// Between int types.
+		{n: "int_to_int64", src: "var a int = 42; int64(a)", res: "42"},
+		{n: "uint_to_int", src: "var a uint = 5; int(a)", res: "5"},
+
+		// Float32 to float64.
+		{n: "float32_to_float64", src: "var a float32 = 1.5; float64(a)", res: "1.5"},
+		{n: "float64_to_float32", src: "var a float64 = 1.5; float32(a)", res: "1.5"},
+
+		// Conversion in expression.
+		{n: "conv_in_expr", src: "var a float64 = 3.14; int(a) + 1", res: "4"},
+
+		// Identity conversion.
+		{n: "int_to_int", src: "var a int = 42; int(a)", res: "42"},
+	})
+}
+
 func TestArithTypedInt(t *testing.T) {
 	run(t, []etest{
 		// Int8.
