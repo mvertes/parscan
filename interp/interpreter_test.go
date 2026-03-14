@@ -510,6 +510,24 @@ func TestBitwiseInt(t *testing.T) {
 	})
 }
 
+func TestString(t *testing.T) {
+	run(t, []etest{
+		// Concatenation.
+		{n: "concat", src: `"hello" + " " + "world"`, res: "hello world"},
+		{n: "concat_var", src: `a := "foo"; b := "bar"; a + b`, res: "foobar"},
+		{n: "concat_empty", src: `"hello" + ""`, res: "hello"},
+
+		// Compound assignment.
+		{n: "add_assign", src: `a := "hello"; a += " world"; a`, res: "hello world"},
+
+		// Slicing.
+		{n: "slice", src: `a := "hello world"; a[0:5]`, res: "hello"},
+		{n: "slice_mid", src: `a := "hello world"; a[6:11]`, res: "world"},
+		{n: "slice_open_high", src: `a := "hello"; a[1:]`, res: "ello"},
+		{n: "slice_open_low", src: `a := "hello"; a[:3]`, res: "hel"},
+	})
+}
+
 func TestArithUint(t *testing.T) {
 	run(t, []etest{
 		// Basic uint arithmetic.

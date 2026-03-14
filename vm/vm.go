@@ -252,12 +252,16 @@ func (m *Machine) Run() (err error) {
 		ic++
 		switch c.Op {
 		case Add:
-			if isFloat(mem[sp-2].ref.Kind()) {
+			switch k := mem[sp-2].ref.Kind(); {
+			case k == reflect.String:
+				mem[sp-2] = ValueOf(mem[sp-2].ref.String() + mem[sp-1].ref.String())
+			case isFloat(k):
 				mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) + math.Float64frombits(mem[sp-1].num))
-			} else {
+				resetNumRef(&mem[sp-2])
+			default:
 				mem[sp-2].num = uint64(int64(mem[sp-2].num) + int64(mem[sp-1].num)) //nolint:gosec
+				resetNumRef(&mem[sp-2])
 			}
-			resetNumRef(&mem[sp-2])
 			mem = mem[:sp-1]
 		case Mul:
 			if isFloat(mem[sp-2].ref.Kind()) {
