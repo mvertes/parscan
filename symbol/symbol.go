@@ -104,18 +104,61 @@ func (sm SymMap) Get(name, scope string) (sym *Symbol, sc string, ok bool) {
 	return sym, scope, ok
 }
 
-// MethodByName returns the method symbol corresponding to name, or nil if not found.
-func (sm SymMap) MethodByName(sym *Symbol, name string) *Symbol {
+// MethodByName returns the method symbol and the field index path to the receiver
+// (empty for direct methods, non-empty for promoted methods through embedded fields).
+func (sm SymMap) MethodByName(sym *Symbol, name string) (*Symbol, []int) {
 	switch sym.Kind {
 	case Type:
-		return sm[sym.Name+"."+name]
-	case Var:
-		if m := sm[sym.Type.Name+"."+name]; m != nil {
-			return m
+		if m := sm[sym.Name+"."+name]; m != nil {
+			return m, nil
 		}
-		return sm["*"+sym.Type.Name+"."+name]
+		return sm.promotedMethod(sym.Type, name, nil)
+	case Var:
+		typName := sym.Type.Name
+		// For pointer types with no Name, find the element type's Name via Rtype.
+		if typName == "" && sym.Type.Rtype.Kind() == reflect.Pointer {
+			elemRtype := sym.Type.Rtype.Elem()
+			for k, s := range sm {
+				if s.Kind == Type && s.Type != nil && s.Type.Rtype == elemRtype && k != "" {
+					typName = k
+					break
+				}
+			}
+		}
+		if m := sm[typName+"."+name]; m != nil {
+			return m, nil
+		}
+		if m := sm["*"+typName+"."+name]; m != nil {
+			return m, nil
+		}
+		return sm.promotedMethod(sym.Type, name, nil)
 	}
-	return nil
+	return nil, nil
+}
+
+// promotedMethod searches for a method promoted through embedded fields recorded in typ.Embedded.
+// It returns the method symbol and the field index path to reach the embedded receiver.
+func (sm SymMap) promotedMethod(typ *vm.Type, name string, path []int) (*Symbol, []int) {
+	if typ == nil {
+		return nil, nil
+	}
+	for _, emb := range typ.Embedded {
+		embType := emb.Type
+		if embType == nil {
+			continue
+		}
+		fieldPath := append(path, emb.FieldIdx) //nolint:gocritic
+		if m := sm[embType.Name+"."+name]; m != nil {
+			return m, fieldPath
+		}
+		if m := sm["*"+embType.Name+"."+name]; m != nil {
+			return m, fieldPath
+		}
+		if m, p := sm.promotedMethod(embType, name, fieldPath); m != nil {
+			return m, p
+		}
+	}
+	return nil, nil
 }
 
 // Init fills the symbol map with default Go symbols.

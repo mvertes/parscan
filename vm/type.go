@@ -8,13 +8,26 @@ import (
 
 // Runtime type and value representations (based on reflect).
 
+// Method records a method's code location and receiver path for interface dispatch.
+type Method struct {
+	Index int   // data index of code address (-1 if unset)
+	Path  []int // field index path to embedded receiver (nil = direct, []int{} = deref only)
+}
+
+// EmbeddedField records a parscan embedded field within a struct type.
+type EmbeddedField struct {
+	FieldIdx int   // index of this field in the parent struct
+	Type     *Type // parscan type of the embedded field (shares identity with symbol table)
+}
+
 // Type is the representation of a runtime type.
 type Type struct {
 	PkgPath      string
 	Name         string
 	Rtype        reflect.Type
-	IfaceMethods []IfaceMethod // non-nil for interface types: required method signatures
-	Methods      []int         // concrete types: methods[methodID] = data index of code address
+	IfaceMethods []IfaceMethod   // non-nil for interface types: required method signatures
+	Methods      []Method        // concrete types: methods[methodID] = code location + receiver path
+	Embedded     []EmbeddedField // parscan types of anonymous (embedded) fields, for promoted method lookup
 }
 
 // IfaceMethod describes a method required by an interface type.
@@ -366,15 +379,20 @@ func FuncOf(arg, ret []*Type, variadic bool) *Type {
 	return &Type{Rtype: reflect.FuncOf(a, r, variadic)}
 }
 
-// StructOf returns the struct type with the given field types.
-func StructOf(fields []*Type) *Type {
+// StructOf returns the struct type with the given field types and embedded field info.
+func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 	rf := make([]reflect.StructField, len(fields))
+	embSet := make(map[int]bool, len(embedded))
+	for _, e := range embedded {
+		embSet[e.FieldIdx] = true
+	}
 	for i, f := range fields {
 		rf[i].Name = f.Name
 		rf[i].PkgPath = f.PkgPath
 		rf[i].Type = f.Rtype
+		rf[i].Anonymous = embSet[i]
 	}
-	return &Type{Rtype: reflect.StructOf(rf)}
+	return &Type{Rtype: reflect.StructOf(rf), Embedded: embedded}
 }
 
 // FieldIndex returns the index of struct field name.

@@ -258,26 +258,26 @@ func TestStruct(t *testing.T) {
 func TestEmbeddedStruct(t *testing.T) {
 	run(t, []etest{
 		// Access a field from an embedded struct.
-		{n: "field", skip: true, src: `
+		{n: "field", src: `
 type Base struct { X int }
 type T struct { Base; Y int }
 var t T; t.X = 1; t.Y = 2; t.X`, res: "1"},
 
 		// Access an embedded struct field set via composite literal.
-		{n: "literal", skip: true, src: `
+		{n: "literal", src: `
 type Base struct { X int }
 type T struct { Base; Y int }
 t := T{Base{10}, 20}; t.X`, res: "10"},
 
 		// Call a method promoted from an embedded struct.
-		{n: "method", skip: true, src: `
+		{n: "method", src: `
 type Base struct { X int }
 func (b Base) GetX() int { return b.X }
 type T struct { Base; Y int }
 t := T{Base{7}, 0}; t.GetX()`, res: "7"},
 
 		// Promoted method satisfies an interface.
-		{n: "iface", skip: true, src: `
+		{n: "iface", src: `
 type Getter interface { GetX() int }
 type Base struct { X int }
 func (b Base) GetX() int { return b.X }
@@ -286,7 +286,7 @@ var g Getter = T{Base{42}}
 g.GetX()`, res: "42"},
 
 		// Override: outer method shadows promoted method.
-		{n: "override", skip: true, src: `
+		{n: "override", src: `
 type Base struct { X int }
 func (b Base) GetX() int { return b.X }
 type T struct { Base }
@@ -294,40 +294,40 @@ func (t T) GetX() int { return t.X * 10 }
 t := T{Base{3}}; t.GetX()`, res: "30"},
 
 		// Access nested embedded field.
-		{n: "nested", skip: true, src: `
+		{n: "nested", src: `
 type A struct { V int }
 type B struct { A }
 type C struct { B }
 c := C{B{A{99}}}; c.V`, res: "99"},
 
 		// Access field through embedded pointer.
-		{n: "ptr_field", skip: true, src: `
+		{n: "ptr_field", src: `
 type Base struct { X int }
 type T struct { *Base }
 t := T{&Base{5}}; t.X`, res: "5"},
 
 		// Set field through embedded pointer.
-		{n: "ptr_set", skip: true, src: `
+		{n: "ptr_set", src: `
 type Base struct { X int }
 type T struct { *Base }
 t := T{&Base{0}}; t.X = 42; t.X`, res: "42"},
 
 		// Call method through embedded pointer.
-		{n: "ptr_method", skip: true, src: `
+		{n: "ptr_method", src: `
 type Base struct { X int }
 func (b Base) GetX() int { return b.X }
 type T struct { *Base }
 t := T{&Base{8}}; t.GetX()`, res: "8"},
 
 		// Pointer receiver method promoted through embedded pointer.
-		{n: "ptr_recv_method", skip: true, src: `
+		{n: "ptr_recv_method", src: `
 type Base struct { X int }
 func (b *Base) SetX(v int) { b.X = v }
 type T struct { *Base }
 t := T{&Base{0}}; t.SetX(99); t.X`, res: "99"},
 
 		// Promoted pointer method satisfies interface.
-		{n: "ptr_iface", skip: true, src: `
+		{n: "ptr_iface", src: `
 type Getter interface { GetX() int }
 type Base struct { X int }
 func (b *Base) GetX() int { return b.X }
@@ -336,7 +336,7 @@ var g Getter = T{&Base{55}}
 g.GetX()`, res: "55"},
 
 		// Nested embedding through pointer.
-		{n: "ptr_nested", skip: true, src: `
+		{n: "ptr_nested", src: `
 type A struct { V int }
 type B struct { *A }
 type C struct { B }
@@ -347,38 +347,38 @@ c := C{B{&A{77}}}; c.V`, res: "77"},
 func TestMethodResolve(t *testing.T) {
 	run(t, []etest{
 		// Value receiver called on value.
-		{n: "val_on_val", skip: true, src: `
+		{n: "val_on_val", src: `
 type T struct { X int }
 func (t T) GetX() int { return t.X }
 v := T{3}; v.GetX()`, res: "3"},
 
 		// Value receiver called on pointer (auto-deref).
-		{n: "val_on_ptr", skip: true, src: `
+		{n: "val_on_ptr", src: `
 type T struct { X int }
 func (t T) GetX() int { return t.X }
 p := &T{5}; p.GetX()`, res: "5"},
 
 		// Pointer receiver called on pointer.
-		{n: "ptr_on_ptr", skip: true, src: `
+		{n: "ptr_on_ptr", src: `
 type T struct { X int }
 func (t *T) SetX(v int) { t.X = v }
 p := &T{0}; p.SetX(7); p.X`, res: "7"},
 
 		// Pointer receiver called on addressable value (auto-addr).
-		{n: "ptr_on_val", skip: true, src: `
+		{n: "ptr_on_val", src: `
 type T struct { X int }
 func (t *T) SetX(v int) { t.X = v }
 var v T; v.SetX(9); v.X`, res: "9"},
 
 		// Both value and pointer methods on same type.
-		{n: "both", skip: true, src: `
+		{n: "both", src: `
 type T struct { X int }
 func (t T) GetX() int { return t.X }
 func (t *T) Double() { t.X = t.X * 2 }
 var v T; v.X = 4; v.Double(); v.GetX()`, res: "8"},
 
 		// Value method via pointer through interface.
-		{n: "iface_val_recv", skip: true, src: `
+		{n: "iface_val_recv", src: `
 type Getter interface { GetX() int }
 type T struct { X int }
 func (t T) GetX() int { return t.X }
@@ -386,26 +386,31 @@ var g Getter = &T{6}
 g.GetX()`, res: "6"},
 
 		// Pointer method via pointer through interface.
-		{n: "iface_ptr_recv", skip: true, src: `
+		{n: "iface_ptr_recv", src: `
 type Setter interface { SetX(int) }
 type T struct { X int }
+func (t T) GetX() int { return t.X }
 func (t *T) SetX(v int) { t.X = v }
-var s Setter = &T{0}
-s.SetX(11)`, res: ""},
+var t0 = &T{0}
+var s Setter = t0
+s.SetX(11)
+t0.GetX()`, res: "11"},
 
 		// Named non-struct type: value receiver on value.
-		{n: "named_val_on_val", skip: true, src: `
+		{n: "named_val_on_val", src: `
 type N int
 func (n N) IsPos() bool { return int(n) > 0 }
 v := N(5); v.IsPos()`, res: "true"},
 
 		// Named non-struct type: value receiver on pointer (auto-deref).
+		// Skipped: requires `new` builtin.
 		{n: "named_val_on_ptr", skip: true, src: `
 type N int
 func (n N) IsPos() bool { return int(n) > 0 }
 p := new(N); *p = N(3); p.IsPos()`, res: "true"},
 
 		// Named non-struct type: pointer receiver on addressable value (auto-addr).
+		// Skipped: parser doesn't handle dereference assignment (*n = ...) on named types yet.
 		{n: "named_ptr_on_val", skip: true, src: `
 type N int
 func (n *N) Inc() { *n = *n + 1 }

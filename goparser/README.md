@@ -45,7 +45,7 @@ Go language support:
 - [ ] embedded structures
 - [ ] recursive structures
 - [x] literal composite objects
-- [ ] interfaces
+- [x] interfaces
 - [x] arrays, slices
 - [x] maps
 - [ ] deterministic maps

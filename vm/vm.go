@@ -415,12 +415,24 @@ func (m *Machine) Run() (err error) {
 
 		case IfaceCall:
 			ifc := mem[sp-1].IfaceVal()
-			dataIdx := ifc.Typ.Methods[c.Arg[0]]
-			codeAddr := int(mem[dataIdx].num) //nolint:gosec
+			method := ifc.Typ.Methods[c.Arg[0]]
+			codeAddr := int(mem[method.Index].num) //nolint:gosec
 			// Build a closure with the concrete receiver as Env[0], replacing the
 			// interface value on the stack. Same result as HAlloc+Get+Swap+MkClosure.
+			// For promoted methods, extract the embedded field as receiver.
 			cell := new(Value)
 			*cell = ifc.Val
+			if path := method.Path; path != nil {
+				// Deref pointer (handles both *T→T and *T→T.Base.field).
+				rv := reflect.Indirect(ifc.Val.Reflect())
+				for _, idx := range path {
+					if rv.Kind() == reflect.Pointer {
+						rv = rv.Elem()
+					}
+					rv = rv.Field(idx)
+				}
+				*cell = fromReflect(rv)
+			}
 			mem[sp-1] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Env: []*Value{cell}})}
 
 		case Exit:

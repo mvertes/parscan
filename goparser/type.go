@@ -133,17 +133,25 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			return nil, 0, err
 		}
 		var fields []*vm.Type
+		var embedded []vm.EmbeddedField
 		for _, lt := range in.Split(lang.Semicolon) {
+			if len(lt) == 0 {
+				continue
+			}
+			if f, origType := p.parseEmbeddedField(lt); f != nil {
+				embedded = append(embedded, vm.EmbeddedField{FieldIdx: len(fields), Type: origType})
+				fields = append(fields, f)
+				continue
+			}
 			types, names, err := p.parseParamTypes(lt, parseTypeType)
 			if err != nil {
 				return nil, 0, err
 			}
 			for i, name := range names {
 				fields = append(fields, &vm.Type{Name: name, PkgPath: p.pkgName, Rtype: types[i].Rtype})
-				// TODO: handle embedded fields
 			}
 		}
-		return vm.StructOf(fields), 2, nil
+		return vm.StructOf(fields, embedded), 2, nil
 
 	case lang.Map:
 		if len(in) < 3 || in[1].Tok != lang.BracketBlock {
@@ -263,6 +271,29 @@ func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, 
 		p.Symbols.Add(p.framelen[p.funcScope], name, zv, symbol.Var, typ, local)
 		p.framelen[p.funcScope]++
 	}
+}
+
+// parseEmbeddedField checks if lt matches an embedded (anonymous) struct field pattern
+// (`TypeName` or `*TypeName`). Returns the field type and the symbol-table type, or nil, nil.
+func (p *Parser) parseEmbeddedField(lt Tokens) (fieldType, origType *vm.Type) {
+	isPtr := false
+	toks := lt
+	if len(toks) >= 2 && toks[0].Tok == lang.Mul {
+		isPtr = true
+		toks = toks[1:]
+	}
+	if len(toks) != 1 || toks[0].Tok != lang.Ident {
+		return nil, nil
+	}
+	s, _, ok := p.Symbols.Get(toks[0].Str, p.scope)
+	if !ok || s.Kind != symbol.Type {
+		return nil, nil
+	}
+	rtyp := s.Type.Rtype
+	if isPtr {
+		rtyp = reflect.PointerTo(rtyp)
+	}
+	return &vm.Type{Name: toks[0].Str, Rtype: rtyp}, s.Type
 }
 
 // hasFirstParam returns true if the first token of a list is a parameter name.

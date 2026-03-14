@@ -55,6 +55,51 @@ func (c *Compiler) typeIndex(typ *vm.Type) int {
 	return i
 }
 
+// ensurePromotedMethods registers promoted methods from embedded types into typ so that
+// interface dispatch (IfaceCall) can find them. Called at IfaceWrap emission time when
+// iface is the interface type being satisfied and typ is the concrete type.
+func (c *Compiler) ensurePromotedMethods(iface, typ *vm.Type) {
+	// For *T, resolve T so we can look up value methods and embedded promotions.
+	isPtr := typ.Rtype.Kind() == reflect.Pointer
+	lookupTyp := typ
+	if isPtr {
+		elemRtype := typ.Rtype.Elem()
+		for _, sym := range c.Symbols {
+			if sym.Kind == symbol.Type && sym.Type != nil && sym.Type.Rtype == elemRtype {
+				lookupTyp = sym.Type
+				break
+			}
+		}
+	}
+	for _, im := range iface.IfaceMethods {
+		id := c.methodID(im.Name)
+		if id < len(typ.Methods) && typ.Methods[id].Index >= 0 {
+			continue // already registered directly
+		}
+		// Find the method: value receiver, pointer receiver, or promoted.
+		s := &symbol.Symbol{Kind: symbol.Var, Name: lookupTyp.Name, Type: lookupTyp}
+		m, fieldPath := c.Symbols.MethodByName(s, im.Name)
+		if m == nil {
+			continue
+		}
+		// Path: nil = direct (no adjustment), []int{} = deref only, non-empty = field path.
+		var mpath []int
+		if len(fieldPath) > 0 {
+			if isPtr {
+				mpath = append([]int{}, fieldPath...)
+			} else {
+				mpath = fieldPath
+			}
+		} else if isPtr && !strings.HasPrefix(m.Name, "*") {
+			mpath = []int{} // non-nil empty = deref only
+		}
+		for len(typ.Methods) <= id {
+			typ.Methods = append(typ.Methods, vm.Method{Index: -1})
+		}
+		typ.Methods[id] = vm.Method{Index: m.Index, Path: mpath}
+	}
+}
+
 // stringIndex returns the Data index for string s, adding it if needed.
 func (c *Compiler) stringIndex(s string) int {
 	i, ok := c.strings[s]
@@ -285,6 +330,9 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.Out(i)})
 				}
 				c.emit(t, vm.Call, narg)
+				if typ.Rtype.NumOut() == 0 && narg >= typ.Rtype.NumIn() {
+					c.emit(t, vm.Pop, 1) // pop stale func value left by Return for void calls
+				}
 				break
 			}
 			fallthrough // A symValue must be called through callX.
@@ -350,6 +398,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				}
 				// If lhs has an interface type, keep it and wrap the concrete value.
 				if lhs[i].Type != nil && lhs[i].Type.IsInterface() && !typ.IsInterface() {
+					c.ensurePromotedMethods(lhs[i].Type, typ)
 					c.emit(t, vm.IfaceWrap, c.typeIndex(typ))
 					c.Data[lhs[i].Index] = vm.NewValue(lhs[i].Type.Rtype)
 				} else {
@@ -388,6 +437,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			}
 			// Wrap concrete value in Iface when assigning to interface variable.
 			if lhs.Type != nil && lhs.Type.IsInterface() && rhs.Type != nil && !rhs.Type.IsInterface() {
+				c.ensurePromotedMethods(lhs.Type, rhs.Type)
 				c.emit(t, vm.IfaceWrap, c.typeIndex(rhs.Type))
 			}
 			c.emit(t, vm.SetS, t.Arg[0].(int))
@@ -504,9 +554,9 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 						if ts, ok := c.Symbols[typeName]; ok && ts.Kind == symbol.Type {
 							id := c.methodID(parts[1])
 							for len(ts.Type.Methods) <= id {
-								ts.Type.Methods = append(ts.Type.Methods, -1)
+								ts.Type.Methods = append(ts.Type.Methods, vm.Method{Index: -1})
 							}
-							ts.Type.Methods[id] = s.Index
+							ts.Type.Methods[id] = vm.Method{Index: s.Index}
 						}
 					}
 				} else {
@@ -618,8 +668,30 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 					c.emit(t, vm.IfaceCall, c.methodID(methodName))
 					break
 				}
-				if m := c.Symbols.MethodByName(s, t.Str[1:]); m != nil {
+				if m, fieldPath := c.Symbols.MethodByName(s, t.Str[1:]); m != nil {
 					push(m)
+					// Extract embedded receiver if method is promoted through embedded fields.
+					if len(fieldPath) > 0 {
+						c.emit(t, vm.Field, fieldPath...)
+					}
+					// Determine if auto-deref or auto-addr is needed.
+					methodWantsPtr := strings.HasPrefix(m.Name, "*")
+					recvRtype := s.Type.Rtype
+					if len(fieldPath) > 0 {
+						for _, idx := range fieldPath {
+							if recvRtype.Kind() == reflect.Pointer {
+								recvRtype = recvRtype.Elem()
+							}
+							recvRtype = recvRtype.Field(idx).Type
+						}
+					}
+					recvIsPtr := recvRtype.Kind() == reflect.Pointer
+					switch {
+					case methodWantsPtr && !recvIsPtr:
+						c.emit(t, vm.Addr)
+					case !methodWantsPtr && recvIsPtr:
+						c.emit(t, vm.Deref)
+					}
 					// Closure-based method dispatch.
 					// VM stack before Period: [..., receiver_value]
 					// HAlloc: wrap receiver in a heap cell.
