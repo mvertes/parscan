@@ -36,7 +36,8 @@ Go language support:
 - [ ] out of order declarations
 - [x] arbirtrary precision constants
 - [x] basic types
-- [ ] complete numeric types
+- [x] complete numeric types
+- [ ] complex numbers
 - [x] function types
 - [ ] variadic functions
 - [x] pointers

@@ -157,6 +157,12 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		if i := in.Index(lang.Define); i > 0 {
 			return p.parseAssign(in, i)
 		}
+		if op, i := indexCompoundAssign(in); i > 0 {
+			return p.parseCompoundAssign(in, i, op)
+		}
+		if l := len(in); l >= 2 && (in[l-1].Tok == lang.Inc || in[l-1].Tok == lang.Dec) {
+			return p.parseIncDec(in)
+		}
 		fallthrough
 	default:
 		return p.parseExpr(in, "")
@@ -227,6 +233,82 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 		}
 	}
 	return out, err
+}
+
+// compoundAssignOp maps compound assignment tokens to their binary operator.
+var compoundAssignOp = map[lang.Token]lang.Token{
+	lang.AddAssign:    lang.Add,
+	lang.SubAssign:    lang.Sub,
+	lang.MulAssign:    lang.Mul,
+	lang.QuoAssign:    lang.Quo,
+	lang.RemAssign:    lang.Rem,
+	lang.AndAssign:    lang.And,
+	lang.OrAssign:     lang.Or,
+	lang.XorAssign:    lang.Xor,
+	lang.ShlAssign:    lang.Shl,
+	lang.ShrAssign:    lang.Shr,
+	lang.AndNotAssign: lang.AndNot,
+}
+
+// indexCompoundAssign returns the binary operator and position of the first compound
+// assignment token in the token list, or (0, -1) if none found.
+func indexCompoundAssign(in Tokens) (lang.Token, int) {
+	for i, t := range in {
+		if op, ok := compoundAssignOp[t.Tok]; ok {
+			return op, i
+		}
+	}
+	return 0, -1
+}
+
+// parseCompoundAssign transforms "a op= expr" into the equivalent of "a = a op (expr)".
+func (p *Parser) parseCompoundAssign(in Tokens, aindex int, op lang.Token) (Tokens, error) {
+	lhs := in[:aindex]
+	rhs := in[aindex+1:]
+	pos := in[aindex].Pos
+	// Build: lhs = lhs op (rhs)
+	newIn := make(Tokens, 0, len(lhs)*2+len(rhs)+2)
+	newIn = append(newIn, lhs...)
+	newIn = append(newIn, newToken(lang.Assign, "", pos, 1))
+	newIn = append(newIn, lhs...)
+	newIn = append(newIn, newToken(op, "", pos))
+	if len(rhs) > 1 {
+		// Wrap rhs in parens to preserve precedence.
+		newIn = append(newIn, newToken(lang.ParenBlock, tokensToBlock(rhs), rhs[0].Pos))
+	} else {
+		newIn = append(newIn, rhs...)
+	}
+	return p.parseAssign(newIn, len(lhs))
+}
+
+// parseIncDec transforms "a++" into the equivalent of "a = a + 1" (or "a - 1" for "--").
+func (p *Parser) parseIncDec(in Tokens) (Tokens, error) {
+	last := in[len(in)-1]
+	lhs := in[:len(in)-1]
+	op := lang.Add
+	if last.Tok == lang.Dec {
+		op = lang.Sub
+	}
+	pos := last.Pos
+	newIn := make(Tokens, 0, len(lhs)*2+3)
+	newIn = append(newIn, lhs...)
+	newIn = append(newIn, newToken(lang.Assign, "", pos, 1))
+	newIn = append(newIn, lhs...)
+	newIn = append(newIn, newToken(op, "", pos))
+	newIn = append(newIn, newToken(lang.Int, "1", pos))
+	return p.parseAssign(newIn, len(lhs))
+}
+
+// tokensToBlock serializes tokens back into a parenthesized expression string.
+func tokensToBlock(toks Tokens) string {
+	var sb strings.Builder
+	for i, t := range toks {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString(t.Str)
+	}
+	return sb.String()
 }
 
 func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {

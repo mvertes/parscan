@@ -131,11 +131,42 @@ func _() {
 	_ = x[LowerUint64-120]
 	_ = x[LowerFloat32-121]
 	_ = x[LowerFloat64-122]
+	_ = x[DivInt-123]
+	_ = x[DivInt8-124]
+	_ = x[DivInt16-125]
+	_ = x[DivInt32-126]
+	_ = x[DivInt64-127]
+	_ = x[DivUint-128]
+	_ = x[DivUint8-129]
+	_ = x[DivUint16-130]
+	_ = x[DivUint32-131]
+	_ = x[DivUint64-132]
+	_ = x[DivFloat32-133]
+	_ = x[DivFloat64-134]
+	_ = x[RemInt-135]
+	_ = x[RemInt8-136]
+	_ = x[RemInt16-137]
+	_ = x[RemInt32-138]
+	_ = x[RemInt64-139]
+	_ = x[RemUint-140]
+	_ = x[RemUint8-141]
+	_ = x[RemUint16-142]
+	_ = x[RemUint32-143]
+	_ = x[RemUint64-144]
+	_ = x[RemFloat32-145]
+	_ = x[RemFloat64-146]
+	_ = x[BitAnd-147]
+	_ = x[BitOr-148]
+	_ = x[BitXor-149]
+	_ = x[BitAndNot-150]
+	_ = x[BitShl-151]
+	_ = x[BitShr-152]
+	_ = x[BitComp-153]
 }
 
-const _Op_name = "NopAddAddrCallCallXDerefGetFnewFnewEEqualEqualSetExitFieldFieldSetFieldFsetGreaterGrowIndexIndexSetJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLenLowerMapIndexMapSetMulNewNegateNextNext2NotPopPushPullPull2ReturnSetSetSSliceSlice3StopSubSwapHAllocHGetHSetHPtrMkClosureAddIntAddInt8AddInt16AddInt32AddInt64AddUintAddUint8AddUint16AddUint32AddUint64AddFloat32AddFloat64SubIntSubInt8SubInt16SubInt32SubInt64SubUintSubUint8SubUint16SubUint32SubUint64SubFloat32SubFloat64MulIntMulInt8MulInt16MulInt32MulInt64MulUintMulUint8MulUint16MulUint32MulUint64MulFloat32MulFloat64NegateIntNegateInt8NegateInt16NegateInt32NegateInt64NegateUintNegateUint8NegateUint16NegateUint32NegateUint64NegateFloat32NegateFloat64GreaterIntGreaterInt8GreaterInt16GreaterInt32GreaterInt64GreaterUintGreaterUint8GreaterUint16GreaterUint32GreaterUint64GreaterFloat32GreaterFloat64LowerIntLowerInt8LowerInt16LowerInt32LowerInt64LowerUintLowerUint8LowerUint16LowerUint32LowerUint64LowerFloat32LowerFloat64"
+const _Op_name = "NopAddAddrCallCallXDerefGetFnewFnewEEqualEqualSetExitFieldFieldSetFieldFsetGreaterGrowIndexIndexSetJumpJumpTrueJumpFalseJumpSetTrueJumpSetFalseLenLowerMapIndexMapSetMulNewNegateNextNext2NotPopPushPullPull2ReturnSetSetSSliceSlice3StopSubSwapHAllocHGetHSetHPtrMkClosureAddIntAddInt8AddInt16AddInt32AddInt64AddUintAddUint8AddUint16AddUint32AddUint64AddFloat32AddFloat64SubIntSubInt8SubInt16SubInt32SubInt64SubUintSubUint8SubUint16SubUint32SubUint64SubFloat32SubFloat64MulIntMulInt8MulInt16MulInt32MulInt64MulUintMulUint8MulUint16MulUint32MulUint64MulFloat32MulFloat64NegateIntNegateInt8NegateInt16NegateInt32NegateInt64NegateUintNegateUint8NegateUint16NegateUint32NegateUint64NegateFloat32NegateFloat64GreaterIntGreaterInt8GreaterInt16GreaterInt32GreaterInt64GreaterUintGreaterUint8GreaterUint16GreaterUint32GreaterUint64GreaterFloat32GreaterFloat64LowerIntLowerInt8LowerInt16LowerInt32LowerInt64LowerUintLowerUint8LowerUint16LowerUint32LowerUint64LowerFloat32LowerFloat64DivIntDivInt8DivInt16DivInt32DivInt64DivUintDivUint8DivUint16DivUint32DivUint64DivFloat32DivFloat64RemIntRemInt8RemInt16RemInt32RemInt64RemUintRemUint8RemUint16RemUint32RemUint64RemFloat32RemFloat64BitAndBitOrBitXorBitAndNotBitShlBitShrBitComp"
 
-var _Op_index = [...]uint16{0, 3, 6, 10, 14, 19, 24, 27, 31, 36, 41, 49, 53, 58, 66, 75, 82, 86, 91, 99, 103, 111, 120, 131, 143, 146, 151, 159, 165, 168, 171, 177, 181, 186, 189, 192, 196, 200, 205, 211, 214, 218, 223, 229, 233, 236, 240, 246, 250, 254, 258, 267, 273, 280, 288, 296, 304, 311, 319, 328, 337, 346, 356, 366, 372, 379, 387, 395, 403, 410, 418, 427, 436, 445, 455, 465, 471, 478, 486, 494, 502, 509, 517, 526, 535, 544, 554, 564, 573, 583, 594, 605, 616, 626, 637, 649, 661, 673, 686, 699, 709, 720, 732, 744, 756, 767, 779, 792, 805, 818, 832, 846, 854, 863, 873, 883, 893, 902, 912, 923, 934, 945, 957, 969}
+var _Op_index = [...]uint16{0, 3, 6, 10, 14, 19, 24, 27, 31, 36, 41, 49, 53, 58, 66, 75, 82, 86, 91, 99, 103, 111, 120, 131, 143, 146, 151, 159, 165, 168, 171, 177, 181, 186, 189, 192, 196, 200, 205, 211, 214, 218, 223, 229, 233, 236, 240, 246, 250, 254, 258, 267, 273, 280, 288, 296, 304, 311, 319, 328, 337, 346, 356, 366, 372, 379, 387, 395, 403, 410, 418, 427, 436, 445, 455, 465, 471, 478, 486, 494, 502, 509, 517, 526, 535, 544, 554, 564, 573, 583, 594, 605, 616, 626, 637, 649, 661, 673, 686, 699, 709, 720, 732, 744, 756, 767, 779, 792, 805, 818, 832, 846, 854, 863, 873, 883, 893, 902, 912, 923, 934, 945, 957, 969, 975, 982, 990, 998, 1006, 1013, 1021, 1030, 1039, 1048, 1058, 1068, 1074, 1081, 1089, 1097, 1105, 1112, 1120, 1129, 1138, 1147, 1157, 1167, 1173, 1178, 1184, 1193, 1199, 1205, 1212}
 
 func (i Op) String() string {
 	idx := int(i) - 0

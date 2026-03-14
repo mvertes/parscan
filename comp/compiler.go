@@ -78,10 +78,11 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 	for _, t := range tokens {
 		switch t.Tok {
 		case lang.Int:
-			n, err := strconv.Atoi(t.Str)
+			n64, err := strconv.ParseInt(t.Str, 0, 64)
 			if err != nil {
 				return err
 			}
+			n := int(n64)
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(n), Type: vm.TypeOf(0)})
 			c.emit(t, vm.Push, n)
 
@@ -123,6 +124,16 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
 			c.emit(t, numericOp(vm.SubInt, vm.Sub, typ))
 
+		case lang.Quo:
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, numericOp(vm.DivInt, vm.DivInt, typ))
+
+		case lang.Rem:
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, numericOp(vm.RemInt, vm.RemInt, typ))
+
 		case lang.Minus:
 			typ := symbol.Vtype(top())
 			c.emit(t, numericOp(vm.NegateInt, vm.Negate, typ))
@@ -162,6 +173,59 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			typ := symbol.Vtype(s1)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
 			c.emit(t, numericOp(vm.LowerInt, vm.Lower, typ))
+
+		case lang.GreaterEqual:
+			s2, s1 := pop(), pop()
+			typ := symbol.Vtype(s1)
+			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
+			c.emit(t, numericOp(vm.LowerInt, vm.Lower, typ))
+			c.emit(t, vm.Not)
+
+		case lang.LessEqual:
+			s2, s1 := pop(), pop()
+			typ := symbol.Vtype(s1)
+			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
+			c.emit(t, numericOp(vm.GreaterInt, vm.Greater, typ))
+			c.emit(t, vm.Not)
+
+		case lang.NotEqual:
+			push(&symbol.Symbol{Type: booleanOpType(pop(), pop())})
+			c.emit(t, vm.Equal)
+			c.emit(t, vm.Not)
+
+		case lang.And:
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, vm.BitAnd)
+
+		case lang.Or:
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, vm.BitOr)
+
+		case lang.Xor:
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, vm.BitXor)
+
+		case lang.AndNot:
+			typ := arithmeticOpType(pop(), pop())
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emit(t, vm.BitAndNot)
+
+		case lang.Shl:
+			pop() // shift amount
+			// Result type is the type of the left operand.
+			push(&symbol.Symbol{Kind: symbol.Value, Type: symbol.Vtype(top())})
+			c.emit(t, vm.BitShl)
+
+		case lang.Shr:
+			pop() // shift amount
+			push(&symbol.Symbol{Kind: symbol.Value, Type: symbol.Vtype(top())})
+			c.emit(t, vm.BitShr)
+
+		case lang.BitComp:
+			c.emit(t, vm.BitComp)
 
 		case lang.Call:
 			narg := t.Arg[0].(int)

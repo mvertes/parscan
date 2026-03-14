@@ -300,18 +300,16 @@ func (sc *Scanner) getNum(src string) (s string, tok lang.Token) {
 			// Only valid right after 'e'/'E', handled above via continue.
 			return s, tok
 		case r == 'x' || r == 'X' || r == 'o' || r == 'O' || r == 'b' || r == 'B':
-			if i == 1 && src[0] == '0' {
-				continue // hex/octal/binary prefix
+			if i != 1 || src[0] != '0' {
+				return src[:i], tok
 			}
-			return src[:i], tok
 		case (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F'):
 			// Hex digits: only valid after 0x prefix.
-			if len(src) > 2 && src[0] == '0' && (src[1] == 'x' || src[1] == 'X') {
-				continue
+			if len(src) < 3 || src[0] != '0' || (src[1] != 'x' && src[1] != 'X') {
+				return src[:i], tok
 			}
-			return src[:i], tok
 		case r == '_':
-			continue // digit separator
+			// digit separator, ok
 		default:
 			return src[:i], tok
 		}

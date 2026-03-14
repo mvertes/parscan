@@ -68,7 +68,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			t.Str = typeStr
 			addop(t)
 
-		case lang.Add, lang.And, lang.Equal, lang.Greater, lang.Less, lang.Mul, lang.Not, lang.Sub, lang.Shl, lang.Shr:
+		case lang.Add, lang.And, lang.AndNot, lang.Equal, lang.Greater, lang.GreaterEqual, lang.Less, lang.LessEqual, lang.Mul, lang.Not, lang.NotEqual, lang.Or, lang.Quo, lang.Rem, lang.Sub, lang.Shl, lang.Shr, lang.Xor:
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				// An operator preceded by an operator or no token is unary.
 				t.Tok = lang.UnaryOp[t.Tok]

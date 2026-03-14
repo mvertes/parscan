@@ -160,6 +160,41 @@ const (
 	LowerUint64
 	LowerFloat32
 	LowerFloat64
+
+	DivInt // n1 n2 -- quot
+	DivInt8
+	DivInt16
+	DivInt32
+	DivInt64
+	DivUint
+	DivUint8
+	DivUint16
+	DivUint32
+	DivUint64
+	DivFloat32
+	DivFloat64
+
+	RemInt // n1 n2 -- rem (integer only)
+	RemInt8
+	RemInt16
+	RemInt32
+	RemInt64
+	RemUint
+	RemUint8
+	RemUint16
+	RemUint32
+	RemUint64
+	RemFloat32 // unused, but keeps NumTypes alignment
+	RemFloat64 // unused, but keeps NumTypes alignment
+
+	// Bitwise opcodes (generic, operate on raw uint64 bits).
+	BitAnd    // n1 n2 -- n1 & n2
+	BitOr     // n1 n2 -- n1 | n2
+	BitXor    // n1 n2 -- n1 ^ n2
+	BitAndNot // n1 n2 -- n1 &^ n2
+	BitShl    // n1 n2 -- n1 << n2
+	BitShr    // n1 n2 -- n1 >> n2 (arithmetic for signed)
+	BitComp   // n -- ^n
 )
 
 // Memory attributes.
@@ -451,6 +486,40 @@ func (m *Machine) Run() (err error) {
 			}
 			resetNumRef(&mem[sp-2])
 			mem = mem[:sp-1]
+
+		// Generic bitwise.
+		case BitAnd:
+			mem[sp-2].num &= mem[sp-1].num
+			resetNumRef(&mem[sp-2])
+			mem = mem[:sp-1]
+		case BitOr:
+			mem[sp-2].num |= mem[sp-1].num
+			resetNumRef(&mem[sp-2])
+			mem = mem[:sp-1]
+		case BitXor:
+			mem[sp-2].num ^= mem[sp-1].num
+			resetNumRef(&mem[sp-2])
+			mem = mem[:sp-1]
+		case BitAndNot:
+			mem[sp-2].num &^= mem[sp-1].num
+			resetNumRef(&mem[sp-2])
+			mem = mem[:sp-1]
+		case BitShl:
+			mem[sp-2].num <<= mem[sp-1].num
+			resetNumRef(&mem[sp-2])
+			mem = mem[:sp-1]
+		case BitShr:
+			k := mem[sp-2].ref.Kind()
+			if k >= reflect.Uint && k <= reflect.Uintptr {
+				mem[sp-2].num >>= mem[sp-1].num
+			} else {
+				mem[sp-2].num = uint64(int64(mem[sp-2].num) >> mem[sp-1].num) //nolint:gosec
+			}
+			resetNumRef(&mem[sp-2])
+			mem = mem[:sp-1]
+		case BitComp:
+			mem[sp-1].num = ^mem[sp-1].num
+			resetNumRef(&mem[sp-1])
 		case Swap:
 			a, b := sp-c.Arg[0]-1, sp-c.Arg[1]-1
 			mem[a], mem[b] = mem[b], mem[a]
@@ -678,6 +747,82 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-1]
 		case LowerFloat32, LowerFloat64:
 			mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
+			mem = mem[:sp-1]
+
+		// Per-type Div.
+		case DivInt, DivInt64:
+			mem[sp-2].num = uint64(int64(mem[sp-2].num) / int64(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivInt8:
+			mem[sp-2].num = uint64(int8(mem[sp-2].num) / int8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivInt16:
+			mem[sp-2].num = uint64(int16(mem[sp-2].num) / int16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivInt32:
+			mem[sp-2].num = uint64(int32(mem[sp-2].num) / int32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivUint, DivUint64:
+			mem[sp-2].num /= mem[sp-1].num
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivUint8:
+			mem[sp-2].num = uint64(uint8(mem[sp-2].num) / uint8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivUint16:
+			mem[sp-2].num = uint64(uint16(mem[sp-2].num) / uint16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivUint32:
+			mem[sp-2].num = uint64(uint32(mem[sp-2].num) / uint32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivFloat64:
+			mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) / math.Float64frombits(mem[sp-1].num))
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+		case DivFloat32:
+			mem[sp-2].num = math.Float64bits(float64(float32(math.Float64frombits(mem[sp-2].num)) / float32(math.Float64frombits(mem[sp-1].num))))
+			mem[sp-2].ref = numZero[c.Op-DivInt]
+			mem = mem[:sp-1]
+
+		// Per-type Rem (integer only).
+		case RemInt, RemInt64:
+			mem[sp-2].num = uint64(int64(mem[sp-2].num) % int64(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-RemInt]
+			mem = mem[:sp-1]
+		case RemInt8:
+			mem[sp-2].num = uint64(int8(mem[sp-2].num) % int8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-RemInt]
+			mem = mem[:sp-1]
+		case RemInt16:
+			mem[sp-2].num = uint64(int16(mem[sp-2].num) % int16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-RemInt]
+			mem = mem[:sp-1]
+		case RemInt32:
+			mem[sp-2].num = uint64(int32(mem[sp-2].num) % int32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-RemInt]
+			mem = mem[:sp-1]
+		case RemUint, RemUint64:
+			mem[sp-2].num %= mem[sp-1].num
+			mem[sp-2].ref = numZero[c.Op-RemInt]
+			mem = mem[:sp-1]
+		case RemUint8:
+			mem[sp-2].num = uint64(uint8(mem[sp-2].num) % uint8(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-RemInt]
+			mem = mem[:sp-1]
+		case RemUint16:
+			mem[sp-2].num = uint64(uint16(mem[sp-2].num) % uint16(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-RemInt]
+			mem = mem[:sp-1]
+		case RemUint32:
+			mem[sp-2].num = uint64(uint32(mem[sp-2].num) % uint32(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2].ref = numZero[c.Op-RemInt]
 			mem = mem[:sp-1]
 		}
 		ip++
