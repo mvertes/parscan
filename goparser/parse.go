@@ -605,13 +605,21 @@ func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 }
 
 func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
-	var init, cond, clauses Tokens
+	var init, cond Tokens
 	initcond := in[1 : len(in)-1]
 	if ii := initcond.Index(lang.Semicolon); ii < 0 {
 		cond = initcond
 	} else {
 		init = initcond[:ii]
 		cond = initcond[ii+1:]
+	}
+	// Detect type switch: cond contains ".(type)".
+	for i, t := range cond {
+		if t.Tok == lang.Period && i+1 < len(cond) && cond[i+1].Tok == lang.ParenBlock {
+			if strings.TrimSpace(cond[i+1].Block()) == "type" {
+				return p.parseTypeSwitch(in, init, cond, i)
+			}
+		}
 	}
 	label := "switch" + strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
@@ -636,8 +644,11 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 		out = append(out, cond...)
 		condSwitch = true
 	}
-	// Split switch body into  case clauses.
-	clauses, err = p.Scan(in[len(in)-1].Block(), true)
+	// Split switch body into case clauses.
+	clauses, err := p.Scan(in[len(in)-1].Block(), true)
+	if err != nil {
+		return nil, err
+	}
 	sc := clauses.SplitStart(lang.Case)
 	// Make sure that the default clause is the last.
 	lsc := len(sc) - 1
@@ -658,6 +669,167 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 	}
 	out = append(out, newLabel(p.breakLabel, in[len(in)-1].Pos))
 	return out, err
+}
+
+// parseTypeSwitch handles switch v := x.(type) { ... } statements.
+// periodIdx is the index of ".(type)" in cond.
+func (p *Parser) parseTypeSwitch(in, init, cond Tokens, periodIdx int) (out Tokens, err error) {
+	pos := in[0].Pos
+	guardToks := cond[:periodIdx]
+	varName := ""
+	if defPos := guardToks.Index(lang.Define); defPos >= 0 {
+		if defPos == 1 {
+			varName = guardToks[0].Str
+		}
+		guardToks = guardToks[defPos+1:]
+	}
+	label := "switch" + strconv.Itoa(p.labelCount[p.scope])
+	p.labelCount[p.scope]++
+	breakLabel := p.breakLabel
+	p.pushScope(label)
+	p.breakLabel = p.scope + "e"
+	defer func() {
+		p.breakLabel = breakLabel
+		p.popScope()
+	}()
+	if len(init) > 0 {
+		if init, err = p.parseStmt(init); err != nil {
+			return nil, err
+		}
+		out = init
+	}
+	tsName := p.scope + "/_ts"
+	p.Symbols.Add(symbol.UnsetAddr, tsName, vm.Value{}, symbol.Var, nil, false)
+	guardParsed, err := p.parseExpr(guardToks, "")
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, newIdent(tsName, pos))
+	out = append(out, guardParsed...)
+	out = append(out, newToken(lang.Define, "", pos, 1))
+	// Split switch body into case clauses.
+	clauses, err := p.Scan(in[len(in)-1].Block(), true)
+	if err != nil {
+		return nil, err
+	}
+	sc := clauses.SplitStart(lang.Case)
+	// Move default to last position.
+	lsc := len(sc) - 1
+	for i, cl := range sc {
+		if cl[1].Tok == lang.Colon && i != lsc {
+			sc[i], sc[lsc] = sc[lsc], sc[i]
+			break
+		}
+	}
+	nc := len(sc) - 1
+	for i, cl := range sc {
+		co, err := p.parseTypeSwitchClause(cl, i, nc, tsName, varName)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, co...)
+	}
+	out = append(out, newLabel(p.breakLabel, in[len(in)-1].Pos))
+	return out, nil
+}
+
+// parseTypeSwitchClause generates code for one case clause of a type switch.
+func (p *Parser) parseTypeSwitchClause(in Tokens, index, maximum int, tsName, varName string) (out Tokens, err error) {
+	in = append(in, newSemicolon(in[len(in)-1].Pos))
+	tl := in.Split(lang.Colon)
+	if len(tl) != 2 {
+		return nil, errors.New("invalid type switch case clause")
+	}
+	conds := tl[0][1:] // tokens after 'case' keyword
+	pos := in[0].Pos
+	switchScope := p.scope // e.g. "main/switch0"
+
+	// Push a case-specific scope so that v has a unique symbol per case.
+	caseScopeName := "c" + strconv.Itoa(index)
+	p.pushScope(caseScopeName)
+
+	// Declare v in this case scope.
+	var vScoped string
+	if varName != "" {
+		vScoped = p.scope + "/" + varName
+		p.Symbols.Add(symbol.UnsetAddr, vScoped, vm.Value{}, symbol.Var, nil, false)
+	}
+	body, err := p.parseStmts(tl[1])
+	p.popScope() // back to switchScope
+	if err != nil {
+		return nil, err
+	}
+
+	endLabel := p.breakLabel // e.g. "main/switch0e"
+
+	// Check for default clause (no types between 'case' and ':').
+	if len(conds) == 0 || (len(conds) == 1 && conds[0].Tok == lang.Semicolon) {
+		caseLabel := fmt.Sprintf("%sc%d.0", switchScope, index)
+		out = append(out, newLabel(caseLabel, pos))
+		if varName != "" {
+			// v = iface (interface type); compiler infers type from rhs.
+			out = append(out, newIdent(vScoped, pos))
+			out = append(out, newIdent(tsName, pos))
+			out = append(out, newToken(lang.Assign, "", pos, 1))
+		}
+		out = append(out, body...)
+		return out, nil
+	}
+
+	lcond := conds.Split(lang.Comma)
+	isMulti := len(lcond) > 1
+	bodyLabel := fmt.Sprintf("%sc%d_body", switchScope, index)
+
+	for i, cond := range lcond {
+		subLabel := fmt.Sprintf("%sc%d.%d", switchScope, index, i)
+		var nextLabel string
+		switch {
+		case i < len(lcond)-1:
+			nextLabel = fmt.Sprintf("%sc%d.%d", switchScope, index, i+1)
+		case index < maximum:
+			nextLabel = fmt.Sprintf("%sc%d.0", switchScope, index+1)
+		default:
+			nextLabel = endLabel
+		}
+
+		out = append(out, newLabel(subLabel, pos))
+
+		var typ *vm.Type
+		isNilCase := len(cond) == 1 && cond[0].Tok == lang.Ident && cond[0].Str == "nil"
+		if !isNilCase {
+			typ, _, err = p.parseTypeExpr(cond)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		out = append(out, newIdent(tsName, pos))
+		out = append(out, newToken(lang.TypeSwitchJump, nextLabel, pos, typ))
+
+		if varName != "" {
+			out = append(out, newIdent(vScoped, pos))
+			out = append(out, newIdent(tsName, pos))
+			if isMulti || isNilCase {
+				out = append(out, newToken(lang.Assign, "", pos, 1))
+			} else {
+				out = append(out, newTypeAssert(typ, pos, 0))
+				out = append(out, newToken(lang.Assign, "", pos, 1))
+			}
+		}
+
+		if isMulti && i < len(lcond)-1 {
+			out = append(out, newGoto(bodyLabel, pos))
+		}
+	}
+
+	if isMulti {
+		out = append(out, newLabel(bodyLabel, pos))
+	}
+	out = append(out, body...)
+	if index != maximum {
+		out = append(out, newGoto(endLabel, pos))
+	}
+	return out, nil
 }
 
 func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch bool) (out Tokens, err error) {

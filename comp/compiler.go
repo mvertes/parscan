@@ -230,6 +230,25 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			}
 			c.emit(t, vm.TypeAssert, c.typeIndex(typ), okForm)
 
+		case lang.TypeSwitchJump:
+			var typ *vm.Type
+			if t.Arg[0] != nil {
+				typ = t.Arg[0].(*vm.Type)
+			}
+			pop() // consume iface_sym from compiler stack
+			typeIdx := -1
+			if typ != nil {
+				typeIdx = c.typeIndex(typ)
+			}
+			var offset int
+			if s, ok := c.Symbols[t.Str]; !ok {
+				t.Arg = []any{len(c.Code)} // store code location for fixup
+				fixList = append(fixList, t)
+			} else {
+				offset = int(s.Value.Int()) - len(c.Code)
+			}
+			c.emit(t, vm.TypeBranch, offset, typeIdx) // Arg[0]=offset, Arg[1]=typeIdx
+
 		case lang.Index:
 			pop()
 			s := pop()

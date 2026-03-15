@@ -126,6 +126,7 @@ const (
 	Slice
 	Stop
 	TypeAssert
+	TypeSwitchJump
 
 	// This must be the last token value.
 	MaxTok

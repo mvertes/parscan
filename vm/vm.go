@@ -82,6 +82,7 @@ const (
 	IfaceWrap              // v -- iface ; wrap v in Iface{type at $1, v}
 	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
 	TypeAssert             // iface -- v [ok] ; assert iface holds type at mem[$1]; $2=0 panics, $2=1 ok form
+	TypeBranch             // iface -- ; pop iface; if iface doesn't hold type at mem[$2] (or $2==-1 for nil), ip += $1
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -463,6 +464,20 @@ func (m *Machine) Run() (err error) {
 				}
 				mem[sp-1] = ValueOf(false)
 				mem = append(mem, NewValue(dstTyp.Rtype))
+			}
+
+		case TypeBranch: // Arg[0]=offset, Arg[1]=typeIdx (-1 for nil case)
+			ifc := mem[sp-1]
+			mem = mem[:sp-1]
+			var matched bool
+			if c.Arg[1] == -1 {
+				matched = !ifc.IsIface()
+			} else if ifc.IsIface() {
+				matched = ifc.IfaceVal().Typ == mem[c.Arg[1]].ref.Interface().(*Type)
+			}
+			if !matched {
+				ip += c.Arg[0]
+				continue
 			}
 
 		case Exit:

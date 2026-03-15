@@ -513,6 +513,33 @@ ok`, res: "false"},
 	})
 }
 
+func TestTypeSwitch(t *testing.T) {
+	run(t, []etest{
+		{n: "no_bind_int", src: `var i any = 42; var r int; switch i.(type) { case int: r = 1 }; r`, res: "1"},
+		{n: "no_bind_str", src: `var i any = "hi"; var r int; switch i.(type) { case int: r = 1; case string: r = 2 }; r`, res: "2"},
+		{n: "no_bind_default", src: `var i any = true; var r int; switch i.(type) { case int: r = 1; default: r = 9 }; r`, res: "9"},
+
+		{n: "bind_int", src: `var i any = 42; switch v := i.(type) { case int: v + 1 }`, res: "43"},
+		{n: "bind_str", src: `var i any = "hi"; switch v := i.(type) { case string: v }`, res: "hi"},
+		{n: "bind_second", src: `var i any = "hi"; switch v := i.(type) { case int: v; case string: v }`, res: "hi"},
+		{n: "bind_default", src: `var i any = true; var r int; switch i.(type) { case int: r = 1; default: r = 9 }; r`, res: "9"},
+
+		{n: "multi_int", src: `var i any = 42; var r int; switch i.(type) { case int, string: r = 1; default: r = 2 }; r`, res: "1"},
+		{n: "multi_str", src: `var i any = "hi"; var r int; switch i.(type) { case int, string: r = 1; default: r = 2 }; r`, res: "1"},
+		{n: "multi_default", src: `var i any = true; var r int; switch i.(type) { case int, string: r = 1; default: r = 2 }; r`, res: "2"},
+
+		{n: "nil_match", src: `var i any; var r int; switch i.(type) { case nil: r = 1; default: r = 2 }; r`, res: "1"},
+		{n: "nil_no_match", src: `var i any = 42; var r int; switch i.(type) { case nil: r = 1; default: r = 2 }; r`, res: "2"},
+
+		{n: "iface_guard", src: `
+type Getter interface { Get() int }
+type S struct { n int }
+func (s S) Get() int { return s.n }
+var g Getter = S{7}
+switch v := g.(type) { case S: v.Get() }`, res: "7"},
+	})
+}
+
 func TestVar(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "var a int; a", res: "0"},
