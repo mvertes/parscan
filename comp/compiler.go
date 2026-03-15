@@ -204,7 +204,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 
 		case lang.Minus:
 			typ := symbol.Vtype(top())
-			c.emit(t, numericOp(vm.NegateInt, vm.Negate, typ))
+			c.emit(t, numericOp(vm.NegInt, vm.Neg, typ))
 
 		case lang.Not:
 			c.emit(t, vm.Not)

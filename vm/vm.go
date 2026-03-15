@@ -57,7 +57,7 @@ const (
 	MapSet                 // a i v -- a; a[i] = v
 	Mul                    // n1 n2 -- prod ; prod = n1*n2
 	New                    // -- x; mem[fp+$1] = new mem[$2]
-	Negate                 // -- ; - mem[fp]
+	Neg                    // -- ; - mem[fp]
 	Next                   // -- ; iterator next, set K
 	Next2                  // -- ; iterator next, set K V
 	Not                    // c -- r ; r = !c
@@ -126,18 +126,18 @@ const (
 	MulFloat32
 	MulFloat64
 
-	NegateInt // n -- -n
-	NegateInt8
-	NegateInt16
-	NegateInt32
-	NegateInt64
-	NegateUint
-	NegateUint8
-	NegateUint16
-	NegateUint32
-	NegateUint64
-	NegateFloat32
-	NegateFloat64
+	NegInt // n -- -n
+	NegInt8
+	NegInt16
+	NegInt32
+	NegInt64
+	NegUint
+	NegUint8
+	NegUint16
+	NegUint32
+	NegUint64
+	NegFloat32
+	NegFloat64
 
 	GreaterInt // n1 n2 -- cond
 	GreaterInt8
@@ -535,7 +535,7 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-1]
 		case Len:
 			mem = append(mem, ValueOf(mem[sp-1-c.Arg[0]].ref.Len()))
-		case Negate:
+		case Neg:
 			if isFloat(mem[sp-1].ref.Kind()) {
 				mem[sp-1].num = math.Float64bits(-math.Float64frombits(mem[sp-1].num))
 			} else {
@@ -826,37 +826,37 @@ func (m *Machine) Run() (err error) {
 			mem[sp-2].ref = numZero[c.Op-MulInt]
 			mem = mem[:sp-1]
 
-		// Per-type Negate.
-		case NegateInt, NegateInt64:
+		// Per-type Neg.
+		case NegInt, NegInt64:
 			mem[sp-1].num = uint64(-int64(mem[sp-1].num)) //nolint:gosec
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateInt8:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegInt8:
 			mem[sp-1].num = uint64(-int8(mem[sp-1].num)) //nolint:gosec
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateInt16:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegInt16:
 			mem[sp-1].num = uint64(-int16(mem[sp-1].num)) //nolint:gosec
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateInt32:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegInt32:
 			mem[sp-1].num = uint64(-int32(mem[sp-1].num)) //nolint:gosec
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateUint, NegateUint64:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegUint, NegUint64:
 			mem[sp-1].num = -mem[sp-1].num
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateUint8:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegUint8:
 			mem[sp-1].num = uint64(-uint8(mem[sp-1].num)) //nolint:gosec
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateUint16:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegUint16:
 			mem[sp-1].num = uint64(-uint16(mem[sp-1].num)) //nolint:gosec
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateUint32:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegUint32:
 			mem[sp-1].num = uint64(-uint32(mem[sp-1].num)) //nolint:gosec
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateFloat64:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegFloat64:
 			mem[sp-1].num = math.Float64bits(-math.Float64frombits(mem[sp-1].num))
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
-		case NegateFloat32:
+			mem[sp-1].ref = numZero[c.Op-NegInt]
+		case NegFloat32:
 			mem[sp-1].num = math.Float64bits(-float64(float32(math.Float64frombits(mem[sp-1].num))))
-			mem[sp-1].ref = numZero[c.Op-NegateInt]
+			mem[sp-1].ref = numZero[c.Op-NegInt]
 
 		// Per-type Greater.
 		case GreaterInt, GreaterInt8, GreaterInt16, GreaterInt32, GreaterInt64:
