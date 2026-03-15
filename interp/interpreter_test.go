@@ -257,26 +257,22 @@ func TestStruct(t *testing.T) {
 
 func TestEmbeddedStruct(t *testing.T) {
 	run(t, []etest{
-		// Access a field from an embedded struct.
 		{n: "field", src: `
 type Base struct { X int }
 type T struct { Base; Y int }
 var t T; t.X = 1; t.Y = 2; t.X`, res: "1"},
 
-		// Access an embedded struct field set via composite literal.
 		{n: "literal", src: `
 type Base struct { X int }
 type T struct { Base; Y int }
 t := T{Base{10}, 20}; t.X`, res: "10"},
 
-		// Call a method promoted from an embedded struct.
 		{n: "method", src: `
 type Base struct { X int }
 func (b Base) GetX() int { return b.X }
 type T struct { Base; Y int }
 t := T{Base{7}, 0}; t.GetX()`, res: "7"},
 
-		// Promoted method satisfies an interface.
 		{n: "iface", src: `
 type Getter interface { GetX() int }
 type Base struct { X int }
@@ -285,7 +281,6 @@ type T struct { Base }
 var g Getter = T{Base{42}}
 g.GetX()`, res: "42"},
 
-		// Override: outer method shadows promoted method.
 		{n: "override", src: `
 type Base struct { X int }
 func (b Base) GetX() int { return b.X }
@@ -293,40 +288,34 @@ type T struct { Base }
 func (t T) GetX() int { return t.X * 10 }
 t := T{Base{3}}; t.GetX()`, res: "30"},
 
-		// Access nested embedded field.
 		{n: "nested", src: `
 type A struct { V int }
 type B struct { A }
 type C struct { B }
 c := C{B{A{99}}}; c.V`, res: "99"},
 
-		// Access field through embedded pointer.
 		{n: "ptr_field", src: `
 type Base struct { X int }
 type T struct { *Base }
 t := T{&Base{5}}; t.X`, res: "5"},
 
-		// Set field through embedded pointer.
 		{n: "ptr_set", src: `
 type Base struct { X int }
 type T struct { *Base }
 t := T{&Base{0}}; t.X = 42; t.X`, res: "42"},
 
-		// Call method through embedded pointer.
 		{n: "ptr_method", src: `
 type Base struct { X int }
 func (b Base) GetX() int { return b.X }
 type T struct { *Base }
 t := T{&Base{8}}; t.GetX()`, res: "8"},
 
-		// Pointer receiver method promoted through embedded pointer.
 		{n: "ptr_recv_method", src: `
 type Base struct { X int }
 func (b *Base) SetX(v int) { b.X = v }
 type T struct { *Base }
 t := T{&Base{0}}; t.SetX(99); t.X`, res: "99"},
 
-		// Promoted pointer method satisfies interface.
 		{n: "ptr_iface", src: `
 type Getter interface { GetX() int }
 type Base struct { X int }
@@ -335,7 +324,6 @@ type T struct { *Base }
 var g Getter = T{&Base{55}}
 g.GetX()`, res: "55"},
 
-		// Nested embedding through pointer.
 		{n: "ptr_nested", src: `
 type A struct { V int }
 type B struct { *A }
@@ -346,38 +334,32 @@ c := C{B{&A{77}}}; c.V`, res: "77"},
 
 func TestMethodResolve(t *testing.T) {
 	run(t, []etest{
-		// Value receiver called on value.
 		{n: "val_on_val", src: `
 type T struct { X int }
 func (t T) GetX() int { return t.X }
 v := T{3}; v.GetX()`, res: "3"},
 
-		// Value receiver called on pointer (auto-deref).
 		{n: "val_on_ptr", src: `
 type T struct { X int }
 func (t T) GetX() int { return t.X }
 p := &T{5}; p.GetX()`, res: "5"},
 
-		// Pointer receiver called on pointer.
 		{n: "ptr_on_ptr", src: `
 type T struct { X int }
 func (t *T) SetX(v int) { t.X = v }
 p := &T{0}; p.SetX(7); p.X`, res: "7"},
 
-		// Pointer receiver called on addressable value (auto-addr).
 		{n: "ptr_on_val", src: `
 type T struct { X int }
 func (t *T) SetX(v int) { t.X = v }
 var v T; v.SetX(9); v.X`, res: "9"},
 
-		// Both value and pointer methods on same type.
 		{n: "both", src: `
 type T struct { X int }
 func (t T) GetX() int { return t.X }
 func (t *T) Double() { t.X = t.X * 2 }
 var v T; v.X = 4; v.Double(); v.GetX()`, res: "8"},
 
-		// Value method via pointer through interface.
 		{n: "iface_val_recv", src: `
 type Getter interface { GetX() int }
 type T struct { X int }
@@ -385,7 +367,6 @@ func (t T) GetX() int { return t.X }
 var g Getter = &T{6}
 g.GetX()`, res: "6"},
 
-		// Pointer method via pointer through interface.
 		{n: "iface_ptr_recv", src: `
 type Setter interface { SetX(int) }
 type T struct { X int }
@@ -396,20 +377,17 @@ var s Setter = t0
 s.SetX(11)
 t0.GetX()`, res: "11"},
 
-		// Named non-struct type: value receiver on value.
 		{n: "named_val_on_val", src: `
 type N int
 func (n N) IsPos() bool { return int(n) > 0 }
 v := N(5); v.IsPos()`, res: "true"},
 
-		// Named non-struct type: value receiver on pointer (auto-deref).
 		// Skipped: requires `new` builtin.
 		{n: "named_val_on_ptr", skip: true, src: `
 type N int
 func (n N) IsPos() bool { return int(n) > 0 }
 p := new(N); *p = N(3); p.IsPos()`, res: "true"},
 
-		// Named non-struct type: pointer receiver on addressable value (auto-addr).
 		// Skipped: parser doesn't handle dereference assignment (*n = ...) on named types yet.
 		{n: "named_ptr_on_val", skip: true, src: `
 type N int
@@ -464,7 +442,6 @@ func TestType(t *testing.T) {
 
 func TestInterface(t *testing.T) {
 	run(t, []etest{
-		// Basic interface definition and method call.
 		{n: "basic", src: `
 type Stringer interface { String() string }
 type T int
@@ -472,7 +449,6 @@ func (t T) String() string { return "hello" }
 var s Stringer = T(1)
 s.String()`, res: "hello"},
 
-		// Interface with method using receiver value.
 		{n: "recv_value", src: `
 type Doubler interface { Double() int }
 type N int
@@ -480,7 +456,6 @@ func (n N) Double() int { return int(n) * 2 }
 var d Doubler = N(5)
 d.Double()`, res: "10"},
 
-		// Reassign interface to a different concrete value.
 		{n: "reassign", src: `
 type Doubler interface { Double() int }
 type N int
@@ -489,16 +464,52 @@ var d Doubler = N(3)
 d = N(7)
 d.Double()`, res: "14"},
 
-		// Empty interface.
 		{n: "empty_iface", src: "type I interface {}; var x I; x", res: "<nil>"},
 
-		// Interface with struct receiver.
 		{n: "struct_recv", src: `
 type Getter interface { Get() int }
 type S struct { n int }
 func (s S) Get() int { return s.n }
 var g Getter = S{42}
 g.Get()`, res: "42"},
+	})
+}
+
+func TestTypeAssert(t *testing.T) {
+	run(t, []etest{
+		{n: "simple", src: `var i any = 42; i.(int)`, res: "42"},
+		{n: "string", src: `var i any = "hello"; i.(string)`, res: "hello"},
+		{n: "arith", src: `var i any = 42; i.(int) + 1`, res: "43"},
+
+		{n: "ok_true", src: `var i any = 42; v, ok := i.(int); ok`, res: "true"},
+		{n: "ok_val", src: `var i any = 42; v, ok := i.(int); v + 1`, res: "43"},
+
+		{n: "ok_false", src: `var i any = 42; _, ok := i.(string); ok`, res: "false"},
+
+		{n: "iface_assert", src: `
+type Getter interface { Get() int }
+type S struct { n int }
+func (s S) Get() int { return s.n }
+var g Getter = S{7}
+v, ok := g.(S)
+v.Get()`, res: "7"},
+
+		{n: "iface_assert_ok", src: `
+type Getter interface { Get() int }
+type S struct { n int }
+func (s S) Get() int { return s.n }
+var g Getter = S{7}
+_, ok := g.(S)
+ok`, res: "true"},
+
+		{n: "iface_assert_fail", src: `
+type Getter interface { Get() int }
+type Other struct { n int }
+type S struct { n int }
+func (s S) Get() int { return s.n }
+var g Getter = S{7}
+_, ok := g.(Other)
+ok`, res: "false"},
 	})
 }
 
@@ -611,36 +622,29 @@ func TestMethod(t *testing.T) {
 
 func TestArithInt(t *testing.T) {
 	run(t, []etest{
-		// Basic addition.
 		{n: "add", src: "3 + 4", res: "7"},
 		{n: "add_neg", src: "-3 + 4", res: "1"},
 		{n: "add_zero", src: "0 + 0", res: "0"},
 
-		// Subtraction.
 		{n: "sub", src: "10 - 3", res: "7"},
 		{n: "sub_neg_result", src: "3 - 10", res: "-7"},
 
-		// Multiplication.
 		{n: "mul", src: "6 * 7", res: "42"},
 		{n: "mul_zero", src: "42 * 0", res: "0"},
 		{n: "mul_neg", src: "-3 * 4", res: "-12"},
 
-		// Division.
 		{n: "div", src: "10 / 3", res: "3"},
 		{n: "div_exact", src: "12 / 4", res: "3"},
 		{n: "div_neg", src: "-7 / 2", res: "-3"},
 		{n: "div_neg2", src: "7 / -2", res: "-3"},
 
-		// Remainder.
 		{n: "rem", src: "10 % 3", res: "1"},
 		{n: "rem_neg", src: "-10 % 3", res: "-1"},
 		{n: "rem_exact", src: "12 % 4", res: "0"},
 
-		// Unary negate.
 		{n: "negate", src: "-42", res: "-42"},
 		{n: "negate_neg", src: "a := -1; -a", res: "1"},
 
-		// Comparisons (existing).
 		{n: "gt_true", src: "3 > 2", res: "true"},
 		{n: "gt_false", src: "2 > 3", res: "false"},
 		{n: "lt_true", src: "2 < 3", res: "true"},
@@ -648,7 +652,6 @@ func TestArithInt(t *testing.T) {
 		{n: "eq_true", src: "3 == 3", res: "true"},
 		{n: "eq_false", src: "3 == 4", res: "false"},
 
-		// Comparisons.
 		{n: "ge_true", src: "3 >= 3", res: "true"},
 		{n: "ge_true2", src: "4 >= 3", res: "true"},
 		{n: "ge_false", src: "2 >= 3", res: "false"},
@@ -658,15 +661,12 @@ func TestArithInt(t *testing.T) {
 		{n: "ne_true", src: "3 != 4", res: "true"},
 		{n: "ne_false", src: "3 != 3", res: "false"},
 
-		// Overflow boundary: int wraps on overflow (two's complement).
 		{n: "max_int", src: "var a int = 9223372036854775807; a", res: "9223372036854775807"},
 		{n: "min_int", src: "var a int = -9223372036854775808; a", res: "-9223372036854775808", skip: true},
 
-		// Increment / Decrement.
 		{n: "inc", src: "a := 5; a++; a", res: "6"},
 		{n: "dec", src: "a := 5; a--; a", res: "4"},
 
-		// Compound assignment.
 		{n: "add_assign", src: "a := 5; a += 3; a", res: "8"},
 		{n: "sub_assign", src: "a := 5; a -= 3; a", res: "2"},
 		{n: "mul_assign", src: "a := 5; a *= 3; a", res: "15"},
@@ -677,38 +677,29 @@ func TestArithInt(t *testing.T) {
 
 func TestBitwiseInt(t *testing.T) {
 	run(t, []etest{
-		// Bitwise AND.
 		{n: "and", src: "0xff & 0x0f", res: "15"},
 		{n: "and_zero", src: "0xff & 0", res: "0"},
 
-		// Bitwise OR.
 		{n: "or", src: "0xf0 | 0x0f", res: "255"},
 		{n: "or_same", src: "0xff | 0xff", res: "255"},
 
-		// Bitwise XOR.
 		{n: "xor", src: "0xff ^ 0x0f", res: "240"},
 		{n: "xor_self", src: "a := 42; a ^ a", res: "0"},
 
-		// Bitwise AND NOT.
 		{n: "andnot", src: "0xff &^ 0x0f", res: "240"},
 
-		// Bitwise complement (unary ^).
 		{n: "comp", src: "^0", res: "-1"},
 		{n: "comp_neg1", src: "^-1", res: "0", skip: true}, // scanner merges ^- as single op
 
-		// Left shift.
 		{n: "shl", src: "1 << 10", res: "1024"},
 		{n: "shl_zero", src: "42 << 0", res: "42"},
 
-		// Right shift (arithmetic for signed).
 		{n: "shr", src: "1024 >> 3", res: "128"},
 		{n: "shr_neg", src: "-8 >> 1", res: "-4"},
 
-		// Shift compound assignment.
 		{n: "shl_assign", src: "a := 1; a <<= 4; a", res: "16"},
 		{n: "shr_assign", src: "a := 16; a >>= 4; a", res: "1"},
 
-		// Bitwise compound assignment.
 		{n: "and_assign", src: "a := 0xff; a &= 0x0f; a", res: "15"},
 		{n: "or_assign", src: "a := 0xf0; a |= 0x0f; a", res: "255"},
 		{n: "xor_assign", src: "a := 0xff; a ^= 0x0f; a", res: "240"},
@@ -718,15 +709,12 @@ func TestBitwiseInt(t *testing.T) {
 
 func TestString(t *testing.T) {
 	run(t, []etest{
-		// Concatenation.
 		{n: "concat", src: `"hello" + " " + "world"`, res: "hello world"},
 		{n: "concat_var", src: `a := "foo"; b := "bar"; a + b`, res: "foobar"},
 		{n: "concat_empty", src: `"hello" + ""`, res: "hello"},
 
-		// Compound assignment.
 		{n: "add_assign", src: `a := "hello"; a += " world"; a`, res: "hello world"},
 
-		// Slicing.
 		{n: "slice", src: `a := "hello world"; a[0:5]`, res: "hello"},
 		{n: "slice_mid", src: `a := "hello world"; a[6:11]`, res: "world"},
 		{n: "slice_open_high", src: `a := "hello"; a[1:]`, res: "ello"},
@@ -736,45 +724,35 @@ func TestString(t *testing.T) {
 
 func TestArithUint(t *testing.T) {
 	run(t, []etest{
-		// Basic uint arithmetic.
 		{n: "add", src: "var a, b uint = 3, 4; a + b", res: "7"},
 		{n: "sub", src: "var a, b uint = 10, 3; a - b", res: "7"},
 		{n: "mul", src: "var a, b uint = 6, 7; a * b", res: "42"},
 		{n: "div", src: "var a, b uint = 10, 3; a / b", res: "3"},
 		{n: "rem", src: "var a, b uint = 10, 3; a % b", res: "1"},
 
-		// Unsigned comparisons: values > MaxInt64 must compare correctly.
 		{n: "gt_large", src: "var a uint = 18446744073709551615; var b uint = 0; a > b", res: "true", skip: true},
 		{n: "lt_large", src: "var a uint = 0; var b uint = 18446744073709551615; a < b", res: "true", skip: true},
 
-		// Max uint value.
 		{n: "max_uint", src: "var a uint = 18446744073709551615; a", res: "18446744073709551615", skip: true},
 
-		// Uint8 boundary.
 		{n: "uint8_max", src: "var a uint8 = 255; a", res: "255"},
 		{n: "uint8_add_wrap", src: "var a uint8 = 255; var b uint8 = 1; a + b", res: "0"},
 
-		// Uint16 boundary.
 		{n: "uint16_max", src: "var a uint16 = 65535; a", res: "65535"},
-
-		// Uint32 boundary.
 		{n: "uint32_max", src: "var a uint32 = 4294967295; a", res: "4294967295"},
 
-		// Right shift on unsigned is logical (zero-fill).
 		{n: "shr_logical", src: "var a uint = 18446744073709551615; a >> 60", res: "15", skip: true}, // requires large uint literal parsing
 	})
 }
 
 func TestArithFloat(t *testing.T) {
 	run(t, []etest{
-		// Basic float64 arithmetic.
 		{n: "add", src: "var a, b float64 = 1.5, 2.5; a + b", res: "4"},
 		{n: "sub", src: "var a, b float64 = 5.5, 2.0; a - b", res: "3.5"},
 		{n: "mul", src: "var a, b float64 = 2.5, 4.0; a * b", res: "10"},
 		{n: "div", src: "var a, b float64 = 7.0, 2.0; a / b", res: "3.5"},
 		{n: "negate", src: "var a float64 = 3.14; -a", res: "-3.14"},
 
-		// Float comparisons.
 		{n: "gt_true", src: "var a, b float64 = 3.14, 2.71; a > b", res: "true"},
 		{n: "gt_false", src: "var a, b float64 = 2.71, 3.14; a > b", res: "false"},
 		{n: "lt_true", src: "var a, b float64 = 2.71, 3.14; a < b", res: "true"},
@@ -783,21 +761,17 @@ func TestArithFloat(t *testing.T) {
 		{n: "ge_true", src: "var a, b float64 = 3.14, 3.14; a >= b", res: "true"},
 		{n: "le_true", src: "var a, b float64 = 2.71, 3.14; a <= b", res: "true"},
 
-		// Float literals.
 		{n: "lit_add", src: "1.5 + 2.5", res: "4"},
 		{n: "lit_sub", src: "5.0 - 1.5", res: "3.5"},
 		{n: "lit_mul", src: "2.5 * 4.0", res: "10"},
 		{n: "lit_div", src: "7.0 / 2.0", res: "3.5"},
 		{n: "lit_neg", src: "-3.14", res: "-3.14"},
 
-		// Float32.
 		{n: "f32_add", src: "var a, b float32 = 1.5, 2.5; a + b", res: "4"},
 
-		// Division by zero produces +Inf.
 		{n: "div_zero_pos", src: "var a, b float64 = 1.0, 0.0; a / b", res: "+Inf"},
 		{n: "div_zero_neg", src: "var a, b float64 = -1.0, 0.0; a / b", res: "-Inf"},
 
-		// Float compound assignment.
 		{n: "add_assign", src: "var a float64 = 1.5; a += 2.5; a", res: "4"},
 		{n: "sub_assign", src: "var a float64 = 5.0; a -= 1.5; a", res: "3.5"},
 		{n: "mul_assign", src: "var a float64 = 2.5; a *= 4.0; a", res: "10"},
@@ -807,59 +781,43 @@ func TestArithFloat(t *testing.T) {
 
 func TestConvert(t *testing.T) {
 	run(t, []etest{
-		// Float to int (truncation).
 		{n: "float64_to_int", src: "var a float64 = 3.14; int(a)", res: "3"},
 		{n: "float64_to_int_neg", src: "var a float64 = -3.14; int(a)", res: "-3"},
 
-		// Int to float.
 		{n: "int_to_float64", src: "var a int = 42; float64(a)", res: "42"},
-
-		// Int to smaller int (truncation / overflow wrap).
 		{n: "int_to_int8", src: "var a int = 200; int8(a)", res: "-56"},
 		{n: "int_to_uint8", src: "var a int = 256; uint8(a)", res: "0"},
 		{n: "int_to_int16", src: "var a int = 40000; int16(a)", res: "-25536"},
-
-		// Int to string (rune conversion).
 		{n: "int_to_string", src: `string(65)`, res: "A"},
-
-		// Between int types.
 		{n: "int_to_int64", src: "var a int = 42; int64(a)", res: "42"},
+		{n: "int_to_int", src: "var a int = 42; int(a)", res: "42"},
+
 		{n: "uint_to_int", src: "var a uint = 5; int(a)", res: "5"},
 
-		// Float32 to float64.
 		{n: "float32_to_float64", src: "var a float32 = 1.5; float64(a)", res: "1.5"},
 		{n: "float64_to_float32", src: "var a float64 = 1.5; float32(a)", res: "1.5"},
 
-		// Conversion in expression.
 		{n: "conv_in_expr", src: "var a float64 = 3.14; int(a) + 1", res: "4"},
-
-		// Identity conversion.
-		{n: "int_to_int", src: "var a int = 42; int(a)", res: "42"},
 	})
 }
 
 func TestArithTypedInt(t *testing.T) {
 	run(t, []etest{
-		// Int8.
 		{n: "int8_add", src: "var a, b int8 = 100, 20; a + b", res: "120"},
 		{n: "int8_max", src: "var a int8 = 127; a", res: "127"},
 		{n: "int8_min", src: "var a int8 = -128; a", res: "-128"},
 		{n: "int8_wrap", src: "var a int8 = 127; var b int8 = 1; a + b", res: "-128"},
 
-		// Int16.
 		{n: "int16_add", src: "var a, b int16 = 1000, 2000; a + b", res: "3000"},
 		{n: "int16_max", src: "var a int16 = 32767; a", res: "32767"},
 		{n: "int16_min", src: "var a int16 = -32768; a", res: "-32768"},
 
-		// Int32.
 		{n: "int32_add", src: "var a, b int32 = 100000, 200000; a + b", res: "300000"},
 		{n: "int32_max", src: "var a int32 = 2147483647; a", res: "2147483647"},
 
-		// Int64.
 		{n: "int64_add", src: "var a, b int64 = 100, 200; a + b", res: "300"},
 		{n: "int64_max", src: "var a int64 = 9223372036854775807; a", res: "9223372036854775807"},
 
-		// Typed operations preserve type.
 		{n: "int8_mul", src: "var a, b int8 = 10, 12; a * b", res: "120"},
 		{n: "int16_mul", src: "var a, b int16 = 200, 100; a * b", res: "20000"},
 		{n: "int32_div", src: "var a, b int32 = 100, 3; a / b", res: "33"},

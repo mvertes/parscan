@@ -6,6 +6,7 @@ import (
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scan"
+	"github.com/mvertes/parscan/vm"
 )
 
 // Token represents a parser token.
@@ -93,3 +94,6 @@ func newInt(i, pos int) Token                         { return newToken(lang.Int
 func newColon(pos int) Token                          { return newToken(lang.Colon, "", pos) }
 func newLen(i, pos int) Token                         { return newToken(lang.Len, "", pos, i) }
 func newSlice(pos int) Token                          { return newToken(lang.Slice, "", pos) }
+func newTypeAssert(typ *vm.Type, pos, okForm int) Token {
+	return newToken(lang.TypeAssert, typ.String(), pos, okForm, typ)
+}

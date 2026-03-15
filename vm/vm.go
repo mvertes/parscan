@@ -18,7 +18,7 @@ type Op int
 
 //go:generate stringer -type=Op
 
-// Closure bundles a function code address with its captured variable cells.
+// Closure bundles a function code address with its captured variables.
 type Closure struct {
 	Code int      // code address (same as the plain-int function value)
 	Env  []*Value // heap-allocated cells, one per captured variable
@@ -81,6 +81,7 @@ const (
 	Convert                // v -- v' ; v' = convert(v, type at mem[$1])
 	IfaceWrap              // v -- iface ; wrap v in Iface{type at $1, v}
 	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
+	TypeAssert             // iface -- v [ok] ; assert iface holds type at mem[$1]; $2=0 panics, $2=1 ok form
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -423,7 +424,6 @@ func (m *Machine) Run() (err error) {
 			cell := new(Value)
 			*cell = ifc.Val
 			if path := method.Path; path != nil {
-				// Deref pointer (handles both *T→T and *T→T.Base.field).
 				rv := reflect.Indirect(ifc.Val.Reflect())
 				for _, idx := range path {
 					if rv.Kind() == reflect.Pointer {
@@ -434,6 +434,36 @@ func (m *Machine) Run() (err error) {
 				*cell = fromReflect(rv)
 			}
 			mem[sp-1] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Env: []*Value{cell}})}
+
+		case TypeAssert:
+			dstTyp := mem[c.Arg[0]].ref.Interface().(*Type)
+			okForm := c.Arg[1] == 1
+			ifc := mem[sp-1]
+			if !ifc.IsIface() {
+				if !okForm {
+					// FIXME: to be replaced with a vm panic operator which stops the vm, returns
+					// an error, but does not crash the program.
+					panic(fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp))
+				}
+				mem[sp-1] = ValueOf(false)
+				mem = append(mem, NewValue(dstTyp.Rtype))
+				break
+			}
+			if concrete := ifc.IfaceVal(); concrete.Typ == dstTyp {
+				if okForm {
+					mem[sp-1] = ValueOf(true)
+					mem = append(mem, concrete.Val)
+				} else {
+					mem[sp-1] = concrete.Val
+				}
+			} else {
+				if !okForm {
+					// FIXME: replace with a vm panic operator when ready.
+					panic(fmt.Sprintf("interface conversion: interface value is %s, not %s", concrete.Typ, dstTyp))
+				}
+				mem[sp-1] = ValueOf(false)
+				mem = append(mem, NewValue(dstTyp.Rtype))
+			}
 
 		case Exit:
 			return err
@@ -620,6 +650,7 @@ func (m *Machine) Run() (err error) {
 		case BitComp:
 			mem[sp-1].num = ^mem[sp-1].num
 			resetNumRef(&mem[sp-1])
+
 		case Swap:
 			a, b := sp-c.Arg[0]-1, sp-c.Arg[1]-1
 			mem[a], mem[b] = mem[b], mem[a]

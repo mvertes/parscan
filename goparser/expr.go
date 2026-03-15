@@ -10,7 +10,7 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
-// parseExpr transform an infix expression into a postfix notation.
+// parseExpr transforms an infix expression into a postfix notation.
 func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	log.Println("parseExpr in:", in)
 	var ops Tokens
@@ -26,12 +26,14 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 		return t
 	}
 
-	// addop adds an operator to the operator stack.
-	addop := func(t Token) {
-		// Operators on stack with a lower precedence are poped out and output first.
-		for len(ops) > 0 && p.precedence(t) < p.precedence(ops[len(ops)-1]) {
+	flushops := func(minPrec int) {
+		for len(ops) > 0 && p.precedence(ops[len(ops)-1]) >= minPrec {
 			out = append(out, popop())
 		}
+	}
+
+	addop := func(t Token) {
+		flushops(p.precedence(t) + 1)
 		ops = append(ops, t)
 	}
 
@@ -46,17 +48,32 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if out, err = p.parseFunc(in); err != nil {
 				return out, err
 			}
-			// Get function label and use it as a symbol ident.
 			fid := out[1]
 			fid.Tok = lang.Ident
 			out = append(out, fid)
 			return out, err
 
 		case lang.Period:
-			// TODO: fail if next is not an ident.
-			t.Str += in[i+1].Str // Hardwire selector argument.
-			addop(t)
-			i++ // Skip over next ident.
+			if i+1 < lin && in[i+1].Tok == lang.ParenBlock {
+				// Type assertion: x.(T).
+				flushops(p.precedence(t))
+				block := in[i+1].Block()
+				btoks, err := p.Scan(block, false)
+				if err != nil {
+					return out, err
+				}
+				typ, _, err := p.parseTypeExpr(btoks)
+				if err != nil {
+					return out, err
+				}
+				out = append(out, newTypeAssert(typ, t.Pos, 0))
+				i++ // Skip following ParenBlock.
+			} else {
+				// Normal field selector.
+				t.Str += in[i+1].Str
+				addop(t)
+				i++ // Skip over next ident.
+			}
 
 		case lang.Next:
 			out = append(out, t)
@@ -70,7 +87,6 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 
 		case lang.Add, lang.And, lang.AndNot, lang.Equal, lang.Greater, lang.GreaterEqual, lang.Less, lang.LessEqual, lang.Mul, lang.Not, lang.NotEqual, lang.Or, lang.Quo, lang.Rem, lang.Sub, lang.Shl, lang.Shr, lang.Xor:
 			if i == 0 || in[i-1].Tok.IsOperator() {
-				// An operator preceded by an operator or no token is unary.
 				t.Tok = lang.UnaryOp[t.Tok]
 				// FIXME: parsetype for composite if & or *
 			}
@@ -95,7 +111,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if ok && sc != "" {
 				t.Str = sc + "/" + t.Str
 			}
-			// Free variable detection: local defined in an enclosing function scope.
+			// Free variable detection: defined in an enclosing function scope.
 			if ok && s != nil && s.Local && sc != "" && p.fname != "" && sc != p.funcScope {
 				if cloSym := p.Symbols[p.fname]; cloSym != nil {
 					if cloSym.CapturedAs == nil {
@@ -121,10 +137,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				out = append(out, toks...)
 			} else {
-				prec := p.precedence(newCall(0))
-				for len(ops) > 0 && prec < p.precedence(ops[len(ops)-1]) {
-					out = append(out, popop())
-				}
+				flushops(p.precedence(newCall(0)) + 1)
 				// func call: ensure that the func token in on the top of the stack, after args.
 				ops = append(ops, newCall(t.Pos, p.numItems(t.Block(), lang.Comma)))
 				out = append(out, toks...)
@@ -132,7 +145,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 
 		case lang.BraceBlock:
 			if ctype == "" {
-				// Infer composite inner type from passed typeStr
+				// Infer composite inner type from passed typeStr.
 				typ := p.Symbols[typeStr].Type.Elem()
 				ctype = typ.String()
 				p.Symbols.Add(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, p.funcScope != "")
@@ -147,7 +160,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 
 		case lang.BracketBlock:
 			if i == 0 || in[i-1].Tok.IsOperator() {
-				// array or slice type expression
+				// Array or slice type expression.
 				typ, n, err := p.parseTypeExpr(in[i:])
 				if err != nil {
 					return out, err
@@ -239,7 +252,7 @@ func (p *Parser) parseBlock(t Token, typ string) (result Tokens, err error) {
 	}
 
 	if tokens.Index(lang.Colon) >= 0 {
-		// Slice expression, a[low : high] or a[low : high : max]
+		// Slice expression, a[low : high] or a[low : high : max].
 		for i, sub := range tokens.Split(lang.Colon) {
 			if i > 2 {
 				return nil, errors.New("expected ']', found ':'")
@@ -269,7 +282,7 @@ func (p *Parser) parseBlock(t Token, typ string) (result Tokens, err error) {
 		if err != nil {
 			return result, err
 		}
-		// Inverse sub list order (func call parameters)
+		// Inverse sub list order (func call parameters in LIFO).
 		result = append(toks, result...)
 	}
 

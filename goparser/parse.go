@@ -194,6 +194,10 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 			out = append(out, toks...)
 			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos, len(lhs)))
 		} else {
+			// Mark TypeAssert as ok form when LHS has exactly 2 targets.
+			if len(lhs) == 2 && len(toks) > 0 && toks[len(toks)-1].Tok == lang.TypeAssert {
+				toks[len(toks)-1].Arg[0] = 1
+			}
 			out = append(out, toks...)
 			if out[len(out)-1].Tok == lang.Range {
 				// Pass the the number of values to set to range.

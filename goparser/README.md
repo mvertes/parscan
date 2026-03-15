@@ -42,7 +42,7 @@ Go language support:
 - [ ] variadic functions
 - [x] pointers
 - [x] structures
-- [ ] embedded structures
+- [x] embedded structures
 - [ ] recursive structures
 - [x] literal composite objects
 - [x] interfaces
@@ -76,15 +76,15 @@ Go language support:
 - [x] binary operators
 - [x] unary operators
 - [x] logical operators && and ||
-- [ ] assign operators
+- [x] assign operators
 - [x] operator precedence rules
 - [x] parenthesis expressions
 - [x] call expressions
 - [x] index expressions
 - [x] selector expressions
 - [x] slice expressions
-- [ ] type convertions
-- [ ] type assertions
+- [x] type convertions
+- [x] type assertions
 - [ ] parametric types (generic)
 - [ ] type parametric functions (generic)
 - [ ] type constraints (generic)

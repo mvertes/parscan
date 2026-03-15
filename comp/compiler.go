@@ -158,7 +158,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			n := int(n64)
-			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(n), Type: vm.TypeOf(0)})
+			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(n), Type: c.Symbols["int"].Type})
 			c.emit(t, vm.Push, n)
 
 		case lang.Float:
@@ -169,12 +169,12 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			v := vm.ValueOf(f)
 			di := len(c.Data)
 			c.Data = append(c.Data, v)
-			push(&symbol.Symbol{Kind: symbol.Const, Value: v, Type: vm.TypeOf(0.0)})
+			push(&symbol.Symbol{Kind: symbol.Const, Value: v, Type: c.Symbols["float64"].Type})
 			c.emit(t, vm.Get, vm.Global, di)
 
 		case lang.String:
 			s := t.Block()
-			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(s), Type: vm.TypeOf("")})
+			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(s), Type: c.Symbols["string"].Type})
 			c.emit(t, vm.Get, vm.Global, c.stringIndex(s))
 
 		case lang.Add:
@@ -219,6 +219,16 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 		case lang.Deref:
 			push(&symbol.Symbol{Kind: symbol.Value, Type: pop().Type.Elem()})
 			c.emit(t, vm.Deref)
+
+		case lang.TypeAssert:
+			okForm := t.Arg[0].(int)
+			typ := t.Arg[1].(*vm.Type)
+			pop() // interface value
+			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			if okForm == 1 {
+				push(&symbol.Symbol{Kind: symbol.Value, Type: vm.TypeOf(false)})
+			}
+			c.emit(t, vm.TypeAssert, c.typeIndex(typ), okForm)
 
 		case lang.Index:
 			pop()
