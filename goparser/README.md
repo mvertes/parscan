@@ -67,10 +67,10 @@ Go language support:
 - [x] if statement (including else and else if)
 - [x] for statement
 - [x] switch statement
-- [ ] type switch statement
+- [x] type switch statement
 - [x] break statement
 - [x] continue statement
-- [ ] fallthrough statement
+- [x] fallthrough statement
 - [x] goto statement
 - [x] label statement
 - [ ] select statement

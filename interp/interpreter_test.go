@@ -199,6 +199,24 @@ func TestSwitch(t *testing.T) {
 	return a
 }
 `
+	src2 := `func f(a int) int {
+	switch a {
+	case 1: a = 10; fallthrough
+	case 2: a++
+	case 3: a = 30
+	}
+	return a
+}
+`
+	src3 := `func f(a int) int {
+	switch a {
+	case 1,2: fallthrough
+	case 3:   a = 99
+	case 4:   a = 0
+	}
+	return a
+}
+`
 	run(t, []etest{
 		{n: "#00", src: src0 + "f(1)", res: "2"},
 		{n: "#01", src: src0 + "f(2)", res: "3"},
@@ -209,6 +227,15 @@ func TestSwitch(t *testing.T) {
 		{n: "#05", src: src1 + "f(1)", res: "2"},
 		{n: "#06", src: src1 + "f(4)", res: "5"},
 		{n: "#07", src: src1 + "f(6)", res: "0"},
+
+		{n: "#08", src: src2 + "f(1)", res: "11"},
+		{n: "#09", src: src2 + "f(2)", res: "3"},
+		{n: "#10", src: src2 + "f(3)", res: "30"},
+
+		{n: "#11", src: src3 + "f(1)", res: "99"},
+		{n: "#12", src: src3 + "f(2)", res: "99"},
+		{n: "#13", src: src3 + "f(3)", res: "99"},
+		{n: "#14", src: src3 + "f(4)", res: "0"},
 	})
 }
 

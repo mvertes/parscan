@@ -129,7 +129,9 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		return p.parseFor(in)
 	case lang.Func:
 		return p.parseFunc(in)
-	case lang.Defer, lang.Go, lang.Fallthrough, lang.Select:
+	case lang.Fallthrough:
+		return out, errors.New("fallthrough statement out of place")
+	case lang.Defer, lang.Go, lang.Select:
 		return out, fmt.Errorf("not yet implemented: %v", t.Tok)
 	case lang.Goto:
 		return p.parseGoto(in)
@@ -660,12 +662,14 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 	}
 	// Process each clause.
 	nc := len(sc) - 1
+	prevFallthrough := false
 	for i, cl := range sc {
-		co, err := p.parseCaseClause(cl, i, nc, condSwitch)
+		co, hasFallthrough, err := p.parseCaseClause(cl, i, nc, condSwitch, prevFallthrough)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, co...)
+		prevFallthrough = hasFallthrough
 	}
 	out = append(out, newLabel(p.breakLabel, in[len(in)-1].Pos))
 	return out, err
@@ -832,47 +836,67 @@ func (p *Parser) parseTypeSwitchClause(in Tokens, index, maximum int, tsName, va
 	return out, nil
 }
 
-func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch bool) (out Tokens, err error) {
+func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch, prevFallthrough bool) (out Tokens, hasFallthrough bool, err error) {
 	in = append(in, newSemicolon(in[len(in)-1].Pos)) // Force a ';' at the end of body clause.
 	var conds, body Tokens
 	tl := in.Split(lang.Colon)
 	if len(tl) != 2 {
-		return nil, errors.New("invalid case clause")
+		return nil, false, errors.New("invalid case clause")
 	}
 	conds = tl[0][1:]
-	if body, err = p.parseStmts(tl[1]); err != nil {
-		return out, err
+	pos := in[0].Pos
+
+	// Pre-scan raw body for fallthrough before parsing statements.
+	bodyRaw := tl[1]
+	if fi := bodyRaw.Index(lang.Fallthrough); fi >= 0 {
+		if index == maximum {
+			return nil, false, errors.New("cannot fallthrough final case in switch")
+		}
+		if fi+2 < len(bodyRaw) {
+			return nil, false, errors.New("fallthrough statement out of place")
+		}
+		hasFallthrough = true
+		bodyRaw = bodyRaw[:fi]
 	}
+	if body, err = p.parseStmts(bodyRaw); err != nil {
+		return nil, false, err
+	}
+
 	lcond := conds.Split(lang.Comma)
+	isMulti := len(lcond) > 1
+	bodyLabel := fmt.Sprintf("%sc%d_body", p.scope, index)
+	miss := p.scope + "e"
+	if index < maximum {
+		miss = fmt.Sprintf("%sc%d.0", p.scope, index+1)
+	}
 	for i, cond := range lcond {
 		if cond, err = p.parseExpr(cond, ""); err != nil {
-			return out, err
+			return nil, false, err
 		}
-		txt := fmt.Sprintf("%sc%d.%d", p.scope, index, i)
-		next := ""
-		if i == len(lcond)-1 { // End of cond: next, go to next clause or exit
-			if index < maximum {
-				next = fmt.Sprintf("%sc%d.%d", p.scope, index+1, 0)
-			} else {
-				next = p.scope + "e"
-			}
-		} else {
-			next = fmt.Sprintf("%sc%d.%d", p.scope, index, i+1)
-		}
-		out = append(out, newLabel(txt, 0)) // FIXME: fix label position
+		out = append(out, newLabel(fmt.Sprintf("%sc%d.%d", p.scope, index, i), 0))
 		if len(cond) > 0 {
 			out = append(out, cond...)
 			if condSwitch {
 				out = append(out, newEqualSet(cond[0].Pos))
 			}
-			out = append(out, newJumpFalse(next, cond[len(cond)-1].Pos))
-		}
-		out = append(out, body...)
-		if i != len(lcond)-1 || index != maximum {
-			out = append(out, newGoto(p.scope+"e", 0)) // FIXME: fix goto position
+			if isMulti && i < len(lcond)-1 {
+				out = append(out, newJumpFalse(fmt.Sprintf("%sc%d.%d", p.scope, index, i+1), cond[len(cond)-1].Pos))
+				out = append(out, newGoto(bodyLabel, pos))
+				continue
+			}
+			out = append(out, newJumpFalse(miss, cond[len(cond)-1].Pos))
 		}
 	}
-	return out, err
+	if isMulti || prevFallthrough {
+		out = append(out, newLabel(bodyLabel, pos))
+	}
+	out = append(out, body...)
+	if hasFallthrough {
+		out = append(out, newGoto(fmt.Sprintf("%sc%d_body", p.scope, index+1), pos))
+	} else if index != maximum {
+		out = append(out, newGoto(p.scope+"e", 0))
+	}
+	return out, hasFallthrough, err
 }
 
 func (p *Parser) parseLabel(in Tokens) (out Tokens, err error) {
