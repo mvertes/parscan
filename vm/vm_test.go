@@ -168,8 +168,8 @@ var tests = []struct {
 	code: []Instruction{
 		{Op: Jump, Arg: []int{5}},      // 0
 		{Op: Push, Arg: []int{3}},      // 1
-		{Op: Set, Arg: []int{1, -2}},   // 2
-		{Op: Get, Arg: []int{1, -2}},   // 3
+		{Op: Set, Arg: []int{1, -3}},   // 2
+		{Op: Get, Arg: []int{1, -3}},   // 3
 		{Op: Return, Arg: []int{1, 1}}, // 4
 		{Op: Push, Arg: []int{1}},      // 5
 		{Op: Push, Arg: []int{1}},      // 6
@@ -180,23 +180,23 @@ var tests = []struct {
 }, { // #14 -- Fibonacci numbers, hand written. Showcase recursivity.
 	code: []Instruction{
 		{Op: Jump, Arg: []int{19}},     // 0
-		{Op: Get, Arg: []int{1, -2}},   // 1  [2 i]
+		{Op: Get, Arg: []int{1, -3}},   // 1  [2 i]
 		{Op: Push, Arg: []int{2}},      // 2  [2]
 		{Op: Lower},                    // 3  [true/false]
 		{Op: JumpTrue, Arg: []int{13}}, // 4  [], goto 17
 		{Op: Push, Arg: []int{1}},      // 5
-		{Op: Get, Arg: []int{1, -2}},   // 6  [i]
+		{Op: Get, Arg: []int{1, -3}},   // 6  [i]
 		{Op: Push, Arg: []int{2}},      // 7  [i 2]
 		{Op: Sub},                      // 8  [(i-2)]
 		{Op: Call, Arg: []int{1}},      // 9  [fib(i-2)]
 		{Op: Push, Arg: []int{1}},      // 10
-		{Op: Get, Arg: []int{1, -2}},   // 11 [fib(i-2) i]
+		{Op: Get, Arg: []int{1, -3}},   // 11 [fib(i-2) i]
 		{Op: Push, Arg: []int{1}},      // 12 [(i-2) i 1]
 		{Op: Sub},                      // 13 [(i-2) (i-1)]
 		{Op: Call, Arg: []int{1}},      // 14 [fib(i-2) fib(i-1)]
 		{Op: Add},                      // 15 [fib(i-2)+fib(i-1)]
 		{Op: Return, Arg: []int{1, 1}}, // 16 return i
-		{Op: Get, Arg: []int{1, -2}},   // 17 [i]
+		{Op: Get, Arg: []int{1, -3}},   // 17 [i]
 		{Op: Return, Arg: []int{1, 1}}, // 18 return i
 		{Op: Push, Arg: []int{1}},      // 19
 		{Op: Push, Arg: []int{6}},      // 20 [1]
