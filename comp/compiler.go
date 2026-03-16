@@ -2,6 +2,7 @@
 package comp
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -38,7 +39,63 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 	}
 }
 
-// methodID returns the integer ID for a method name, assigning one if needed.
+// Compile parses src and generates code and data, or returns a non-nil error.
+// Code and data are added incrementally in c.Code and C.Data.
+func (c *Compiler) Compile(src string) error {
+	decls, err := c.ScanDecls(src)
+	if err != nil {
+		return err
+	}
+
+	// Register function signatures in advance (fix mutually recursive funcs).
+	for _, decl := range decls {
+		c.SymTracker = nil
+		dataLen, codeLen := len(c.Data), len(c.Code)
+		if err = c.RegisterFunc(decl); err != nil {
+			c.rollback(dataLen, codeLen)
+		}
+	}
+
+	// Retry until no undefined declaration remains, or stale, or other error.
+	pending := decls
+	for len(pending) > 0 {
+		var retry []goparser.Tokens
+		for _, decl := range pending {
+			c.SymTracker = nil
+			dataLen, codeLen := len(c.Data), len(c.Code)
+			toks, parseErr := c.ParseOneStmt(decl)
+			if parseErr == nil {
+				parseErr = c.generate(toks)
+			}
+			if parseErr != nil {
+				var eu goparser.ErrUndefined
+				if errors.As(parseErr, &eu) {
+					c.rollback(dataLen, codeLen)
+					retry = append(retry, decl)
+					continue
+				}
+				return parseErr
+			}
+		}
+		if len(retry) == len(pending) {
+			// No progress: return first error.
+			_, err = c.ParseOneStmt(pending[0])
+			return err
+		}
+		pending = retry
+	}
+	return nil
+}
+
+func (c *Compiler) rollback(dataLen, codeLen int) {
+	for _, k := range c.SymTracker {
+		delete(c.Symbols, k)
+	}
+	c.SymTracker = nil
+	c.Data = c.Data[:dataLen]
+	c.Code = c.Code[:codeLen]
+}
+
 func (c *Compiler) methodID(name string) int {
 	if id, ok := c.methodIDs[name]; ok {
 		return id
@@ -48,17 +105,16 @@ func (c *Compiler) methodID(name string) int {
 	return id
 }
 
-// typeIndex returns the Data index for a *Type, adding it if needed.
 func (c *Compiler) typeIndex(typ *vm.Type) int {
 	i := len(c.Data)
 	c.Data = append(c.Data, vm.ValueOf(typ))
 	return i
 }
 
-// ensurePromotedMethods registers promoted methods from embedded types into typ so that
+// registerMethods registers promoted methods from embedded types into typ so that
 // interface dispatch (IfaceCall) can find them. Called at IfaceWrap emission time when
 // iface is the interface type being satisfied and typ is the concrete type.
-func (c *Compiler) ensurePromotedMethods(iface, typ *vm.Type) {
+func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 	// For *T, resolve T so we can look up value methods and embedded promotions.
 	isPtr := typ.Rtype.Kind() == reflect.Pointer
 	lookupTyp := typ
@@ -100,7 +156,6 @@ func (c *Compiler) ensurePromotedMethods(iface, typ *vm.Type) {
 	}
 }
 
-// stringIndex returns the Data index for string s, adding it if needed.
 func (c *Compiler) stringIndex(s string) int {
 	i, ok := c.strings[s]
 	if !ok {
@@ -131,8 +186,8 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
 }
 
-// Generate generates vm code and data from parsed tokens.
-func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
+// generate generates vm code and data from parsed tokens, or returns an error.
+func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 	log.Println("Codegen tokens:", tokens)
 	fixList := goparser.Tokens{} // list of tokens to fix after all necessary information is gathered
 	stack := []*symbol.Symbol{}  // for symbolic evaluation and type checking
@@ -349,6 +404,9 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			}
 			if s.Kind != symbol.Value {
 				typ := s.Type
+				if typ == nil {
+					return goparser.ErrUndefined{Name: s.Name}
+				}
 				// TODO: pop input types (careful with variadic function).
 				// Pop function and input arg symbols, push return value symbols.
 				pop()
@@ -427,7 +485,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				}
 				// If lhs has an interface type, keep it and wrap the concrete value.
 				if lhs[i].Type != nil && lhs[i].Type.IsInterface() && !typ.IsInterface() {
-					c.ensurePromotedMethods(lhs[i].Type, typ)
+					c.registerMethods(lhs[i].Type, typ)
 					c.emit(t, vm.IfaceWrap, c.typeIndex(typ))
 					c.Data[lhs[i].Index] = vm.NewValue(lhs[i].Type.Rtype)
 				} else {
@@ -466,7 +524,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 			}
 			// Wrap concrete value in Iface when assigning to interface variable.
 			if lhs.Type != nil && lhs.Type.IsInterface() && rhs.Type != nil && !rhs.Type.IsInterface() {
-				c.ensurePromotedMethods(lhs.Type, rhs.Type)
+				c.registerMethods(lhs.Type, rhs.Type)
 				c.emit(t, vm.IfaceWrap, c.typeIndex(rhs.Type))
 			}
 			c.emit(t, vm.SetS, t.Arg[0].(int))
@@ -573,8 +631,15 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				if s.Kind == symbol.Func {
 					// Label is a function entry point, register its code address in data
 					// and save caller stack length.
-					s.Index = len(c.Data)
-					c.Data = append(c.Data, s.Value)
+					if s.Index == symbol.UnsetAddr {
+						s.Index = len(c.Data)
+						c.Data = append(c.Data, s.Value)
+					} else {
+						// Slot was pre-allocated by an Ident reference before this Label:
+						// update in place so all Get Global N instructions already emitted
+						// load the correct code address at runtime.
+						c.Data[s.Index] = s.Value
+					}
 					flen = append(flen, len(stack))
 					funcStack = append(funcStack, t.Str)
 					// Register method in its receiver type's method table.
@@ -600,7 +665,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 						funcStack = funcStack[:len(funcStack)-1]
 					}
 				}
-				c.Symbols[t.Str] = &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)}
+				c.SymSet(t.Str, &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)})
 			}
 
 		case lang.Len:
@@ -670,7 +735,7 @@ func (c *Compiler) Generate(tokens goparser.Tokens) (err error) {
 				} else {
 					l = len(c.Data)
 					c.Data = append(c.Data, v)
-					c.Symbols.Add(l, name, v, symbol.Value, vm.TypeOf(v.Interface()), false)
+					c.SymAdd(l, name, v, symbol.Value, vm.TypeOf(v.Interface()), false)
 					sym = c.Symbols[name]
 				}
 				push(sym)
@@ -922,7 +987,7 @@ func (c *Compiler) typeSym(t *vm.Type) *symbol.Symbol {
 	tsym, ok := c.Symbols[t.Rtype.String()]
 	if !ok {
 		tsym = &symbol.Symbol{Index: symbol.UnsetAddr, Kind: symbol.Type, Type: t}
-		c.Symbols[t.Rtype.String()] = tsym
+		c.SymSet(t.Rtype.String(), tsym)
 	}
 	if tsym.Index == symbol.UnsetAddr {
 		tsym.Index = len(c.Data)

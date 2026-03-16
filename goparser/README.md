@@ -33,7 +33,7 @@ Go language support:
 - [x] external function calls (calling runtime symbols in interpreter)
 - [ ] export to runtime
 - [ ] builtin calls (new, make, copy, delete, len, cap, ...)
-- [ ] out of order declarations
+- [x] out of order declarations
 - [x] arbirtrary precision constants
 - [x] basic types
 - [x] complete numeric types

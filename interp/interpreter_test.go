@@ -132,6 +132,19 @@ func TestFunc(t *testing.T) {
 	})
 }
 
+func TestOutOfOrder(t *testing.T) {
+	run(t, []etest{
+		// function declared after use
+		{n: "#00", src: "func f() int { return g() }; func g() int { return 2 }; f()", res: "2"},
+		// mutual recursion: even and odd call each other, both declared before use
+		{n: "#01", src: "func even(n int) bool { if n == 0 { return true }; return odd(n-1) }; func odd(n int) bool { if n == 0 { return false }; return even(n-1) }; even(4)", res: "true"},
+		// f calls two functions declared after it
+		{n: "#02", src: "func f() int { return g() + h() }; func g() int { return 3 }; func h() int { return 4 }; f()", res: "7"},
+		// three-level chain: a depends on b, b depends on c
+		{n: "#03", src: "func a() int { return b() }; func b() int { return c() }; func c() int { return 7 }; a()", res: "7"},
+	})
+}
+
 func TestFuncNamedReturn(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "func f(a int) (r int) { r = a + 2; return }; f(3)", res: "5"},

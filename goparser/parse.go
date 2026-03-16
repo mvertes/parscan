@@ -33,6 +33,24 @@ type Parser struct {
 	continueLabel string
 	clonum        int      // closure instance number
 	namedOut      []string // scoped names of named return vars for current function
+	SymTracker    []string // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
+}
+
+// SymSet inserts sym at key in the symbol table, recording the key for potential rollback.
+func (p *Parser) SymSet(key string, sym *symbol.Symbol) {
+	if p.SymTracker != nil {
+		p.SymTracker = append(p.SymTracker, key)
+	}
+	p.Symbols[key] = sym
+}
+
+// SymAdd adds a new named symbol, recording the key for potential rollback.
+func (p *Parser) SymAdd(i int, name string, v vm.Value, k symbol.Kind, t *vm.Type, local bool) {
+	name = strings.TrimPrefix(name, "/")
+	if p.SymTracker != nil {
+		p.SymTracker = append(p.SymTracker, name)
+	}
+	p.Symbols[name] = &symbol.Symbol{Kind: k, Name: name, Index: i, Local: local, Value: v, Type: t}
 }
 
 // Parser errors.
@@ -79,30 +97,91 @@ func (p *Parser) Parse(src string) (out Tokens, err error) {
 	return p.parseStmts(in)
 }
 
+// stmtEnd returns the index of the semicolon ending the first statement in toks,
+// accounting for HasInit tokens (if, for, switch) which contain internal semicolons.
+func (p *Parser) stmtEnd(toks Tokens) (int, error) {
+	end := toks.Index(lang.Semicolon)
+	if end == -1 {
+		return -1, scan.ErrBlock
+	}
+	if p.TokenProps[toks[0].Tok].HasInit {
+		for toks[end-1].Tok != lang.BraceBlock {
+			e2 := toks[end+1:].Index(lang.Semicolon)
+			if e2 == -1 {
+				return -1, scan.ErrBlock
+			}
+			end += 1 + e2
+		}
+	}
+	return end, nil
+}
+
 func (p *Parser) parseStmts(in Tokens) (out Tokens, err error) {
 	for len(in) > 0 {
-		endstmt := in.Index(lang.Semicolon)
-		if endstmt == -1 {
-			return out, scan.ErrBlock
+		end, err := p.stmtEnd(in)
+		if err != nil {
+			return out, err
 		}
-		// Skip over simple init statements for some tokens (if, for, ...)
-		if p.TokenProps[in[0].Tok].HasInit {
-			for in[endstmt-1].Tok != lang.BraceBlock {
-				e2 := in[endstmt+1:].Index(lang.Semicolon)
-				if e2 == -1 {
-					return out, scan.ErrBlock
-				}
-				endstmt += 1 + e2
-			}
-		}
-		o, err := p.parseStmt(in[:endstmt])
+		o, err := p.parseStmt(in[:end])
 		if err != nil {
 			return out, err
 		}
 		out = append(out, o...)
-		in = in[endstmt+1:]
+		in = in[end+1:]
 	}
 	return out, err
+}
+
+// ScanDecls scans src and returns its top-level statements as individual token slices,
+// without parsing them. Used by the lazy fixpoint evaluation loop.
+func (p *Parser) ScanDecls(src string) ([]Tokens, error) {
+	toks, err := p.Scan(src, true)
+	if err != nil {
+		return nil, err
+	}
+	var decls []Tokens
+	for len(toks) > 0 {
+		end, err := p.stmtEnd(toks)
+		if err != nil {
+			return nil, err
+		}
+		decls = append(decls, toks[:end])
+		toks = toks[end+1:]
+	}
+	return decls, nil
+}
+
+// ParseOneStmt parses a single pre-scanned statement token slice.
+func (p *Parser) ParseOneStmt(toks Tokens) (Tokens, error) {
+	return p.parseStmt(toks)
+}
+
+// RegisterFunc parses and registers a named function's signature.
+func (p *Parser) RegisterFunc(toks Tokens) error {
+	if len(toks) < 3 || toks[0].Tok != lang.Func || toks[1].Tok != lang.Ident {
+		return nil
+	}
+	fname := toks[1].Str
+	bi := toks.Index(lang.BraceBlock)
+	if bi < 0 {
+		return nil
+	}
+	s, _, ok := p.Symbols.Get(fname, p.scope)
+	if ok && s.Type != nil {
+		return nil
+	}
+	if !ok {
+		s = &symbol.Symbol{Used: true, Index: symbol.UnsetAddr}
+		key := strings.TrimPrefix(p.scope+"/"+fname, "/")
+		p.SymSet(key, s)
+	}
+	typ, _, err := p.parseTypeExpr(toks[:bi])
+	if err != nil {
+		return err
+	}
+	s.Kind = symbol.Func
+	s.Type = typ
+	return nil
 }
 
 func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
@@ -182,7 +261,7 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 				return out, err
 			}
 			if define && len(e) == 1 && e[0].Tok == lang.Ident {
-				p.Symbols.Add(symbol.UnsetAddr, e[0].Str, vm.Value{}, symbol.Var, nil, false)
+				p.SymAdd(symbol.UnsetAddr, e[0].Str, vm.Value{}, symbol.Var, nil, false)
 			}
 			out = append(out, toks...)
 		}
@@ -220,7 +299,7 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 		if define {
 			for _, t := range toks {
 				if t.Tok == lang.Ident {
-					p.Symbols.Add(symbol.UnsetAddr, t.Str, vm.Value{}, symbol.Var, nil, p.funcScope != "")
+					p.SymAdd(symbol.UnsetAddr, t.Str, vm.Value{}, symbol.Var, nil, p.funcScope != "")
 				}
 			}
 		}
@@ -487,12 +566,12 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	p.namedOut = nil
 	s, _, ok := p.Symbols.Get(fname, p.scope)
 	if !ok {
-		s = &symbol.Symbol{Used: true}
+		s = &symbol.Symbol{Used: true, Index: symbol.UnsetAddr}
 		key := fname
 		if !strings.HasPrefix(fname, "#") {
 			key = p.scope + fname
 		}
-		p.Symbols[key] = s
+		p.SymSet(key, s)
 	}
 	p.pushScope(fname)
 	p.funcScope = p.scope
@@ -703,7 +782,7 @@ func (p *Parser) parseTypeSwitch(in, init, cond Tokens, periodIdx int) (out Toke
 		out = init
 	}
 	tsName := p.scope + "/_ts"
-	p.Symbols.Add(symbol.UnsetAddr, tsName, vm.Value{}, symbol.Var, nil, false)
+	p.SymAdd(symbol.UnsetAddr, tsName, vm.Value{}, symbol.Var, nil, false)
 	guardParsed, err := p.parseExpr(guardToks, "")
 	if err != nil {
 		return nil, err
@@ -756,7 +835,7 @@ func (p *Parser) parseTypeSwitchClause(in Tokens, index, maximum int, tsName, va
 	var vScoped string
 	if varName != "" {
 		vScoped = p.scope + "/" + varName
-		p.Symbols.Add(symbol.UnsetAddr, vScoped, vm.Value{}, symbol.Var, nil, false)
+		p.SymAdd(symbol.UnsetAddr, vScoped, vm.Value{}, symbol.Var, nil, false)
 	}
 	body, err := p.parseStmts(tl[1])
 	p.popScope() // back to switchScope

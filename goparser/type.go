@@ -31,6 +31,13 @@ var (
 	ErrNotImplemented = errors.New("not implemented")
 )
 
+// ErrUndefined is returned during parsing when a referenced symbol is not yet defined.
+// It is retryable: the lazy fixpoint loop in interp.Eval defers the declaration and retries
+// after other declarations have been processed.
+type ErrUndefined struct{ Name string }
+
+func (e ErrUndefined) Error() string { return "undefined: " + e.Name }
+
 // parseTypeExpr returns the expression type from its tokens, the number of consumed tokens
 // for the type and the parse error.
 func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
@@ -120,7 +127,10 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 	case lang.Ident:
 		// TODO: selector expression (pkg.type)
 		s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
-		if !ok || s.Kind != symbol.Type {
+		if !ok {
+			return nil, 0, ErrUndefined{in[0].Str}
+		}
+		if s.Kind != symbol.Type {
 			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
 		return s.Type, 1, nil
@@ -218,10 +228,19 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 		param := ""
 		local := p.funcScope != ""
 		if p.hasFirstParam(t) {
-			param = strings.TrimPrefix(p.scope+"/"+t[0].Str, "/")
+			origName := t[0].Str
+			param = strings.TrimPrefix(p.scope+"/"+origName, "/")
 			t = t[1:]
 			if len(t) == 0 {
 				if len(types) == 0 {
+					// No type seen from the right yet. For output params, a lone ident
+					// that is not in the symbol table might be a forward-declared type;
+					// return ErrUndefined so the lazy fixpoint can retry.
+					if flag == parseTypeOut {
+						if _, _, ok := p.Symbols.Get(origName, p.scope); !ok {
+							return nil, nil, ErrUndefined{origName}
+						}
+					}
 					return nil, nil, ErrMissingType
 				}
 				// Type was omitted, apply the previous one from the right.
@@ -250,25 +269,25 @@ func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, 
 	case parseTypeRecv:
 		// Receiver lives in Env[0] of the method closure, not on the call stack.
 		// Index is irrelevant; the compiler emits HGet 0 via CapturedAs.
-		p.Symbols[name] = &symbol.Symbol{
+		p.SymSet(name, &symbol.Symbol{
 			Kind: symbol.Var, Name: name, Index: symbol.UnsetAddr,
 			Local: true, Captured: true, Used: true,
 			Type: typ, Value: zv,
-		}
+		})
 	case parseTypeIn:
-		p.Symbols.Add(-index-2, name, zv, symbol.Var, typ, true)
+		p.SymAdd(-index-2, name, zv, symbol.Var, typ, true)
 	case parseTypeOut:
-		p.Symbols.Add(p.framelen[p.funcScope], name, zv, symbol.Var, typ, true)
+		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.Var, typ, true)
 		p.framelen[p.funcScope]++
 		if name != "" {
 			p.namedOut = append(p.namedOut, name)
 		}
 	case parseTypeVar:
 		if !local {
-			p.Symbols.Add(symbol.UnsetAddr, name, zv, symbol.Var, typ, local)
+			p.SymAdd(symbol.UnsetAddr, name, zv, symbol.Var, typ, local)
 			break
 		}
-		p.Symbols.Add(p.framelen[p.funcScope], name, zv, symbol.Var, typ, local)
+		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.Var, typ, local)
 		p.framelen[p.funcScope]++
 	}
 }

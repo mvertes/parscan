@@ -32,13 +32,10 @@ func (i *Interp) Eval(src string) (res reflect.Value, err error) {
 	}
 	i.PopExit() // Remove last exit from previous run (re-entrance).
 
-	t, err := i.Parse(src)
-	if err != nil {
+	if err = i.Compile(src); err != nil {
 		return res, err
 	}
-	if err = i.Generate(t); err != nil {
-		return res, err
-	}
+
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
 	if s, ok := i.Symbols["main"]; ok {
