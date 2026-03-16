@@ -77,6 +77,7 @@ func newToken(tok lang.Token, str string, pos int, arg ...any) Token {
 
 func newIdent(name string, pos int, arg ...any) Token { return newToken(lang.Ident, name, pos, arg...) }
 func newCall(pos int, arg ...any) Token               { return newToken(lang.Call, "", pos, arg...) }
+func newDefer(pos int, arg ...any) Token              { return newToken(lang.Defer, "", pos, arg...) }
 func newGoto(label string, pos int) Token             { return newToken(lang.Goto, label, pos) }
 func newLabel(label string, pos int) Token            { return newToken(lang.Label, label, pos) }
 func newJumpFalse(label string, pos int) Token        { return newToken(lang.JumpFalse, label, pos) }

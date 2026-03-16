@@ -891,3 +891,54 @@ func TestArithTypedInt(t *testing.T) {
 		{n: "int64_rem", src: "var a, b int64 = 100, 7; a % b", res: "2"},
 	})
 }
+
+func TestDefer(t *testing.T) {
+	run(t, []etest{
+		{n: "#00", src: `
+			a := 0
+			func f() { defer func() { a = 1 }() }
+			f()
+			a`, res: "1"},
+		{n: "#01", src: `
+			// Multiple defers run LIFO.
+			s := ""
+			func f() {
+				defer func() { s = s + "a" }()
+				defer func() { s = s + "b" }()
+				defer func() { s = s + "c" }()
+			}
+			f()
+			s`, res: "cba"},
+		{n: "#02", src: `
+			// Args evaluated at defer time, not call time.
+			x := 0
+			func add(a, b int) { x = a + b }
+			func f() {
+				i := 1
+				defer add(i, 2)
+				i = 10
+			}
+			f()
+			x`, res: "3"},
+		{n: "#03", src: `
+			// Args evaluated at defer time in a loop (not call time).
+			s := 0
+			func add(n int) { s = s + n }
+			func f() {
+				for i := 0; i < 3; i++ {
+					defer add(i)
+				}
+			}
+			f()
+			s`, res: "3"},
+		{n: "#04", src: `
+			// Defer runs after return value is computed.
+			a := 0
+			func f() int {
+				defer func() { a = 1 }()
+				return 42
+			}
+			r := f()
+			r`, res: "42"},
+	})
+}

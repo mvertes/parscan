@@ -275,7 +275,7 @@ func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, 
 			Type: typ, Value: zv,
 		})
 	case parseTypeIn:
-		p.SymAdd(-index-2, name, zv, symbol.Var, typ, true)
+		p.SymAdd(-index-3, name, zv, symbol.Var, typ, true)
 	case parseTypeOut:
 		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.Var, typ, true)
 		p.framelen[p.funcScope]++

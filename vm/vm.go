@@ -83,6 +83,8 @@ const (
 	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
 	TypeAssert             // iface -- v [ok] ; assert iface holds type at mem[$1]; $2=0 panics, $2=1 ok form
 	TypeBranch             // iface -- ; pop iface; if iface doesn't hold type at mem[$2] (or $2==-1 for nil), ip += $1
+	DeferPush              // func [a0..an-1] -- func [a0..an-1] [packed prevHead retIP] ; register deferred call on stack; $0=narg, $1=1 if native
+	DeferRet               // -- ; sentinel: restore outer frame after a deferred call returns
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -242,14 +244,42 @@ type Machine struct {
 	// flags  uint      // to set options such as restrict CallX, etc...
 }
 
+// deferSentinelIP is the ip value used as return address for deferred call frames.
+// A negative ip is checked before m.code[ip] to dispatch the DeferRet handler.
+const deferSentinelIP = -1
+
 // Run runs a program.
 func (m *Machine) Run() (err error) {
 	mem, ip, fp, sp, ic := m.mem, m.ip, m.fp, 0, m.ic
 
-	defer func() { m.mem, m.ip, m.fp, m.ic = mem, ip, fp, ic }()
+	defer func() {
+		m.mem, m.ip, m.fp, m.ic = mem, ip, fp, ic
+	}()
 
 	for {
-		sp = len(mem)   // stack pointer
+		sp = len(mem) // stack pointer
+		// Negative ip is a sentinel for the DeferRet handler (no code instruction needed).
+		if ip < 0 {
+			ic++
+			// ip == deferSentinelIP: restore outer frame after a deferred VM call returns.
+			dh := int(mem[fp-3].num)        //nolint:gosec
+			narg := int(mem[dh-2].num >> 1) //nolint:gosec
+			val := mem[dh].num
+			returnIP := int(val & 0xFFFFFFFF) //nolint:gosec
+			nret := int(val >> 32)            //nolint:gosec
+			prevHead := int(mem[dh-1].num)    //nolint:gosec
+			retBase := dh - narg - 3
+			for i := 0; i < nret; i++ { // move return values down
+				mem[retBase+i] = mem[dh+1+i]
+			}
+			for i := retBase + nret; i < sp; i++ { // zero stale slots
+				mem[i] = Value{}
+			}
+			mem = mem[:retBase+nret]
+			mem[fp-3].num = uint64(prevHead) //nolint:gosec
+			ip = returnIP
+			continue
+		}
 		c := m.code[ip] // current instruction
 		if debug {
 			log.Printf("ip:%-3d sp:%-3d fp:%-3d op:[%-20v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
@@ -307,9 +337,9 @@ func (m *Machine) Run() (err error) {
 				m.env = nil
 			}
 			m.captured = append(m.captured, prevEnv)
-			mem = append(mem, ValueOf(ip+1), ValueOf(fp))
+			mem = append(mem, ValueOf(0), ValueOf(ip+1), ValueOf(fp)) // deferHead, retIP, prevFP
 			ip = nip
-			fp = sp + 2
+			fp = sp + 3
 			continue
 		case CallX: // Should be made optional.
 			in := make([]reflect.Value, c.Arg[0])
@@ -591,12 +621,86 @@ func (m *Machine) Run() (err error) {
 			mem = append(mem, ValueOf(next), ValueOf(stop))
 		case Grow:
 			mem = append(mem, make([]Value, c.Arg[0])...)
+		case DeferPush:
+			// Snapshot args in-place (detach addressable refs to prevent aliasing).
+			narg := c.Arg[0]
+			isX := c.Arg[1]
+			for i := sp - narg; i < sp; i++ {
+				if isNum(mem[i].ref.Kind()) && mem[i].ref.CanAddr() {
+					mem[i].ref = reflect.Zero(mem[i].ref.Type())
+				}
+			}
+			// Push 3-slot header: packed(narg/isX), prevHead link, returnIP placeholder.
+			prevHead := int(mem[fp-3].num) //nolint:gosec
+			mem = append(mem,
+				Value{num: uint64(narg<<1 | isX)}, //nolint:gosec
+				Value{num: uint64(prevHead)},      //nolint:gosec
+				Value{},                           // returnIP placeholder, filled by Return
+			)
+			mem[fp-3].num = uint64(sp + 2) //nolint:gosec // dh = index of returnIP slot
+
 		case Return:
+			// If there are pending defers in this frame, dispatch the top one (LIFO).
+			dh := int(mem[fp-3].num) //nolint:gosec
+			if dh != 0 {
+				packed := mem[dh-2].num
+				narg := int(packed >> 1) //nolint:gosec
+				isX := packed&1 == 1
+				prevHead := int(mem[dh-1].num) //nolint:gosec
+				funcVal := mem[dh-narg-3]
+				nret := c.Arg[0]
+				if isX {
+					// Native function: call via reflect, discard results.
+					rin := make([]reflect.Value, narg)
+					for i := range rin {
+						rin[i] = mem[dh-narg-2+i].Reflect()
+					}
+					funcVal.ref.Call(rin)
+					// Move return values (at dh+1..dh+nret) down over the defer entry.
+					retBase := dh - narg - 3
+					for i := 0; i < nret; i++ {
+						mem[retBase+i] = mem[dh+1+i]
+					}
+					for i := retBase + nret; i < sp; i++ {
+						mem[i] = Value{}
+					}
+					mem = mem[:retBase+nret]
+					mem[fp-3].num = uint64(prevHead) //nolint:gosec
+					continue                         // re-check for more defers
+				}
+				// VM function: pack ip and nret into the returnIP slot, then call.
+				mem[dh].num = uint64(ip) | uint64(nret)<<32 //nolint:gosec
+				prevEnv := m.env
+				var nip int
+				if isNum(funcVal.ref.Kind()) {
+					nip = int(funcVal.num) //nolint:gosec
+					m.env = nil
+				} else if clo, ok := funcVal.ref.Interface().(Closure); ok {
+					nip = clo.Code
+					m.env = clo.Env
+				} else if iv, ok := funcVal.ref.Interface().(int); ok {
+					nip = iv
+					m.env = nil
+				} else {
+					nip = int(funcVal.num) //nolint:gosec
+					m.env = nil
+				}
+				// Push func+args copy and 3-slot call frame (retIP, prevFP, deferHead=0).
+				base := len(mem)
+				mem = append(mem, funcVal)
+				mem = append(mem, mem[dh-narg-2:dh-2]...)
+				mem = append(mem, ValueOf(0), ValueOf(deferSentinelIP), ValueOf(fp))
+				m.captured = append(m.captured, prevEnv)
+				fp = base + 1 + narg + 3
+				ip = nip
+				continue
+			}
+			// No pending defers: normal frame teardown.
 			ip = int(mem[fp-2].num) //nolint:gosec
 			ofp := fp
 			fp = int(mem[fp-1].num) //nolint:gosec
 			nret := c.Arg[0]
-			newBase := ofp - nret - c.Arg[1] - 2
+			newBase := ofp - nret - c.Arg[1] - 3
 			copy(mem[newBase:], mem[sp-nret:sp])
 			newSP := newBase + nret
 			for i := newSP; i < sp; i++ {

@@ -862,6 +862,22 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Stop:
 			c.emit(t, vm.Stop)
 
+		case lang.Defer:
+			narg := t.Arg[0].(int)
+			s := stack[len(stack)-1-narg]
+			if s.Kind == symbol.Type {
+				return errorf("cannot defer a type conversion")
+			}
+			isX := 0
+			if s.Kind == symbol.Value {
+				isX = 1
+			}
+			pop() // function
+			for i := 0; i < narg; i++ {
+				pop()
+			}
+			c.emit(t, vm.DeferPush, narg, isX)
+
 		case lang.Return:
 			numOut, numIn := t.Arg[0].(int), t.Arg[1].(int)
 			c.emit(t, vm.Return, numOut, numIn)

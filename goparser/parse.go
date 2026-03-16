@@ -210,7 +210,9 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		return p.parseFunc(in)
 	case lang.Fallthrough:
 		return out, errors.New("fallthrough statement out of place")
-	case lang.Defer, lang.Go, lang.Select:
+	case lang.Defer:
+		return p.parseDefer(in)
+	case lang.Go, lang.Select:
 		return out, fmt.Errorf("not yet implemented: %v", t.Tok)
 	case lang.Goto:
 		return p.parseGoto(in)
@@ -394,6 +396,35 @@ func tokensToBlock(toks Tokens) string {
 		sb.WriteString(t.Str)
 	}
 	return sb.String()
+}
+
+func (p *Parser) parseDefer(in Tokens) (out Tokens, err error) {
+	if len(in) < 2 {
+		return nil, errors.New("invalid defer statement")
+	}
+	expr := in[1:]
+	// The last token must be a ParenBlock containing the call arguments.
+	// We split here rather than calling parseExpr on the whole expression
+	// because the lang.Func case in parseExpr would consume a trailing '()'.
+	last := len(expr) - 1
+	if last < 0 || expr[last].Tok != lang.ParenBlock {
+		return nil, errors.New("defer requires a function call")
+	}
+	callTok := expr[last]
+	narg := p.numItems(callTok.Block(), lang.Comma)
+
+	// Parse the function expression (tokens before the call paren).
+	if out, err = p.parseExpr(expr[:last], ""); err != nil {
+		return out, err
+	}
+	// Parse the argument list (reversed into LIFO push order, as in parseBlock).
+	argToks, err := p.parseBlock(callTok, "")
+	if err != nil {
+		return out, err
+	}
+	out = append(out, argToks...)
+	out = append(out, newDefer(callTok.Pos, narg))
+	return out, nil
 }
 
 func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {
