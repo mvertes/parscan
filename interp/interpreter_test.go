@@ -942,3 +942,106 @@ func TestDefer(t *testing.T) {
 			r`, res: "42"},
 	})
 }
+
+func TestPanic(t *testing.T) {
+	run(t, []etest{
+		{n: "#00", src: `
+			// Unrecovered panic propagates as error.
+			func f() { panic("boom") }
+			f()`, err: "panic: boom"},
+		{n: "#01", src: `
+			// Recover in deferred function stops the panic.
+			a := 0
+			func f() {
+				defer func() { recover(); a = 1 }()
+				panic("boom")
+			}
+			f()
+			a`, res: "1"},
+		{n: "#02", src: `
+			// Recover returns the panic value.
+			s := ""
+			func f() {
+				defer func() {
+					r := recover()
+					s = r.(string)
+				}()
+				panic("hello")
+			}
+			f()
+			s`, res: "hello"},
+		{n: "#03", src: `
+			// Unrecovered panic still runs defers, but propagates error.
+			s := ""
+			func f() {
+				defer func() { s = s + "a" }()
+				defer func() { s = s + "b" }()
+				panic("x")
+			}
+			f()
+			s`, err: "panic: x"},
+		{n: "#04", src: `
+			// Recover outside panic returns nil (as empty value).
+			func f() {
+				defer func() { recover() }()
+			}
+			f()
+			0`, res: "0"},
+		{n: "#05", src: `
+			// Panic with int value.
+			n := 0
+			func f() {
+				defer func() {
+					r := recover()
+					n = r.(int)
+				}()
+				panic(42)
+			}
+			f()
+			n`, res: "42"},
+		{n: "#06", src: `
+			// Panic propagates through multiple frames.
+			s := ""
+			func g() { panic("deep") }
+			func f() {
+				defer func() {
+					r := recover()
+					s = r.(string)
+				}()
+				g()
+			}
+			f()
+			s`, res: "deep"},
+		{n: "#07", src: `
+			// Code after panic does not execute.
+			a := 1
+			func f() {
+				defer func() { recover() }()
+				panic("x")
+				a = 2
+			}
+			f()
+			a`, res: "1"},
+		{n: "#08", src: `
+			// Panic with native deferred function.
+			x := 0
+			func add(n int) { x = x + n }
+			func f() {
+				defer add(10)
+				panic("boom")
+			}
+			f()
+			x`, err: "panic: boom"},
+		{n: "#09", src: `
+			// Multiple defers: first recovers, rest still run.
+			s := ""
+			func f() {
+				defer func() { s = s + "a" }()
+				defer func() { recover(); s = s + "b" }()
+				defer func() { s = s + "c" }()
+				panic("x")
+			}
+			f()
+			s`, res: "cba"},
+	})
+}

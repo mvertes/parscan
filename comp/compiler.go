@@ -382,6 +382,19 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Call:
 			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
+			if s.Name == "panic" && narg == 1 {
+				pop() // panic symbol
+				pop() // argument
+				c.emit(t, vm.Panic)
+				break
+			}
+			if s.Name == "recover" && narg == 0 {
+				pop() // recover symbol
+				c.emit(t, vm.Pop, 1)
+				push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: reflect.TypeOf((*any)(nil)).Elem()}})
+				c.emit(t, vm.Recover)
+				break
+			}
 			if s.Kind == symbol.Type {
 				if narg != 1 {
 					return errorf("type conversion requires exactly one argument")
@@ -413,10 +426,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				for i := 0; i < narg; i++ {
 					pop()
 				}
-				for i := 0; i < typ.Rtype.NumOut(); i++ {
+				nret := typ.Rtype.NumOut()
+				for i := 0; i < nret; i++ {
 					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.Out(i)})
 				}
-				c.emit(t, vm.Call, narg)
+				c.emit(t, vm.Call, narg, nret)
 				if typ.Rtype.NumOut() == 0 && narg >= typ.Rtype.NumIn() {
 					c.emit(t, vm.Pop, 1) // pop stale func value left by Return for void calls
 				}
@@ -427,6 +441,19 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.CallX:
 			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
+			if s.Name == "panic" && narg == 1 {
+				pop() // panic symbol
+				pop() // argument
+				c.emit(t, vm.Panic)
+				break
+			}
+			if s.Name == "recover" && narg == 0 {
+				pop() // recover symbol
+				c.emit(t, vm.Pop, 1)
+				push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: reflect.TypeOf((*any)(nil)).Elem()}})
+				c.emit(t, vm.Recover)
+				break
+			}
 			rtyp := s.Value.Reflect().Type()
 			// TODO: pop input types (careful with variadic function).
 			for i := 0; i < rtyp.NumOut(); i++ {

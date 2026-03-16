@@ -188,4 +188,6 @@ func (sm SymMap) Init() {
 	sm["false"] = &Symbol{Name: "false", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(false), Type: vm.TypeOf(false)}
 
 	sm["println"] = &Symbol{Name: "println", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })}
+	sm["panic"] = &Symbol{Name: "panic", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func(_ any) {})}
+	sm["recover"] = &Symbol{Name: "recover", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func() any { return nil })}
 }

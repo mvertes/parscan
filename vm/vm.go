@@ -83,6 +83,8 @@ const (
 	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
 	TypeAssert             // iface -- v [ok] ; assert iface holds type at mem[$1]; $2=0 panics, $2=1 ok form
 	TypeBranch             // iface -- ; pop iface; if iface doesn't hold type at mem[$2] (or $2==-1 for nil), ip += $1
+	Panic                  // v -- ; pop value, start stack unwinding
+	Recover                // -- v ; push recovered value (or nil if not panicking in a deferred call)
 	DeferPush              // func [a0..an-1] -- func [a0..an-1] [packed prevHead retIP] ; register deferred call on stack; $0=narg, $1=1 if native
 	DeferRet               // -- ; sentinel: restore outer frame after a deferred call returns
 
@@ -242,11 +244,19 @@ type Machine struct {
 	env      []*Value   // active closure's captured cells (nil for plain functions)
 	captured [][]*Value // saved env per call frame
 	// flags  uint      // to set options such as restrict CallX, etc...
+
+	panicking bool  // true while unwinding due to panic
+	panicVal  Value // value passed to panic()
+	frameInfo []int // per call frame: nret | (numIn << 16), parallel to captured
 }
 
 // deferSentinelIP is the ip value used as return address for deferred call frames.
 // A negative ip is checked before m.code[ip] to dispatch the DeferRet handler.
 const deferSentinelIP = -1
+
+// panicUnwindIP is the ip sentinel used during panic stack unwinding.
+// The main loop dispatches deferred calls and tears down frames when ip == panicUnwindIP.
+const panicUnwindIP = -2
 
 // Run runs a program.
 func (m *Machine) Run() (err error) {
@@ -258,16 +268,121 @@ func (m *Machine) Run() (err error) {
 
 	for {
 		sp = len(mem) // stack pointer
-		// Negative ip is a sentinel for the DeferRet handler (no code instruction needed).
+		// Negative ip is a sentinel for special handlers.
 		if ip < 0 {
 			ic++
+			if ip == panicUnwindIP {
+				// Panic unwind: dispatch deferred calls in current frame, then tear down.
+				dh := int(mem[fp-3].num) //nolint:gosec
+				if dh != 0 {
+					packed := mem[dh-2].num
+					narg := int(packed >> 1) //nolint:gosec
+					isX := packed&1 == 1
+					prevHead := int(mem[dh-1].num) //nolint:gosec
+					funcVal := mem[dh-narg-3]
+					if isX {
+						// Native defer: call via reflect, discard results.
+						rin := make([]reflect.Value, narg)
+						for i := range rin {
+							rin[i] = mem[dh-narg-2+i].Reflect()
+						}
+						funcVal.ref.Call(rin)
+						retBase := dh - narg - 3
+						for i := retBase; i < sp; i++ {
+							mem[i] = Value{}
+						}
+						mem = mem[:retBase]
+						mem[fp-3].num = uint64(prevHead) //nolint:gosec
+						continue
+					}
+					// VM defer: store panicUnwindIP as return address, push frame.
+					top := len(m.frameInfo) - 1
+					nret := m.frameInfo[top] & 0xFFFF
+					pip := int32(panicUnwindIP)
+					mem[dh].num = uint64(*(*uint32)(unsafe.Pointer(&pip))) | uint64(nret)<<32 //nolint:gosec
+					prevEnv := m.env
+					var nip int
+					if isNum(funcVal.ref.Kind()) {
+						nip = int(funcVal.num) //nolint:gosec
+						m.env = nil
+					} else if clo, ok := funcVal.ref.Interface().(Closure); ok {
+						nip = clo.Code
+						m.env = clo.Env
+					} else if iv, ok := funcVal.ref.Interface().(int); ok {
+						nip = iv
+						m.env = nil
+					} else {
+						nip = int(funcVal.num) //nolint:gosec
+						m.env = nil
+					}
+					base := len(mem)
+					mem = append(mem, funcVal)
+					mem = append(mem, mem[dh-narg-2:dh-2]...)
+					mem = append(mem, ValueOf(0), ValueOf(deferSentinelIP), ValueOf(fp))
+					m.captured = append(m.captured, prevEnv)
+					m.frameInfo = append(m.frameInfo, 0)
+					fp = base + 1 + narg + 3
+					ip = nip
+					continue
+				}
+				// No more defers in this frame.
+				if !m.panicking {
+					// Recovered: tear down frame, return zero values to caller.
+					top := len(m.frameInfo) - 1
+					info := m.frameInfo[top]
+					nret := info & 0xFFFF
+					numIn := info >> 16
+					m.frameInfo = m.frameInfo[:top]
+					ip = int(mem[fp-2].num) //nolint:gosec
+					ofp := fp
+					fp = int(mem[fp-1].num) //nolint:gosec
+					newBase := ofp - nret - numIn - 3
+					for i := 0; i < nret; i++ {
+						mem[newBase+i] = Value{}
+					}
+					newSP := newBase + nret
+					for i := newSP; i < len(mem); i++ {
+						mem[i] = Value{}
+					}
+					mem = mem[:newSP]
+					if top := len(m.captured) - 1; top >= 0 {
+						m.env = m.captured[top]
+						m.captured[top] = nil
+						m.captured = m.captured[:top]
+					}
+					continue
+				}
+				// Still panicking: tear down frame, continue unwinding parent.
+				top := len(m.frameInfo) - 1
+				info := m.frameInfo[top]
+				numIn := info >> 16
+				m.frameInfo = m.frameInfo[:top]
+				ofp := fp
+				fp = int(mem[fp-1].num) //nolint:gosec
+				if fp == 0 {
+					// Top of stack: return panic as error.
+					m.mem, m.ip, m.fp, m.ic = mem, 0, 0, ic
+					return fmt.Errorf("panic: %v", m.panicVal.Interface())
+				}
+				newBase := ofp - numIn - 3 - 1 // below func slot
+				for i := newBase; i < len(mem); i++ {
+					mem[i] = Value{}
+				}
+				mem = mem[:newBase]
+				if top := len(m.captured) - 1; top >= 0 {
+					m.env = m.captured[top]
+					m.captured[top] = nil
+					m.captured = m.captured[:top]
+				}
+				continue
+			}
 			// ip == deferSentinelIP: restore outer frame after a deferred VM call returns.
 			dh := int(mem[fp-3].num)        //nolint:gosec
 			narg := int(mem[dh-2].num >> 1) //nolint:gosec
 			val := mem[dh].num
-			returnIP := int(val & 0xFFFFFFFF) //nolint:gosec
-			nret := int(val >> 32)            //nolint:gosec
-			prevHead := int(mem[dh-1].num)    //nolint:gosec
+			returnIP := int(int32(val & 0xFFFFFFFF)) //nolint:gosec
+			nret := int(val >> 32)                   //nolint:gosec
+			prevHead := int(mem[dh-1].num)           //nolint:gosec
 			retBase := dh - narg - 3
 			for i := 0; i < nret; i++ { // move return values down
 				mem[retBase+i] = mem[dh+1+i]
@@ -318,7 +433,8 @@ func (m *Machine) Run() (err error) {
 			assignSlot(&mem[c.Arg[0]*(fp-1)+c.Arg[1]], mem[sp-1])
 			mem = mem[:sp-1]
 		case Call:
-			fval := mem[sp-1-c.Arg[0]]
+			narg := c.Arg[0]
+			fval := mem[sp-1-narg]
 			prevEnv := m.env
 			var nip int
 			if isNum(fval.ref.Kind()) {
@@ -336,7 +452,12 @@ func (m *Machine) Run() (err error) {
 				nip = int(fval.num) //nolint:gosec
 				m.env = nil
 			}
+			nret := 0
+			if len(c.Arg) > 1 {
+				nret = c.Arg[1]
+			}
 			m.captured = append(m.captured, prevEnv)
+			m.frameInfo = append(m.frameInfo, nret|narg<<16)
 			mem = append(mem, ValueOf(0), ValueOf(ip+1), ValueOf(fp)) // deferHead, retIP, prevFP
 			ip = nip
 			fp = sp + 3
@@ -480,7 +601,7 @@ func (m *Machine) Run() (err error) {
 				mem = append(mem, NewValue(dstTyp.Rtype))
 				break
 			}
-			if concrete := ifc.IfaceVal(); concrete.Typ == dstTyp {
+			if concrete := ifc.IfaceVal(); concrete.Typ.Rtype == dstTyp.Rtype && concrete.Typ.Name == dstTyp.Name {
 				if okForm {
 					mem[sp-1] = ValueOf(true)
 					mem = append(mem, concrete.Val)
@@ -639,6 +760,28 @@ func (m *Machine) Run() (err error) {
 			)
 			mem[fp-3].num = uint64(sp + 2) //nolint:gosec // dh = index of returnIP slot
 
+		case Panic:
+			m.panicking = true
+			m.panicVal = mem[sp-1]
+			mem = mem[:sp-1] // pop the panic argument
+			ip = panicUnwindIP
+			continue
+
+		case Recover:
+			if m.panicking && int(mem[fp-2].num) == deferSentinelIP { //nolint:gosec
+				m.panicking = false
+				pv := m.panicVal
+				// Wrap in Iface so type assertions on the recovered value work.
+				if pv.IsValid() && !pv.IsIface() {
+					typ := &Type{Rtype: pv.Reflect().Type()}
+					pv = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: pv})}
+				}
+				mem = append(mem, pv)
+				m.panicVal = Value{}
+			} else {
+				mem = append(mem, Value{}) // nil
+			}
+
 		case Return:
 			// If there are pending defers in this frame, dispatch the top one (LIFO).
 			dh := int(mem[fp-3].num) //nolint:gosec
@@ -691,6 +834,7 @@ func (m *Machine) Run() (err error) {
 				mem = append(mem, mem[dh-narg-2:dh-2]...)
 				mem = append(mem, ValueOf(0), ValueOf(deferSentinelIP), ValueOf(fp))
 				m.captured = append(m.captured, prevEnv)
+				m.frameInfo = append(m.frameInfo, 0)
 				fp = base + 1 + narg + 3
 				ip = nip
 				continue
@@ -711,6 +855,9 @@ func (m *Machine) Run() (err error) {
 				m.env = m.captured[top]
 				m.captured[top] = nil // zero for GC
 				m.captured = m.captured[:top]
+			}
+			if top := len(m.frameInfo) - 1; top >= 0 {
+				m.frameInfo = m.frameInfo[:top]
 			}
 			continue
 		case Slice:
