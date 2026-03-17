@@ -204,6 +204,17 @@ const (
 	BitShl    // n1 n2 -- n1 << n2
 	BitShr    // n1 n2 -- n1 >> n2 (arithmetic for signed)
 	BitComp   // n -- ^n
+
+	// Immediate operand variants: fold Push+BinOp into one instruction.
+	// Arg[0] holds the right-hand constant (int, sign-extended to int64).
+	// Covers int and int64 (signed) or uint and uint64 (unsigned) only.
+	AddIntImm      // n -- n+$1
+	SubIntImm      // n -- n-$1
+	MulIntImm      // n -- n*$1
+	GreaterIntImm  // n -- n>$1  (signed)
+	GreaterUintImm // n -- n>$1 (unsigned)
+	LowerIntImm    // n -- n<$1  (signed)
+	LowerUintImm   // n -- n<$1  (unsigned)
 )
 
 // Memory attributes.
@@ -1229,6 +1240,25 @@ func (m *Machine) Run() (err error) {
 			mem[sp-2].num = uint64(uint32(mem[sp-2].num) % uint32(mem[sp-1].num)) //nolint:gosec
 			mem[sp-2].ref = numZero[c.Op-RemInt]
 			mem = mem[:sp-1]
+
+		// Immediate operand ops: right-hand constant is in Arg[0].
+		case AddIntImm:
+			mem[sp-1].num = uint64(int64(mem[sp-1].num) + int64(c.Arg[0])) //nolint:gosec
+			mem[sp-1].ref = numZero[0]
+		case SubIntImm:
+			mem[sp-1].num = uint64(int64(mem[sp-1].num) - int64(c.Arg[0])) //nolint:gosec
+			mem[sp-1].ref = numZero[0]
+		case MulIntImm:
+			mem[sp-1].num = uint64(int64(mem[sp-1].num) * int64(c.Arg[0])) //nolint:gosec
+			mem[sp-1].ref = numZero[0]
+		case GreaterIntImm:
+			mem[sp-1] = ValueOf(int64(mem[sp-1].num) > int64(c.Arg[0])) //nolint:gosec
+		case GreaterUintImm:
+			mem[sp-1] = ValueOf(mem[sp-1].num > uint64(c.Arg[0])) //nolint:gosec
+		case LowerIntImm:
+			mem[sp-1] = ValueOf(int64(mem[sp-1].num) < int64(c.Arg[0])) //nolint:gosec
+		case LowerUintImm:
+			mem[sp-1] = ValueOf(mem[sp-1].num < uint64(c.Arg[0])) //nolint:gosec
 		}
 		ip++
 	}

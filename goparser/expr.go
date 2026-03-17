@@ -13,7 +13,6 @@ import (
 
 // parseExpr transforms an infix expression into a postfix notation.
 func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
-	log.Println("parseExpr in:", in)
 	var ops Tokens
 	var ctype string
 
@@ -215,7 +214,6 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	for len(ops) > 0 {
 		out = append(out, popop())
 	}
-	log.Println("Final out:", out)
 	return out, err
 }
 

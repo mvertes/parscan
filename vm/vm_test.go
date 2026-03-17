@@ -48,6 +48,80 @@ func BenchmarkVM(b *testing.B) {
 	}
 }
 
+// fibTypedCode is fib(20) hand-written with per-type opcodes (no Imm).
+// fib function at addr 1, call site at addr 19.
+var fibTypedCode = []Instruction{
+	{Op: Jump, Arg: []int{19}},     // 0: skip to call site
+	{Op: Get, Arg: []int{1, -3}},   // 1: push i
+	{Op: Push, Arg: []int{2}},      // 2
+	{Op: LowerInt},                 // 3: i < 2
+	{Op: JumpTrue, Arg: []int{13}}, // 4: if i<2 goto 17
+	{Op: Push, Arg: []int{1}},      // 5: fib addr
+	{Op: Get, Arg: []int{1, -3}},   // 6: push i
+	{Op: Push, Arg: []int{2}},      // 7
+	{Op: SubInt},                   // 8: i-2
+	{Op: Call, Arg: []int{1, 1}},   // 9: fib(i-2)
+	{Op: Push, Arg: []int{1}},      // 10: fib addr
+	{Op: Get, Arg: []int{1, -3}},   // 11: push i
+	{Op: Push, Arg: []int{1}},      // 12
+	{Op: SubInt},                   // 13: i-1
+	{Op: Call, Arg: []int{1, 1}},   // 14: fib(i-1)
+	{Op: AddInt},                   // 15: sum
+	{Op: Return, Arg: []int{1, 1}}, // 16: return (recursive)
+	{Op: Get, Arg: []int{1, -3}},   // 17: base case
+	{Op: Return, Arg: []int{1, 1}}, // 18: return i
+	{Op: Push, Arg: []int{1}},      // 19: call site
+	{Op: Push, Arg: []int{20}},     // 20: n=20
+	{Op: Call, Arg: []int{1, 1}},   // 21
+	{Op: Exit},                     // 22
+}
+
+// fibImmCode is fib(20) rewritten with immediate-operand opcodes.
+// Saves 3 Push instructions from the function body.
+// fib function at addr 1, call site at addr 16.
+var fibImmCode = []Instruction{
+	{Op: Jump, Arg: []int{16}},       // 0: skip to call site
+	{Op: Get, Arg: []int{1, -3}},     // 1: push i
+	{Op: LowerIntImm, Arg: []int{2}}, // 2: i < 2 (was: Push 2; LowerInt)
+	{Op: JumpTrue, Arg: []int{11}},   // 3: if i<2 goto 14
+	{Op: Push, Arg: []int{1}},        // 4: fib addr
+	{Op: Get, Arg: []int{1, -3}},     // 5: push i
+	{Op: SubIntImm, Arg: []int{2}},   // 6: i-2 (was: Push 2; SubInt)
+	{Op: Call, Arg: []int{1, 1}},     // 7: fib(i-2)
+	{Op: Push, Arg: []int{1}},        // 8: fib addr
+	{Op: Get, Arg: []int{1, -3}},     // 9: push i
+	{Op: SubIntImm, Arg: []int{1}},   // 10: i-1 (was: Push 1; SubInt)
+	{Op: Call, Arg: []int{1, 1}},     // 11: fib(i-1)
+	{Op: AddInt},                     // 12: sum
+	{Op: Return, Arg: []int{1, 1}},   // 13: return (recursive)
+	{Op: Get, Arg: []int{1, -3}},     // 14: base case
+	{Op: Return, Arg: []int{1, 1}},   // 15: return i
+	{Op: Push, Arg: []int{1}},        // 16: call site
+	{Op: Push, Arg: []int{20}},       // 17: n=20
+	{Op: Call, Arg: []int{1, 1}},     // 18
+	{Op: Exit},                       // 19
+}
+
+func BenchmarkFibTyped(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		m := &Machine{}
+		m.PushCode(fibTypedCode...)
+		if err := m.Run(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFibImm(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		m := &Machine{}
+		m.PushCode(fibImmCode...)
+		if err := m.Run(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 var tests = []struct {
 	sym        []Value       // initial memory values
 	code       []Instruction // bytecode to execute

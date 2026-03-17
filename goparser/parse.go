@@ -4,7 +4,6 @@ package goparser
 import (
 	"errors"
 	"fmt"
-	"log"
 	"path"
 	"strconv"
 	"strings"
@@ -107,7 +106,6 @@ func (p *Parser) Parse(src string) (out Tokens, err error) {
 	if err != nil {
 		return out, err
 	}
-	log.Printf("Parse src: %#v\n", src)
 	return p.parseStmts(in)
 }
 
@@ -202,7 +200,6 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	if len(in) == 0 {
 		return nil, nil
 	}
-	log.Println("parseStmt in:", in)
 	// Preliminary: make sure that a pkgName is defined (or about to be).
 	if in[0].Tok != lang.Package && p.pkgName == "" {
 		if !p.noPkg {

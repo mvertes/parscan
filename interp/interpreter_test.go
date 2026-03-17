@@ -47,6 +47,26 @@ func run(t *testing.T, tests []etest) {
 	}
 }
 
+const fibSrc = `
+func fib(i int) int {
+	if i < 2 { return i }
+	return fib(i-2) + fib(i-1)
+}
+`
+
+func BenchmarkFib(b *testing.B) {
+	intp := interp.NewInterpreter(golang.GoSpec)
+	if _, err := intp.Eval(fibSrc); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := intp.Eval("fib(20)"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestExpr(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "", res: "<invalid reflect.Value>"},

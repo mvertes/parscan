@@ -3,4 +3,5 @@ func fib(i int) int {
 	return fib(i-2) + fib(i-1)
 }
 
-println(fib(6))
+// println(fib(6))
+println(fib(35))

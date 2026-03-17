@@ -4,7 +4,6 @@ package comp
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"reflect"
@@ -17,6 +16,8 @@ import (
 	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
+
+const debug = false
 
 // Compiler represents the state of a compiler.
 type Compiler struct {
@@ -173,22 +174,25 @@ func errorf(format string, v ...any) error {
 }
 
 func showStack(stack []*symbol.Symbol) {
-	_, file, line, _ := runtime.Caller(1)
-	fmt.Fprintf(os.Stderr, "%s%d: showstack: %d\n", path.Base(file), line, len(stack))
-	for i, s := range stack {
-		fmt.Fprintf(os.Stderr, "  stack[%d]: %v\n", i, s)
+	if debug {
+		_, file, line, _ := runtime.Caller(1)
+		fmt.Fprintf(os.Stderr, "%s%d: showstack: %d\n", path.Base(file), line, len(stack))
+		for i, s := range stack {
+			fmt.Fprintf(os.Stderr, "  stack[%d]: %v\n", i, s)
+		}
 	}
 }
 
 func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
-	_, file, line, _ := runtime.Caller(1)
-	fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
+	if debug {
+		_, file, line, _ := runtime.Caller(1)
+		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
+	}
 	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
 }
 
 // generate generates vm code and data from parsed tokens, or returns an error.
 func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
-	log.Println("Codegen tokens:", tokens)
 	fixList := goparser.Tokens{} // list of tokens to fix after all necessary information is gathered
 	stack := []*symbol.Symbol{}  // for symbolic evaluation and type checking
 	flen := []int{}              // stack length according to function scopes
@@ -233,18 +237,39 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.Get, vm.Global, c.stringIndex(s))
 
 		case lang.Add:
-			typ := arithmeticOpType(pop(), pop())
+			right, left := pop(), pop()
+			typ := arithmeticOpType(right, left)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			if isInt64Kind(typ) || isUint64Kind(typ) {
+				if n, ok := c.retractPush(right); ok {
+					c.emit(t, vm.AddIntImm, n)
+					break
+				}
+			}
 			c.emit(t, numericOp(vm.AddInt, vm.Add, typ))
 
 		case lang.Mul:
-			typ := arithmeticOpType(pop(), pop())
+			right, left := pop(), pop()
+			typ := arithmeticOpType(right, left)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			if isInt64Kind(typ) || isUint64Kind(typ) {
+				if n, ok := c.retractPush(right); ok {
+					c.emit(t, vm.MulIntImm, n)
+					break
+				}
+			}
 			c.emit(t, numericOp(vm.MulInt, vm.Mul, typ))
 
 		case lang.Sub:
-			typ := arithmeticOpType(pop(), pop())
+			right, left := pop(), pop()
+			typ := arithmeticOpType(right, left)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			if isInt64Kind(typ) || isUint64Kind(typ) {
+				if n, ok := c.retractPush(right); ok {
+					c.emit(t, vm.SubIntImm, n)
+					break
+				}
+			}
 			c.emit(t, numericOp(vm.SubInt, vm.Sub, typ))
 
 		case lang.Quo:
@@ -318,18 +343,53 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			s2, s1 := pop(), pop()
 			typ := symbol.Vtype(s1)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
+			if isInt64Kind(typ) {
+				if n, ok := c.retractPush(s2); ok {
+					c.emit(t, vm.GreaterIntImm, n)
+					break
+				}
+			} else if isUint64Kind(typ) {
+				if n, ok := c.retractPush(s2); ok {
+					c.emit(t, vm.GreaterUintImm, n)
+					break
+				}
+			}
 			c.emit(t, numericOp(vm.GreaterInt, vm.Greater, typ))
 
 		case lang.Less:
 			s2, s1 := pop(), pop()
 			typ := symbol.Vtype(s1)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
+			if isInt64Kind(typ) {
+				if n, ok := c.retractPush(s2); ok {
+					c.emit(t, vm.LowerIntImm, n)
+					break
+				}
+			} else if isUint64Kind(typ) {
+				if n, ok := c.retractPush(s2); ok {
+					c.emit(t, vm.LowerUintImm, n)
+					break
+				}
+			}
 			c.emit(t, numericOp(vm.LowerInt, vm.Lower, typ))
 
 		case lang.GreaterEqual:
 			s2, s1 := pop(), pop()
 			typ := symbol.Vtype(s1)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
+			if isInt64Kind(typ) {
+				if n, ok := c.retractPush(s2); ok {
+					c.emit(t, vm.LowerIntImm, n)
+					c.emit(t, vm.Not)
+					break
+				}
+			} else if isUint64Kind(typ) {
+				if n, ok := c.retractPush(s2); ok {
+					c.emit(t, vm.LowerUintImm, n)
+					c.emit(t, vm.Not)
+					break
+				}
+			}
 			c.emit(t, numericOp(vm.LowerInt, vm.Lower, typ))
 			c.emit(t, vm.Not)
 
@@ -337,6 +397,19 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			s2, s1 := pop(), pop()
 			typ := symbol.Vtype(s1)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
+			if isInt64Kind(typ) {
+				if n, ok := c.retractPush(s2); ok {
+					c.emit(t, vm.GreaterIntImm, n)
+					c.emit(t, vm.Not)
+					break
+				}
+			} else if isUint64Kind(typ) {
+				if n, ok := c.retractPush(s2); ok {
+					c.emit(t, vm.GreaterUintImm, n)
+					c.emit(t, vm.Not)
+					break
+				}
+			}
 			c.emit(t, numericOp(vm.GreaterInt, vm.Greater, typ))
 			c.emit(t, vm.Not)
 
@@ -971,6 +1044,35 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 
 func arithmeticOpType(s, _ *symbol.Symbol) *vm.Type { return symbol.Vtype(s) }
 func booleanOpType(_, _ *symbol.Symbol) *vm.Type    { return vm.TypeOf(true) }
+
+// retractPush removes the most recently emitted Push if s is a constant,
+// returning (immediate value, true). Used for immediate-operand peephole.
+func (c *Compiler) retractPush(s *symbol.Symbol) (int, bool) {
+	if s.Kind != symbol.Const || len(c.Code) == 0 || c.Code[len(c.Code)-1].Op != vm.Push {
+		return 0, false
+	}
+	n := c.Code[len(c.Code)-1].Arg[0]
+	c.Code = c.Code[:len(c.Code)-1]
+	return n, true
+}
+
+// isInt64Kind reports whether typ is int or int64 (64-bit signed integer).
+func isInt64Kind(typ *vm.Type) bool {
+	if typ == nil {
+		return false
+	}
+	k := typ.Rtype.Kind()
+	return k == reflect.Int || k == reflect.Int64
+}
+
+// isUint64Kind reports whether typ is uint or uint64 (64-bit unsigned integer).
+func isUint64Kind(typ *vm.Type) bool {
+	if typ == nil {
+		return false
+	}
+	k := typ.Rtype.Kind()
+	return k == reflect.Uint || k == reflect.Uint64
+}
 
 // numericOp returns a per-type opcode computed as base + type offset.
 // If the type is not a numeric type, it returns the fallback opcode.
