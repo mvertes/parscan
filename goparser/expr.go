@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/symbol"
@@ -112,7 +113,9 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				t.Str = sc + "/" + t.Str
 			}
 			// Free variable detection: defined in an enclosing function scope.
-			if ok && s != nil && s.Local && sc != "" && p.fname != "" && sc != p.funcScope {
+			// Exclude variables defined in sub-scopes of the current function (e.g. for loops).
+			isInnerScope := sc == p.funcScope || strings.HasPrefix(sc, p.funcScope+"/")
+			if ok && s != nil && s.Local && sc != "" && p.fname != "" && !isInnerScope {
 				if cloSym := p.Symbols[p.fname]; cloSym != nil {
 					if cloSym.CapturedAs == nil {
 						cloSym.CapturedAs = map[string]int{}

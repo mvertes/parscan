@@ -229,7 +229,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 		local := p.funcScope != ""
 		if p.hasFirstParam(t) {
 			origName := t[0].Str
-			param = strings.TrimPrefix(p.scope+"/"+origName, "/")
+			param = p.scopedName(origName)
 			t = t[1:]
 			if len(t) == 0 {
 				if len(types) == 0 {

@@ -6,7 +6,6 @@ import (
 	"go/constant"
 	"go/token"
 	"path"
-	"strings"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/symbol"
@@ -56,7 +55,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		if errors.Is(err, ErrMissingType) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
-				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
+				name := p.scopedName(lt[0].Str)
 				p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Const, nil, false)
 			}
 		} else {
@@ -75,7 +74,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		if err != nil {
 			return out, err
 		}
-		name := strings.TrimPrefix(p.scope+"/"+vars[i], "/")
+		name := p.scopedName(vars[i])
 		p.SymSet(name, &symbol.Symbol{
 			Kind:  symbol.Const,
 			Index: symbol.UnsetAddr,
@@ -338,7 +337,7 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 			undefinedType = true
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
-				name := strings.TrimPrefix(p.scope+"/"+lt[0].Str, "/")
+				name := p.scopedName(lt[0].Str)
 				if p.funcScope == "" {
 					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil, false)
 					continue

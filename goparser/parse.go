@@ -53,6 +53,20 @@ func (p *Parser) SymAdd(i int, name string, v vm.Value, k symbol.Kind, t *vm.Typ
 	p.Symbols[name] = &symbol.Symbol{Kind: k, Name: name, Index: i, Local: local, Value: v, Type: t}
 }
 
+// scopedName returns name qualified by the current scope (e.g. "main/foo").
+func (p *Parser) scopedName(name string) string {
+	return strings.TrimPrefix(p.scope+"/"+name, "/")
+}
+
+// addLocalVar registers a new local variable in the current function frame
+// and returns its scoped name for token fixup.
+func (p *Parser) addLocalVar(name string) string {
+	scoped := p.scopedName(name)
+	p.SymAdd(p.framelen[p.funcScope], scoped, vm.Value{}, symbol.Var, nil, true)
+	p.framelen[p.funcScope]++
+	return scoped
+}
+
 // Parser errors.
 var (
 	ErrBody     = errors.New("missign body")
@@ -172,7 +186,7 @@ func (p *Parser) RegisterFunc(toks Tokens) error {
 	}
 	if !ok {
 		s = &symbol.Symbol{Used: true, Index: symbol.UnsetAddr}
-		key := strings.TrimPrefix(p.scope+"/"+fname, "/")
+		key := p.scopedName(fname)
 		p.SymSet(key, s)
 	}
 	typ, _, err := p.parseTypeExpr(toks[:bi])
@@ -257,13 +271,13 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 	lhs := in[:aindex].Split(lang.Comma)
 	define := in[aindex].Tok == lang.Define
 	if len(rhs) == 1 {
-		for _, e := range lhs {
+		// Track positions of LHS tokens for local fixup (one entry per lhs element).
+		lhsPositions := make([]int, len(lhs))
+		for j, e := range lhs {
+			lhsPositions[j] = len(out)
 			toks, err := p.parseExpr(e, "")
 			if err != nil {
 				return out, err
-			}
-			if define && len(e) == 1 && e[0].Tok == lang.Ident {
-				p.SymAdd(symbol.UnsetAddr, e[0].Str, vm.Value{}, symbol.Var, nil, false)
 			}
 			out = append(out, toks...)
 		}
@@ -289,22 +303,30 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 				out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos, len(lhs)))
 			}
 		}
+		// Register define symbols after parsing both LHS and RHS so that
+		// the RHS can still reference outer-scope variables being shadowed.
+		if define {
+			for i, e := range lhs {
+				if len(e) != 1 || e[0].Tok != lang.Ident {
+					continue
+				}
+				if p.funcScope != "" {
+					out[lhsPositions[i]].Str = p.addLocalVar(e[0].Str)
+				} else {
+					p.SymAdd(symbol.UnsetAddr, e[0].Str, vm.Value{}, symbol.Var, nil, false)
+				}
+			}
+		}
 		return out, err
 	}
 	// Multiple values in right hand side.
 	for i, e := range rhs {
+		lhsPos := len(out)
 		toks, err := p.parseExpr(lhs[i], "")
 		if err != nil {
 			return out, err
 		}
 		out = append(out, toks...)
-		if define {
-			for _, t := range toks {
-				if t.Tok == lang.Ident {
-					p.SymAdd(symbol.UnsetAddr, t.Str, vm.Value{}, symbol.Var, nil, p.funcScope != "")
-				}
-			}
-		}
 		toks, err = p.parseExpr(e, "")
 		if err != nil {
 			return out, err
@@ -317,6 +339,16 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 		} else {
 			out = append(out, toks...)
 			out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos, 1))
+		}
+		if define {
+			lt := lhs[i]
+			if len(lt) == 1 && lt[0].Tok == lang.Ident {
+				if p.funcScope != "" {
+					out[lhsPos].Str = p.addLocalVar(lt[0].Str)
+				} else {
+					p.SymAdd(symbol.UnsetAddr, lt[0].Str, vm.Value{}, symbol.Var, nil, false)
+				}
+			}
 		}
 	}
 	return out, err
@@ -606,6 +638,8 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	}
 	p.pushScope(fname)
 	p.funcScope = p.scope
+	// Local variable indices start at 1; index 0 is the frame header (prevFP).
+	p.framelen[p.funcScope] = 1
 	// For methods, the receiver is Env[0] of the method closure.
 	// Register it so the compiler emits HGet 0 for the receiver inside the body.
 	if recvName != "" {

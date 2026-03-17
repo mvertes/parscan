@@ -129,6 +129,7 @@ func TestFunc(t *testing.T) {
 		{n: "#16", src: "func inc(a int) { a = 100 }; x := 5; inc(x); x", res: "5"},
 		// recursion (requires correct local frame isolation per call)
 		{n: "#17", src: "func fib(n int) int { if n < 2 { return n }; return fib(n-1) + fib(n-2) }; fib(6)", res: "8"},
+		{n: "#18", src: "var a int; func f() { a:=2 }; f(); a", res: "0"},
 	})
 }
 

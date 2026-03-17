@@ -710,15 +710,23 @@ func (m *Machine) Run() (err error) {
 			resetNumRef(&mem[sp-1])
 		case Next:
 			if k, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); ok {
-				mem[c.Arg[1]].Set(k)
+				addr := c.Arg[2]
+				if c.Arg[1] == Local {
+					addr += fp - 1
+				}
+				mem[addr].Set(k)
 			} else {
 				ip += c.Arg[0]
 				continue
 			}
 		case Next2:
 			if k, v, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
-				mem[c.Arg[1]].Set(k)
-				mem[c.Arg[2]].Set(v)
+				base := 0
+				if c.Arg[1] == Local {
+					base = fp - 1
+				}
+				mem[base+c.Arg[2]].Set(k)
+				mem[base+c.Arg[3]].Set(v)
 			} else {
 				ip += c.Arg[0]
 				continue

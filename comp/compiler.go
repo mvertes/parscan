@@ -504,6 +504,23 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			lhs := stack[l-n:]
 			stack = stack[:l-n]
 			showStack(stack)
+			// Local define: initialize local slots and assign via Set.
+			if n > 0 && lhs[0].Local {
+				for i, r := range rhs {
+					typ := r.Type
+					if typ == nil {
+						typ = vm.TypeOf(r.Value.Interface())
+					}
+					lhs[i].Type = typ
+					c.emit(t, vm.New, lhs[i].Index, c.typeSym(typ).Index)
+					lhs[i].Used = true
+				}
+				for i := n - 1; i >= 0; i-- {
+					c.emit(t, vm.Set, vm.Local, lhs[i].Index)
+				}
+				c.emit(t, vm.Pop, n)
+				break
+			}
 			for i, r := range rhs {
 				// Propage type of rhs to lhs.
 				typ := r.Type
@@ -855,10 +872,18 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if n == 2 {
 				v := stack[len(stack)-2]
 				k := stack[len(stack)-3]
-				c.emit(t, vm.Next2, i, k.Index, v.Index)
+				localFlag := vm.Global
+				if k.Local {
+					localFlag = vm.Local
+				}
+				c.emit(t, vm.Next2, i, localFlag, k.Index, v.Index)
 			} else {
 				k := stack[len(stack)-2]
-				c.emit(t, vm.Next, i, k.Index)
+				localFlag := vm.Global
+				if k.Local {
+					localFlag = vm.Local
+				}
+				c.emit(t, vm.Next, i, localFlag, k.Index)
 			}
 
 		case lang.Range:
@@ -871,14 +896,23 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				case 1:
 					k := stack[len(stack)-2]
 					k.Type = c.Symbols["int"].Type
-					c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
+					if k.Local {
+						c.emit(t, vm.New, k.Index, c.typeSym(k.Type).Index)
+					} else {
+						c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
+					}
 					c.emit(t, vm.Pull)
 				case 2:
 					k, v := stack[len(stack)-3], stack[len(stack)-2]
 					k.Type = c.Symbols["int"].Type
 					v.Type = typ.Elem()
-					c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
-					c.Data[v.Index] = vm.NewValue(v.Type.Rtype)
+					if k.Local {
+						c.emit(t, vm.New, k.Index, c.typeSym(k.Type).Index)
+						c.emit(t, vm.New, v.Index, c.typeSym(v.Type).Index)
+					} else {
+						c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
+						c.Data[v.Index] = vm.NewValue(v.Type.Rtype)
+					}
 					c.emit(t, vm.Pull2)
 				default:
 				}
