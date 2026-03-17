@@ -234,7 +234,7 @@ var tests = []struct {
 		{Op: Return, Arg: []int{1, 1}}, // 2
 		{Op: Push, Arg: []int{1}},      // 3
 		{Op: Push, Arg: []int{1}},      // 4
-		{Op: Call, Arg: []int{0}},      // 5
+		{Op: Call, Arg: []int{1, 1}},   // 5
 		{Op: Exit},                     // 6
 	},
 	start: 0, end: 1, mem: "[3]",
@@ -247,7 +247,7 @@ var tests = []struct {
 		{Op: Return, Arg: []int{1, 1}}, // 4
 		{Op: Push, Arg: []int{1}},      // 5
 		{Op: Push, Arg: []int{1}},      // 6
-		{Op: Call, Arg: []int{0}},      // 7
+		{Op: Call, Arg: []int{1, 1}},   // 7
 		{Op: Exit},                     // 8
 	},
 	start: 0, end: 1, mem: "[3]",
@@ -262,19 +262,19 @@ var tests = []struct {
 		{Op: Get, Arg: []int{1, -3}},   // 6  [i]
 		{Op: Push, Arg: []int{2}},      // 7  [i 2]
 		{Op: Sub},                      // 8  [(i-2)]
-		{Op: Call, Arg: []int{1}},      // 9  [fib(i-2)]
+		{Op: Call, Arg: []int{1, 1}},   // 9  [fib(i-2)]
 		{Op: Push, Arg: []int{1}},      // 10
 		{Op: Get, Arg: []int{1, -3}},   // 11 [fib(i-2) i]
 		{Op: Push, Arg: []int{1}},      // 12 [(i-2) i 1]
 		{Op: Sub},                      // 13 [(i-2) (i-1)]
-		{Op: Call, Arg: []int{1}},      // 14 [fib(i-2) fib(i-1)]
+		{Op: Call, Arg: []int{1, 1}},   // 14 [fib(i-2) fib(i-1)]
 		{Op: Add},                      // 15 [fib(i-2)+fib(i-1)]
 		{Op: Return, Arg: []int{1, 1}}, // 16 return i
 		{Op: Get, Arg: []int{1, -3}},   // 17 [i]
 		{Op: Return, Arg: []int{1, 1}}, // 18 return i
 		{Op: Push, Arg: []int{1}},      // 19
 		{Op: Push, Arg: []int{6}},      // 20 [1]
-		{Op: Call, Arg: []int{1}},      // 21 [fib(*1)]
+		{Op: Call, Arg: []int{1, 1}},   // 21 [fib(*1)]
 		{Op: Exit},                     // 22
 	},
 	start: 0, end: 1, mem: "[8]",

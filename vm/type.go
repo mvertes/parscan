@@ -191,10 +191,11 @@ func ValueOf(v any) Value {
 
 // boolVal returns a bool Value without reflect overhead.
 func boolVal(b bool) Value {
+	v := Value{ref: zeroBool}
 	if b {
-		return Value{num: 1, ref: zeroBool}
+		v.num = 1
 	}
-	return Value{ref: zeroBool}
+	return v
 }
 
 // Kind returns the reflect.Kind of the value.
