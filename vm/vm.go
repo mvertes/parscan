@@ -329,7 +329,7 @@ func (m *Machine) Run() (err error) {
 					base := len(mem)
 					mem = append(mem, funcVal)
 					mem = append(mem, mem[dh-narg-2:dh-2]...)
-					mem = append(mem, ValueOf(0), ValueOf(deferSentinelIP), ValueOf(fp))
+					mem = append(mem, Value{}, Value{num: ^uint64(0)}, Value{num: uint64(fp)}) //nolint:gosec
 					m.captured = append(m.captured, prevEnv)
 					m.frameInfo = append(m.frameInfo, 0)
 					fp = base + 1 + narg + 3
@@ -463,13 +463,10 @@ func (m *Machine) Run() (err error) {
 				nip = int(fval.num) //nolint:gosec
 				m.env = nil
 			}
-			nret := 0
-			if len(c.Arg) > 1 {
-				nret = c.Arg[1]
-			}
+			nret := c.Arg[1]
 			m.captured = append(m.captured, prevEnv)
 			m.frameInfo = append(m.frameInfo, nret|narg<<16)
-			mem = append(mem, ValueOf(0), ValueOf(ip+1), ValueOf(fp)) // deferHead, retIP, prevFP
+			mem = append(mem, Value{}, Value{num: uint64(ip + 1)}, Value{num: uint64(fp)}) //nolint:gosec // deferHead, retIP, prevFP
 			ip = nip
 			fp = sp + 3
 			continue
@@ -494,17 +491,17 @@ func (m *Machine) Run() (err error) {
 		case New:
 			mem[c.Arg[0]+fp-1] = NewValue(mem[c.Arg[1]].ref.Type())
 		case Equal:
-			mem[sp-2] = ValueOf(mem[sp-2].Equal(mem[sp-1]))
+			mem[sp-2] = boolVal(mem[sp-2].Equal(mem[sp-1]))
 			mem = mem[:sp-1]
 		case EqualSet:
 			if mem[sp-2].Equal(mem[sp-1]) {
 				// If equal then lhs and rhs are popped, replaced by test result, as in Equal.
-				mem[sp-2] = ValueOf(true)
+				mem[sp-2] = boolVal(true)
 				mem = mem[:sp-1]
 			} else {
 				// If not equal then the lhs is let on stack for further processing.
 				// This is used to simplify bytecode in case clauses of switch statments.
-				mem[sp-1] = ValueOf(false)
+				mem[sp-1] = boolVal(false)
 			}
 		case Convert:
 			v := mem[sp-1]
@@ -608,13 +605,13 @@ func (m *Machine) Run() (err error) {
 					// an error, but does not crash the program.
 					panic(fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp))
 				}
-				mem[sp-1] = ValueOf(false)
+				mem[sp-1] = boolVal(false)
 				mem = append(mem, NewValue(dstTyp.Rtype))
 				break
 			}
 			if concrete := ifc.IfaceVal(); concrete.Typ.Rtype == dstTyp.Rtype && concrete.Typ.Name == dstTyp.Name {
 				if okForm {
-					mem[sp-1] = ValueOf(true)
+					mem[sp-1] = boolVal(true)
 					mem = append(mem, concrete.Val)
 				} else {
 					mem[sp-1] = concrete.Val
@@ -624,7 +621,7 @@ func (m *Machine) Run() (err error) {
 					// FIXME: replace with a vm panic operator when ready.
 					panic(fmt.Sprintf("interface conversion: interface value is %s, not %s", concrete.Typ, dstTyp))
 				}
-				mem[sp-1] = ValueOf(false)
+				mem[sp-1] = boolVal(false)
 				mem = append(mem, NewValue(dstTyp.Rtype))
 			}
 
@@ -698,16 +695,16 @@ func (m *Machine) Run() (err error) {
 			mem = mem[:sp-1]
 		case Greater:
 			if isFloat(mem[sp-2].ref.Kind()) {
-				mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) > math.Float64frombits(mem[sp-1].num))
+				mem[sp-2] = boolVal(math.Float64frombits(mem[sp-2].num) > math.Float64frombits(mem[sp-1].num))
 			} else {
-				mem[sp-2] = ValueOf(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
+				mem[sp-2] = boolVal(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
 			}
 			mem = mem[:sp-1]
 		case Lower:
 			if isFloat(mem[sp-2].ref.Kind()) {
-				mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
+				mem[sp-2] = boolVal(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
 			} else {
-				mem[sp-2] = ValueOf(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
+				mem[sp-2] = boolVal(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
 			}
 			mem = mem[:sp-1]
 		case Len:
@@ -851,7 +848,7 @@ func (m *Machine) Run() (err error) {
 				base := len(mem)
 				mem = append(mem, funcVal)
 				mem = append(mem, mem[dh-narg-2:dh-2]...)
-				mem = append(mem, ValueOf(0), ValueOf(deferSentinelIP), ValueOf(fp))
+				mem = append(mem, Value{}, Value{num: ^uint64(0)}, Value{num: uint64(fp)}) //nolint:gosec
 				m.captured = append(m.captured, prevEnv)
 				m.frameInfo = append(m.frameInfo, 0)
 				fp = base + 1 + narg + 3
@@ -1145,24 +1142,24 @@ func (m *Machine) Run() (err error) {
 
 		// Per-type Greater.
 		case GreaterInt, GreaterInt8, GreaterInt16, GreaterInt32, GreaterInt64:
-			mem[sp-2] = ValueOf(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2] = boolVal(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
 			mem = mem[:sp-1]
 		case GreaterUint, GreaterUint8, GreaterUint16, GreaterUint32, GreaterUint64:
-			mem[sp-2] = ValueOf(mem[sp-2].num > mem[sp-1].num)
+			mem[sp-2] = boolVal(mem[sp-2].num > mem[sp-1].num)
 			mem = mem[:sp-1]
 		case GreaterFloat32, GreaterFloat64:
-			mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) > math.Float64frombits(mem[sp-1].num))
+			mem[sp-2] = boolVal(math.Float64frombits(mem[sp-2].num) > math.Float64frombits(mem[sp-1].num))
 			mem = mem[:sp-1]
 
 		// Per-type Lower.
 		case LowerInt, LowerInt8, LowerInt16, LowerInt32, LowerInt64:
-			mem[sp-2] = ValueOf(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
+			mem[sp-2] = boolVal(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
 			mem = mem[:sp-1]
 		case LowerUint, LowerUint8, LowerUint16, LowerUint32, LowerUint64:
-			mem[sp-2] = ValueOf(mem[sp-2].num < mem[sp-1].num)
+			mem[sp-2] = boolVal(mem[sp-2].num < mem[sp-1].num)
 			mem = mem[:sp-1]
 		case LowerFloat32, LowerFloat64:
-			mem[sp-2] = ValueOf(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
+			mem[sp-2] = boolVal(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
 			mem = mem[:sp-1]
 
 		// Per-type Div.
@@ -1252,13 +1249,13 @@ func (m *Machine) Run() (err error) {
 			mem[sp-1].num = uint64(int64(mem[sp-1].num) * int64(c.Arg[0])) //nolint:gosec
 			mem[sp-1].ref = numZero[0]
 		case GreaterIntImm:
-			mem[sp-1] = ValueOf(int64(mem[sp-1].num) > int64(c.Arg[0])) //nolint:gosec
+			mem[sp-1] = boolVal(int64(mem[sp-1].num) > int64(c.Arg[0])) //nolint:gosec
 		case GreaterUintImm:
-			mem[sp-1] = ValueOf(mem[sp-1].num > uint64(c.Arg[0])) //nolint:gosec
+			mem[sp-1] = boolVal(mem[sp-1].num > uint64(c.Arg[0])) //nolint:gosec
 		case LowerIntImm:
-			mem[sp-1] = ValueOf(int64(mem[sp-1].num) < int64(c.Arg[0])) //nolint:gosec
+			mem[sp-1] = boolVal(int64(mem[sp-1].num) < int64(c.Arg[0])) //nolint:gosec
 		case LowerUintImm:
-			mem[sp-1] = ValueOf(mem[sp-1].num < uint64(c.Arg[0])) //nolint:gosec
+			mem[sp-1] = boolVal(mem[sp-1].num < uint64(c.Arg[0])) //nolint:gosec
 		}
 		ip++
 	}

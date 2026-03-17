@@ -189,6 +189,14 @@ func ValueOf(v any) Value {
 	return Value{ref: rv}
 }
 
+// boolVal returns a bool Value without reflect overhead.
+func boolVal(b bool) Value {
+	if b {
+		return Value{num: 1, ref: zeroBool}
+	}
+	return Value{ref: zeroBool}
+}
+
 // Kind returns the reflect.Kind of the value.
 func (v Value) Kind() reflect.Kind { return v.ref.Kind() }
 
