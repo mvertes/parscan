@@ -74,9 +74,6 @@ type Value struct {
 	ref reflect.Value // composite data OR reflect.Zero(t) for numeric type metadata
 }
 
-// NumTypes is the number of supported numeric types for per-type opcodes.
-const NumTypes = 12
-
 // NumKindOffset maps a reflect.Kind to a 0-based offset into per-type opcode blocks.
 // Returns -1 for non-numeric kinds.
 var NumKindOffset [reflect.Float64 + 1]int
@@ -101,23 +98,19 @@ func init() {
 
 // Pre-computed zero reflect.Values for all numeric types (zero allocation).
 var (
-	zeroBool = reflect.Zero(reflect.TypeOf(false))
-
-	// numZero is indexed by NumKindOffset to get the reflect.Zero for each numeric type.
-	numZero = [NumTypes]reflect.Value{
-		reflect.Zero(reflect.TypeOf(int(0))),
-		reflect.Zero(reflect.TypeOf(int8(0))),
-		reflect.Zero(reflect.TypeOf(int16(0))),
-		reflect.Zero(reflect.TypeOf(int32(0))),
-		reflect.Zero(reflect.TypeOf(int64(0))),
-		reflect.Zero(reflect.TypeOf(uint(0))),
-		reflect.Zero(reflect.TypeOf(uint8(0))),
-		reflect.Zero(reflect.TypeOf(uint16(0))),
-		reflect.Zero(reflect.TypeOf(uint32(0))),
-		reflect.Zero(reflect.TypeOf(uint64(0))),
-		reflect.Zero(reflect.TypeOf(float32(0))),
-		reflect.Zero(reflect.TypeOf(float64(0))),
-	}
+	zbool    = reflect.Zero(reflect.TypeOf(false))
+	zint     = reflect.Zero(reflect.TypeOf(int(0)))
+	zint8    = reflect.Zero(reflect.TypeOf(int8(0)))
+	zint16   = reflect.Zero(reflect.TypeOf(int16(0)))
+	zint32   = reflect.Zero(reflect.TypeOf(int32(0)))
+	zint64   = reflect.Zero(reflect.TypeOf(int64(0)))
+	zuint    = reflect.Zero(reflect.TypeOf(uint(0)))
+	zuint8   = reflect.Zero(reflect.TypeOf(uint8(0)))
+	zuint16  = reflect.Zero(reflect.TypeOf(uint16(0)))
+	zuint32  = reflect.Zero(reflect.TypeOf(uint32(0)))
+	zuint64  = reflect.Zero(reflect.TypeOf(uint64(0)))
+	zfloat32 = reflect.Zero(reflect.TypeOf(float32(0)))
+	zfloat64 = reflect.Zero(reflect.TypeOf(float64(0)))
 )
 
 // isNum reports whether k is a numeric kind.
@@ -191,7 +184,7 @@ func ValueOf(v any) Value {
 
 // boolVal returns a bool Value without reflect overhead.
 func boolVal(b bool) Value {
-	v := Value{ref: zeroBool}
+	v := Value{ref: zbool}
 	if b {
 		v.num = 1
 	}
@@ -207,16 +200,16 @@ func (v Value) Type() reflect.Type { return v.ref.Type() }
 // IsValid reports whether v represents a value (ref is set).
 func (v Value) IsValid() bool { return v.ref.IsValid() }
 
-// Int returns v's value as int64 (for numeric values stored in num).
+// Int returns v's value as int64.
 func (v Value) Int() int64 { return int64(v.num) } //nolint:gosec
 
-// Uint returns v's value as uint64 (for numeric values stored in num).
+// Uint returns v's value as uint64.
 func (v Value) Uint() uint64 { return v.num }
 
-// Float returns v's value as float64 (for numeric values stored in num).
+// Float returns v's value as float64.
 func (v Value) Float() float64 { return math.Float64frombits(v.num) }
 
-// Bool returns v's value as bool (for numeric values stored in num).
+// Bool returns v's value as bool.
 func (v Value) Bool() bool { return v.num != 0 }
 
 // Interface returns v's value as interface{}.
@@ -315,7 +308,7 @@ func resetNumRef(v *Value) {
 	}
 }
 
-// IsIface reports whether v holds a boxed interface value (Iface struct).
+// IsIface reports whether v holds a boxed interface value.
 func (v Value) IsIface() bool {
 	if !v.ref.IsValid() {
 		return false
