@@ -283,8 +283,7 @@ func (p *Parser) parseBlock(t Token, typ string) (result Tokens, err error) {
 		if err != nil {
 			return result, err
 		}
-		// Inverse sub list order (func call parameters in LIFO).
-		result = append(toks, result...)
+		result = append(result, toks...)
 	}
 
 	return result, err

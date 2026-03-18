@@ -245,7 +245,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 				}
 				// Type was omitted, apply the previous one from the right.
 				types = append([]*vm.Type{types[0]}, types...)
-				p.addSymVar(i, param, types[0], flag, local)
+				p.addSymVar(i, len(list), param, types[0], flag, local)
 				vars = append([]string{param}, vars...)
 				continue
 			}
@@ -255,7 +255,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 			return nil, nil, err
 		}
 		if param != "" {
-			p.addSymVar(i, param, typ, flag, local)
+			p.addSymVar(i, len(list), param, typ, flag, local)
 		}
 		types = append([]*vm.Type{typ}, types...)
 		vars = append([]string{param}, vars...)
@@ -263,7 +263,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 	return types, vars, err
 }
 
-func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, local bool) {
+func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag typeFlag, local bool) {
 	zv := vm.NewValue(typ.Rtype)
 	switch flag {
 	case parseTypeRecv:
@@ -275,7 +275,7 @@ func (p *Parser) addSymVar(index int, name string, typ *vm.Type, flag typeFlag, 
 			Type: typ, Value: zv,
 		})
 	case parseTypeIn:
-		p.SymAdd(-index-3, name, zv, symbol.Var, typ, true)
+		p.SymAdd(index-nparams-2, name, zv, symbol.Var, typ, true)
 	case parseTypeOut:
 		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.Var, typ, true)
 		p.framelen[p.funcScope]++

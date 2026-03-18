@@ -346,12 +346,13 @@ func (m *Machine) Run() (err error) {
 				fp = sp + 3
 				continue
 			case CallX: // Should be made optional.
-				in := make([]reflect.Value, c.Arg[0])
+				narg := c.Arg[0]
+				in := make([]reflect.Value, narg)
 				for i := range in {
-					in[i] = mem[sp-1-i].Reflect()
+					in[i] = mem[sp-narg+i].Reflect()
 				}
-				f := mem[sp-1-c.Arg[0]].ref
-				mem = mem[:sp-c.Arg[0]-1]
+				f := mem[sp-1-narg].ref
+				mem = mem[:sp-narg-1]
 				for _, v := range f.Call(in) {
 					mem = append(mem, fromReflect(v))
 				}

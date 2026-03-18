@@ -59,9 +59,9 @@ Go language support:
 - [x] func declaration
 - [x] const declaration
 - [x] iota expression
-- [ ] panic statement
-- [ ] defer statement
-- [ ] recover statement
+- [x] panic statement
+- [x] defer statement
+- [x] recover statement
 - [x] range clause
 - [ ] go statement
 - [x] if statement (including else and else if)
