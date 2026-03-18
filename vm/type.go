@@ -350,7 +350,7 @@ func (v Value) Equal(u Value) bool {
 
 // PointerTo returns the pointer type with element t.
 func PointerTo(t *Type) *Type {
-	return &Type{Rtype: reflect.PointerTo(t.Rtype)}
+	return &Type{Name: t.Name, Rtype: reflect.PointerTo(t.Rtype)}
 }
 
 // ArrayOf returns the array type with the given length and element type.

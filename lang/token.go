@@ -60,6 +60,7 @@ const (
 	Inc          // ++
 	Dec          // --
 	IndexAssign  // a[i] =
+	DerefAssign  // *p =
 
 	// Unary operations.
 	Plus     // unary +

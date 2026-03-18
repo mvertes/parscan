@@ -460,14 +460,12 @@ type N int
 func (n N) IsPos() bool { return int(n) > 0 }
 v := N(5); v.IsPos()`, res: "true"},
 
-		// Skipped: requires `new` builtin.
-		{n: "named_val_on_ptr", skip: true, src: `
+		{n: "named_val_on_ptr", src: `
 type N int
 func (n N) IsPos() bool { return int(n) > 0 }
 p := new(N); *p = N(3); p.IsPos()`, res: "true"},
 
-		// Skipped: parser doesn't handle dereference assignment (*n = ...) on named types yet.
-		{n: "named_ptr_on_val", skip: true, src: `
+		{n: "named_ptr_on_val", src: `
 type N int
 func (n *N) Inc() { *n = *n + 1 }
 var v N = 10; v.Inc(); v`, res: "11"},
@@ -713,7 +711,7 @@ func TestMethod(t *testing.T) {
 		// Pass method value to higher-order function.
 		{n: "#07", src: `type I int; func(i I) F(a int) int { return a+i }; apply := func(f func(int) int, n int) int { return f(n) }; var i I = 5; apply(i.F, 3)`, res: "8"},
 		// Method value on struct receiver.
-		{n: "#08", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; x := T{3}; f := x.Add; f(4)`, res: "7", skip: true},
+		{n: "#08", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; x := T{3}; f := x.Add; f(4)`, res: "7"},
 
 		// Pointer receiver increments field.
 		{n: "#09", src: `type T struct{n int}; func(t *T) Inc() { t.n = t.n + 1 }; var x T; x.Inc(); x.Inc(); x.n`, res: "2"},
@@ -767,7 +765,7 @@ func TestArithInt(t *testing.T) {
 		{n: "ne_false", src: "3 != 3", res: "false"},
 
 		{n: "max_int", src: "var a int = 9223372036854775807; a", res: "9223372036854775807"},
-		{n: "min_int", src: "var a int = -9223372036854775808; a", res: "-9223372036854775808", skip: true},
+		{n: "min_int", src: "var a int = -9223372036854775808; a", res: "-9223372036854775808"},
 
 		{n: "inc", src: "a := 5; a++; a", res: "6"},
 		{n: "dec", src: "a := 5; a--; a", res: "4"},
@@ -794,7 +792,7 @@ func TestBitwiseInt(t *testing.T) {
 		{n: "andnot", src: "0xff &^ 0x0f", res: "240"},
 
 		{n: "comp", src: "^0", res: "-1"},
-		{n: "comp_neg1", src: "^-1", res: "0", skip: true}, // scanner merges ^- as single op
+		{n: "comp_neg1", src: "^-1", res: "0"},
 
 		{n: "shl", src: "1 << 10", res: "1024"},
 		{n: "shl_zero", src: "42 << 0", res: "42"},
@@ -835,10 +833,10 @@ func TestArithUint(t *testing.T) {
 		{n: "div", src: "var a, b uint = 10, 3; a / b", res: "3"},
 		{n: "rem", src: "var a, b uint = 10, 3; a % b", res: "1"},
 
-		{n: "gt_large", src: "var a uint = 18446744073709551615; var b uint = 0; a > b", res: "true", skip: true},
-		{n: "lt_large", src: "var a uint = 0; var b uint = 18446744073709551615; a < b", res: "true", skip: true},
+		{n: "gt_large", src: "var a uint = 18446744073709551615; var b uint = 0; a > b", res: "true"},
+		{n: "lt_large", src: "var a uint = 0; var b uint = 18446744073709551615; a < b", res: "true"},
 
-		{n: "max_uint", src: "var a uint = 18446744073709551615; a", res: "18446744073709551615", skip: true},
+		{n: "max_uint", src: "var a uint = 18446744073709551615; a", res: "18446744073709551615"},
 
 		{n: "uint8_max", src: "var a uint8 = 255; a", res: "255"},
 		{n: "uint8_add_wrap", src: "var a uint8 = 255; var b uint8 = 1; a + b", res: "0"},
@@ -846,7 +844,7 @@ func TestArithUint(t *testing.T) {
 		{n: "uint16_max", src: "var a uint16 = 65535; a", res: "65535"},
 		{n: "uint32_max", src: "var a uint32 = 4294967295; a", res: "4294967295"},
 
-		{n: "shr_logical", src: "var a uint = 18446744073709551615; a >> 60", res: "15", skip: true}, // requires large uint literal parsing
+		{n: "shr_logical", src: "var a uint = 18446744073709551615; a >> 60", res: "15"},
 	})
 }
 

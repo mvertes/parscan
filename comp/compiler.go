@@ -214,7 +214,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Int:
 			n64, err := strconv.ParseInt(t.Str, 0, 64)
 			if err != nil {
-				return err
+				// Try unsigned parse for large literals (e.g. MaxUint64).
+				u64, uerr := strconv.ParseUint(t.Str, 0, 64)
+				if uerr != nil {
+					return err
+				}
+				n64 = int64(u64) //nolint:gosec
 			}
 			n := int(n64)
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(n), Type: c.Symbols["int"].Type})
@@ -297,7 +302,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.Addr)
 
 		case lang.Deref:
-			push(&symbol.Symbol{Kind: symbol.Value, Type: pop().Type.Elem()})
+			s := pop()
+			if s.Type == nil || !s.Type.IsPtr() {
+				return errorf("cannot dereference non-pointer type %v", s.Type)
+			}
+			push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type.Elem()})
 			c.emit(t, vm.Deref)
 
 		case lang.TypeAssert:
@@ -631,6 +640,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.IfaceWrap, c.typeIndex(rhs.Type))
 			}
 			c.emit(t, vm.SetS, t.Arg[0].(int))
+
+		case lang.DerefAssign:
+			pop() // rhs
+			pop() // lhs (pointer, not yet dereferenced)
+			c.emit(t, vm.DerefSet)
 
 		case lang.IndexAssign:
 			s := stack[len(stack)-3]
@@ -1250,8 +1264,7 @@ func (c *Compiler) compileBuiltin(
 		c.removeFnew(typeSym.Index)
 		pop() // type arg
 		pop() // new symbol
-		ptrType := reflect.PointerTo(typeSym.Type.Rtype)
-		push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: ptrType}})
+		push(&symbol.Symbol{Kind: symbol.Value, Type: vm.PointerTo(typeSym.Type)})
 		c.emit(t, vm.PtrNew, typeSym.Index)
 		return true, nil
 

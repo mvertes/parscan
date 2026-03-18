@@ -241,6 +241,14 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		return p.parseType(in)
 	case lang.Var:
 		return p.parseVar(in)
+	case lang.Mul:
+		if i := in.Index(lang.Assign); i > 0 {
+			return p.parseAssign(in, i)
+		}
+		if op, i := indexCompoundAssign(in); i > 0 {
+			return p.parseCompoundAssign(in, i, op)
+		}
+		return p.parseExpr(in, "")
 	case lang.Ident:
 		if in.Index(lang.Colon) == 1 {
 			return p.parseLabel(in)
@@ -282,12 +290,18 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 		if err != nil {
 			return out, err
 		}
-		if out[len(out)-1].Tok == lang.Index {
+		switch out[len(out)-1].Tok {
+		case lang.Index:
 			// Map elements cannot be assigned directly, but only through IndexAssign.
 			out = out[:len(out)-1]
 			out = append(out, toks...)
 			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos, len(lhs)))
-		} else {
+		case lang.Deref:
+			// Pointer deref cannot be assigned directly, use DerefAssign.
+			out = out[:len(out)-1]
+			out = append(out, toks...)
+			out = append(out, newToken(lang.DerefAssign, "", in[aindex].Pos, len(lhs)))
+		default:
 			// Mark TypeAssert as ok form when LHS has exactly 2 targets.
 			if len(lhs) == 2 && len(toks) > 0 && toks[len(toks)-1].Tok == lang.TypeAssert {
 				toks[len(toks)-1].Arg[0] = 1
@@ -328,12 +342,18 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 		if err != nil {
 			return out, err
 		}
-		if out[len(out)-1].Tok == lang.Index {
+		switch out[len(out)-1].Tok {
+		case lang.Index:
 			// Map elements cannot be assigned directly, but only through IndexAssign.
 			out = out[:len(out)-1]
 			out = append(out, toks...)
 			out = append(out, newToken(lang.IndexAssign, "", in[aindex].Pos, 1))
-		} else {
+		case lang.Deref:
+			// Pointer deref cannot be assigned directly, use DerefAssign.
+			out = out[:len(out)-1]
+			out = append(out, toks...)
+			out = append(out, newToken(lang.DerefAssign, "", in[aindex].Pos, 1))
+		default:
 			out = append(out, toks...)
 			out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos, 1))
 		}
@@ -625,7 +645,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	p.namedOut = nil
 	s, _, ok := p.Symbols.Get(fname, p.scope)
 	if !ok {
-		s = &symbol.Symbol{Used: true, Index: symbol.UnsetAddr}
+		s = &symbol.Symbol{Name: fname, Used: true, Index: symbol.UnsetAddr}
 		key := fname
 		if !strings.HasPrefix(fname, "#") {
 			key = p.scope + fname
@@ -642,6 +662,13 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 		recvScoped := p.scope + "/" + recvName
 		s.FreeVars = []string{recvScoped}
 		s.CapturedAs = map[string]int{recvScoped: 0}
+		// Re-register receiver symbol at function scope so the compiler finds it
+		// with the correct type when resolving the scoped identifier inside the body.
+		// The outer-scoped key was set by addSymVar before pushScope.
+		outerKey := strings.TrimPrefix(funcScope+"/"+recvName, "/")
+		if outerSym := p.Symbols[outerKey]; outerSym != nil {
+			p.SymSet(recvScoped, outerSym)
+		}
 	}
 	defer func() {
 		p.fname = ofname // TODO remove in favor of function.

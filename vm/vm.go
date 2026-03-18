@@ -33,6 +33,7 @@ const (
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallX                  // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
 	Deref                  // x -- *x ;
+	DerefSet               // ptr val -- ; *ptr = val
 	Get                    // addr -- value ; value = mem[addr]
 	Fnew                   // -- x; x = new mem[$1]
 	FnewE                  // -- x; x = new mem[$1].Elem()
@@ -364,7 +365,17 @@ func (m *Machine) Run() (err error) {
 					mem = append(mem, fromReflect(v))
 				}
 			case Deref:
-				mem[sp-1] = Value{ref: mem[sp-1].ref.Elem()}
+				r := mem[sp-1].ref.Elem()
+				v := Value{ref: r}
+				if isNum(r.Kind()) {
+					v.num = numBits(r)
+				}
+				mem[sp-1] = v
+			case DerefSet:
+				ptr := mem[sp-2]
+				val := mem[sp-1]
+				ptr.ref.Elem().Set(val.Reflect())
+				mem = mem[:sp-2]
 			case Get:
 				if c.Arg[0] == Local {
 					// Local slots have num always in sync with ref (maintained by all write ops).

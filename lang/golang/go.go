@@ -149,6 +149,8 @@ var GoSpec = &lang.Spec{
 		lang.Land:         {Precedence: 1},
 		lang.Lor:          {Precedence: 0},
 		lang.Minus:        {Precedence: 6},
+		lang.Deref:        {Precedence: 6},
+		lang.Addr:         {Precedence: 6},
 		lang.BitComp:      {Precedence: 6},
 		lang.Not:          {Precedence: 6},
 		lang.Call:         {Precedence: 6},

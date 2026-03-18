@@ -268,6 +268,10 @@ func (sc *Scanner) getOp(src string) (s string, isOp bool) {
 			return s, false
 		}
 	}
+	// If the longest match is not a known token, try shorter prefixes.
+	for len(s) > 1 && sc.Tokens[s] == lang.Illegal {
+		s = s[:len(s)-1]
+	}
 	return s, true
 }
 
