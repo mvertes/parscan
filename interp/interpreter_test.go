@@ -338,7 +338,7 @@ func f() *int { return &a }
 		{n: "deref_assign_slice", src: `
 var a, b int
 s := []*int{&a, &b}
-*s[1] = 10; b`, res: "10", skip: true}, // TODO: Addr of unaddressable slice element
+*s[1] = 10; b`, res: "10"},
 
 		// Interior deref: (*p).field = value (deref is not outermost).
 		{n: "deref_field_assign", src: `

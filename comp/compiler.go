@@ -530,8 +530,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.CallX, narg)
 
 		case lang.Colon:
-			pop()
-			ks := pop()
+			vs := pop() // value
+			ks := pop() // key or index
 			ts := top()
 			if ts.IsPtr() {
 				// Resolve index on the element type
@@ -545,7 +545,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						c.emit(t, vm.FieldFset)
 					}
 				case reflect.Slice:
-					if ts.Type.Elem().IsPtr() {
+					if ts.Type.Elem().IsPtr() && vs.Kind == symbol.Type {
 						c.emit(t, vm.Addr)
 					}
 					c.emit(t, vm.IndexSet)
