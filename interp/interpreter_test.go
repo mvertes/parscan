@@ -320,6 +320,53 @@ func TestPointer(t *testing.T) {
 		{n: "#00", src: "var a *int; a", res: "<nil>"},
 		{n: "#01", src: "var a int; var b *int = &a; *b", res: "0"},
 		{n: "#02", src: "var a int = 2; var b *int = &a; *b", res: "2"},
+
+		// DerefAssign: *p = value (simple).
+		{n: "deref_assign_int", src: "var a int; p := &a; *p = 42; a", res: "42"},
+		{n: "deref_assign_string", src: "var s string; p := &s; *p = \"hello\"; s", res: "hello"},
+
+		// DerefAssign: *p = expr (RHS is an arithmetic expression).
+		{n: "deref_assign_expr", src: "var a int; p := &a; *p = 3 + 4; a", res: "7"},
+
+		// DerefAssign: *f() = value (pointer returned by function).
+		{n: "deref_assign_func", src: `
+var a int
+func f() *int { return &a }
+*f() = 99; a`, res: "99"},
+
+		// DerefAssign: *s[i] = value (pointer in a slice).
+		{n: "deref_assign_slice", src: `
+var a, b int
+s := []*int{&a, &b}
+*s[1] = 10; b`, res: "10", skip: true}, // TODO: Addr of unaddressable slice element
+
+		// Interior deref: (*p).field = value (deref is not outermost).
+		{n: "deref_field_assign", src: `
+type T struct { x int }
+p := &T{0}
+(*p).x = 5; p.x`, res: "5"},
+
+		// Interior deref: (*p)[i] = value.
+		{n: "deref_index_assign", src: `
+s := []int{1, 2, 3}
+p := &s
+(*p)[1] = 20; s[1]`, res: "20"},
+
+		// Auto-deref: p.field = value (Go implicit deref for field access).
+		{n: "auto_deref_field", src: `
+type T struct { x int }
+p := &T{0}
+p.x = 7; p.x`, res: "7"},
+
+		// Double pointer deref: **pp = value.
+		{n: "deref_double", src: `
+var a int
+p := &a
+pp := &p
+**pp = 33; a`, res: "33"},
+
+		// DerefAssign with new().
+		{n: "deref_assign_new", src: "p := new(int); *p = 5; *p", res: "5"},
 	})
 }
 
