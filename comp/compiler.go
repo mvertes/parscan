@@ -455,33 +455,17 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Call:
 			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
-			if s.Name == "panic" && narg == 1 {
-				pop() // panic symbol
-				pop() // argument
-				c.emit(t, vm.Panic)
-				break
-			}
-			if s.Name == "recover" && narg == 0 {
-				pop() // recover symbol
-				c.emit(t, vm.Pop, 1)
-				push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: reflect.TypeOf((*any)(nil)).Elem()}})
-				c.emit(t, vm.Recover)
+			if ok, err := c.compileBuiltin(s, narg, t, &stack, push, pop, top); ok {
+				if err != nil {
+					return err
+				}
 				break
 			}
 			if s.Kind == symbol.Type {
 				if narg != 1 {
 					return errorf("type conversion requires exactly one argument")
 				}
-				// Find and remove the Fnew/FnewE instruction emitted by the Ident
-				// handler for the type. It precedes the argument instructions.
-				for i := len(c.Code) - 1; i >= 0; i-- {
-					op := c.Code[i].Op
-					if (op == vm.Fnew || op == vm.FnewE) && c.Code[i].Arg[0] == s.Index {
-						copy(c.Code[i:], c.Code[i+1:])
-						c.Code = c.Code[:len(c.Code)-1]
-						break
-					}
-				}
+				c.removeFnew(s.Index)
 				pop() // type symbol
 				pop() // argument
 				push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type})
@@ -523,17 +507,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.CallX:
 			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
-			if s.Name == "panic" && narg == 1 {
-				pop() // panic symbol
-				pop() // argument
-				c.emit(t, vm.Panic)
-				break
-			}
-			if s.Name == "recover" && narg == 0 {
-				pop() // recover symbol
-				c.emit(t, vm.Pop, 1)
-				push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: reflect.TypeOf((*any)(nil)).Elem()}})
-				c.emit(t, vm.Recover)
+			if ok, err := c.compileBuiltin(s, narg, t, &stack, push, pop, top); ok {
+				if err != nil {
+					return err
+				}
 				break
 			}
 			rtyp := s.Value.Reflect().Type()
@@ -682,7 +659,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				s = &symbol.Symbol{Name: t.Str}
 			}
 			push(s)
-			if s.Kind == symbol.Pkg || s.Kind == symbol.Unset {
+			if s.Kind == symbol.Pkg || s.Kind == symbol.Unset || s.Kind == symbol.Builtin {
 				break
 			}
 			// Closure creation: emit code address + captured cell pointers + MkClosure.
@@ -1169,6 +1146,148 @@ func (c *Compiler) symbolsByIndex() map[int]entry {
 		dict[sym.Index] = entry{name, sym}
 	}
 	return dict
+}
+
+// removeFnew removes the Fnew/FnewE instruction for the given symbol index.
+func (c *Compiler) removeFnew(index int) {
+	for i := len(c.Code) - 1; i >= 0; i-- {
+		op := c.Code[i].Op
+		if (op == vm.Fnew || op == vm.FnewE) && c.Code[i].Arg[0] == index {
+			copy(c.Code[i:], c.Code[i+1:])
+			c.Code = c.Code[:len(c.Code)-1]
+			return
+		}
+	}
+}
+
+// compileBuiltin handles built-in function calls (len, cap, append, copy, delete, new, make,
+// panic, recover). Returns (true, nil) if handled, (false, nil) if not a builtin.
+func (c *Compiler) compileBuiltin(
+	s *symbol.Symbol, narg int, t goparser.Token,
+	stack *[]*symbol.Symbol, push func(*symbol.Symbol), pop func() *symbol.Symbol, _ func() *symbol.Symbol,
+) (bool, error) {
+	switch s.Name {
+	case "panic":
+		if narg != 1 {
+			return true, errors.New("too many arguments to panic")
+		}
+		pop() // argument
+		pop() // panic symbol
+		c.emit(t, vm.Panic)
+		return true, nil
+
+	case "recover":
+		if narg != 0 {
+			return true, errors.New("too many arguments to recover")
+		}
+		pop() // recover symbol
+		push(&symbol.Symbol{Type: c.Symbols["any"].Type})
+		c.emit(t, vm.Recover)
+		return true, nil
+
+	case "len", "cap":
+		if narg != 1 {
+			return true, fmt.Errorf("invalid argument count for %s", s.Name)
+		}
+		pop() // argument
+		pop() // builtin symbol
+		push(&symbol.Symbol{Type: c.Symbols["int"].Type})
+		op := vm.Len
+		if s.Name == "cap" {
+			op = vm.Cap
+		}
+		c.emit(t, op, 0)
+		c.emit(t, vm.Swap, 0, 1)
+		c.emit(t, vm.Pop, 1)
+		return true, nil
+
+	case "append":
+		if narg < 2 {
+			return true, errors.New("missing arguments to append")
+		}
+		nvals := narg - 1 // number of values to append
+		for range nvals {
+			pop()
+		}
+		sliceSym := pop() // slice argument
+		pop()             // append symbol
+		push(sliceSym)    // result is same slice type
+		elemType := sliceSym.Type.Rtype.Elem()
+		elemIdx := c.typeSym(&vm.Type{Rtype: elemType}).Index
+		c.emit(t, vm.Append, nvals, elemIdx)
+		return true, nil
+
+	case "copy":
+		if narg != 2 {
+			return true, errors.New("invalid argument count for copy")
+		}
+		pop() // src
+		pop() // dst
+		pop() // copy symbol
+		push(&symbol.Symbol{Type: c.Symbols["int"].Type})
+		c.emit(t, vm.CopySlice)
+		return true, nil
+
+	case "delete":
+		if narg != 2 {
+			return true, errors.New("invalid argument count for delete")
+		}
+		pop() // key
+		pop() // map
+		pop() // delete symbol
+		c.emit(t, vm.DeleteMap)
+		c.emit(t, vm.Pop, 1) // delete is void; discard stale map value
+		return true, nil
+
+	case "new":
+		if narg != 1 {
+			return true, errors.New("invalid argument count for new")
+		}
+		typeSym := (*stack)[len(*stack)-1]
+		if typeSym.Kind != symbol.Type {
+			return true, errors.New("first argument to new must be a type")
+		}
+		c.removeFnew(typeSym.Index)
+		pop() // type arg
+		pop() // new symbol
+		ptrType := reflect.PointerTo(typeSym.Type.Rtype)
+		push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: ptrType}})
+		c.emit(t, vm.PtrNew, typeSym.Index)
+		return true, nil
+
+	case "make":
+		if narg < 1 || narg > 3 {
+			return true, errors.New("invalid argument count for make")
+		}
+		typeSym := (*stack)[len(*stack)-narg]
+		if typeSym.Kind != symbol.Type {
+			return true, errors.New("first argument to make must be a type")
+		}
+		c.removeFnew(typeSym.Index)
+		for range narg {
+			pop()
+		}
+		pop() // make symbol
+		push(&symbol.Symbol{Kind: symbol.Value, Type: typeSym.Type})
+		switch typeSym.Type.Rtype.Kind() {
+		case reflect.Slice:
+			// make([]T, len) or make([]T, len, cap)
+			elemType := typeSym.Type.Rtype.Elem()
+			elemIdx := c.typeSym(&vm.Type{Rtype: elemType}).Index
+			c.emit(t, vm.MkSlice, -(narg - 1), elemIdx)
+		case reflect.Map:
+			keyType := typeSym.Type.Rtype.Key()
+			keyIdx := c.typeSym(&vm.Type{Rtype: keyType}).Index
+			valType := typeSym.Type.Rtype.Elem()
+			valIdx := c.typeSym(&vm.Type{Rtype: valType}).Index
+			c.emit(t, vm.MkMap, keyIdx, valIdx)
+		default:
+			return true, fmt.Errorf("cannot make type %s", typeSym.Type.Rtype)
+		}
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func (c *Compiler) typeSym(t *vm.Type) *symbol.Symbol {

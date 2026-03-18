@@ -52,6 +52,37 @@ progress is made (a true undefined-symbol error).
 Symbol and code rollback on failure is tracked via `SymTracker` and
 code/data length checkpoints.
 
+### Variadic call-site packing
+
+When calling a variadic function, the compiler emits `MkSlice` to collect
+the trailing arguments into a `[]T` before `Call`. The number of fixed
+parameters is computed from the function type; `MkSlice` receives the count
+of extra arguments and the element type index. The callee sees a normal
+slice parameter.
+
+### Built-in function dispatch
+
+`compileBuiltin()` intercepts calls to Go builtins by matching on
+`Symbol.Name`. It is called from both the `lang.Call` and `lang.CallX`
+handlers. Each builtin emits a dedicated opcode:
+
+| Builtin | Opcode(s) | Notes |
+|---------|-----------|-------|
+| `len` | `Len` + `Swap` + `Pop` | `Len` does not consume input (used in slice exprs too) |
+| `cap` | `Cap` + `Swap` + `Pop` | Same pattern as `len` |
+| `append` | `Append` | Uses `reflect.Append` for amortized growth |
+| `copy` | `CopySlice` | Returns element count |
+| `delete` | `DeleteMap` + `Pop` | Void; extra `Pop` discards the map value |
+| `new` | `PtrNew` | Removes the `Fnew` emitted for the type argument |
+| `make` | `MkSlice` (negative n) / `MkMap` | Reuses `MkSlice` with negative `Arg[0]` for make mode |
+| `panic` | `Panic` | |
+| `recover` | `Recover` | |
+
+For `new` and `make`, the first argument is a type, not a value. The
+parser's `Ident` handler emits a `Fnew`/`FnewE` instruction for type
+symbols; `compileBuiltin` removes it via `removeFnew()` and uses the
+type's data index directly.
+
 ### Method and interface dispatch
 
 The compiler maintains a `methodIDs` map assigning unique integers to

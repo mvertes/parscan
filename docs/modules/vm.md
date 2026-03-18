@@ -44,7 +44,7 @@ value representation) and `Type` (runtime type metadata).
 
 ### Opcodes
 
-- **`Op`** (int enum) -- 120+ opcodes organized in groups:
+- **`Op`** (int enum) -- 170+ opcodes organized in groups:
   - Stack/control: `Nop`, `Pop`, `Push`, `Swap`, `Exit`, `Jump`,
     `JumpTrue`, `JumpFalse`, `Call`, `Return`.
   - Memory: `Get`, `Set`, `Addr`, `Deref`, `Grow`.
@@ -57,6 +57,8 @@ value representation) and `Type` (runtime type metadata).
     `Field`, `FieldSet`.
   - Types: `Convert`, `TypeAssert`, `TypeBranch`, `New`, `MkSlice`,
     `Composite`.
+  - Builtins: `Append`, `CopySlice`, `DeleteMap`, `Cap`, `PtrNew`,
+    `MkMap`.
   - Closures: `HAlloc`, `HGet`, `HSet`, `HPtr`, `MkClosure`.
   - Interfaces: `IfaceWrap`, `IfaceCall`.
   - Range: `Next`, `Next2`, `Pull`, `Pull2`, `Stop`.

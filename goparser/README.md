@@ -32,14 +32,14 @@ Go language support:
 - [x] internal function calls
 - [x] external function calls (calling runtime symbols in interpreter)
 - [ ] export to runtime
-- [ ] builtin calls (new, make, copy, delete, len, cap, ...)
+- [x] builtin calls (new, make, copy, delete, len, cap, ...)
 - [x] out of order declarations
 - [x] arbirtrary precision constants
 - [x] basic types
 - [x] complete numeric types
 - [ ] complex numbers
 - [x] function types
-- [ ] variadic functions
+- [x] variadic functions
 - [x] pointers
 - [x] structures
 - [x] embedded structures

@@ -15,14 +15,15 @@ type Kind int
 
 // Symbol kinds.
 const (
-	Unset Kind = iota
-	Value      // a value defined in the runtime
-	Type       // a type
-	Label      // a label indicating a position in the VM code
-	Const      // a constant
-	Var        // a variable, located in the VM memory
-	Func       // a function, located in the VM code
-	Pkg        // a package
+	Unset   Kind = iota
+	Value        // a value defined in the runtime
+	Type         // a type
+	Label        // a label indicating a position in the VM code
+	Const        // a constant
+	Var          // a variable, located in the VM memory
+	Func         // a function, located in the VM code
+	Pkg          // a package
+	Builtin      // a built-in function (len, cap, append, etc.)
 )
 
 //go:generate stringer -type=Kind
@@ -188,6 +189,13 @@ func (sm SymMap) Init() {
 	sm["false"] = &Symbol{Name: "false", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(false), Type: vm.TypeOf(false)}
 
 	sm["println"] = &Symbol{Name: "println", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })}
-	sm["panic"] = &Symbol{Name: "panic", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func(_ any) {})}
-	sm["recover"] = &Symbol{Name: "recover", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func() any { return nil })}
+	sm["panic"] = &Symbol{Name: "panic", Kind: Builtin, Index: UnsetAddr}
+	sm["recover"] = &Symbol{Name: "recover", Kind: Builtin, Index: UnsetAddr}
+	sm["len"] = &Symbol{Name: "len", Kind: Builtin, Index: UnsetAddr}
+	sm["cap"] = &Symbol{Name: "cap", Kind: Builtin, Index: UnsetAddr}
+	sm["append"] = &Symbol{Name: "append", Kind: Builtin, Index: UnsetAddr}
+	sm["copy"] = &Symbol{Name: "copy", Kind: Builtin, Index: UnsetAddr}
+	sm["delete"] = &Symbol{Name: "delete", Kind: Builtin, Index: UnsetAddr}
+	sm["new"] = &Symbol{Name: "new", Kind: Builtin, Index: UnsetAddr}
+	sm["make"] = &Symbol{Name: "make", Kind: Builtin, Index: UnsetAddr}
 }

@@ -67,6 +67,13 @@ When a function literal references a variable from an outer scope, the
 parser marks that variable as `Captured` and records it in `FreeVars`.
 This drives `HAlloc`/`HGet`/`HSet` emission during compilation.
 
+### Variadic parameters
+
+`parseParamTypes` detects `...T` syntax (the `Ellipsis` token) and converts
+it to a `[]T` slice type, setting a `variadic` flag. This flag propagates
+through `FuncOf` so the compiler knows to pack trailing arguments at the
+call site.
+
 ## Dependencies
 
 - `scan/` -- scanner tokens.
@@ -76,6 +83,4 @@ This drives `HAlloc`/`HGet`/`HSet` emission during compilation.
 
 ## Open questions / TODOs
 
-<!-- TODO: verify with author -->
-- Variadic functions are not yet supported.
 - Generic type parameters are not parsed.

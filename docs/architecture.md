@@ -103,6 +103,22 @@ Interface dispatch uses an `Iface` wrapper holding a concrete type and value.
 Methods are identified by integer IDs (`methodIDs` in the compiler).
 `IfaceWrap` boxes a value; `IfaceCall` dispatches by method ID.
 
+## Variadic functions
+
+Variadic parameters (`...T`) are parsed as `[]T` by `goparser`. At the call
+site, the compiler emits `MkSlice` to pack trailing arguments into a slice
+before `Call`. The callee sees a normal slice parameter.
+
+## Built-in functions
+
+Go builtins (`len`, `cap`, `append`, `copy`, `delete`, `new`, `make`,
+`panic`, `recover`) are registered in `symbol.SymMap` with `Kind: Builtin`.
+The compiler intercepts them by name in `compileBuiltin()` and emits
+dedicated opcodes rather than generating a function call. Because `Builtin`
+symbols skip the `Get` instruction in the `Ident` handler, they have no
+runtime value on the VM stack -- the compiler emits only the opcode that
+performs the operation.
+
 ## Exception handling
 
 `panic` sets a flag and unwinds the call stack. `defer` pushes a sentinel

@@ -88,6 +88,12 @@ const (
 	DeferPush              // func [a0..an-1] -- func [a0..an-1] [packed prevHead retIP] ; register deferred call on stack; $0=narg, $1=1 if native
 	DeferRet               // -- ; sentinel: restore outer frame after a deferred call returns
 	MkSlice                // [v0..vn-1] -- slice ; collect $0 values into []T, elem type at mem[$1]
+	MkMap                  // -- map ; create map[K]V, key type at mem[$0], val type at mem[$1]
+	Append                 // slice [v0..vn-1] -- slice' ; append $0 values to slice
+	CopySlice              // dst src -- n ; n = copy(dst, src)
+	DeleteMap              // map key -- ; delete(map, key)
+	Cap                    // -- x ; x = cap(mem[sp-$0])
+	PtrNew                 // -- ptr ; ptr = new(T), type at mem[$0]
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -850,9 +856,21 @@ func (m *Machine) Run() (err error) {
 				n := c.Arg[0]
 				elemType := mem[c.Arg[1]].ref.Type()
 				sliceType := reflect.SliceOf(elemType)
-				if n == 0 {
+				switch {
+				case n < 0:
+					// make([]T, len[, cap]): size args are on the stack.
+					nSizeArgs := -n
+					sp = len(mem) - 1
+					sLen := int(mem[sp-nSizeArgs+1].num) //nolint:gosec
+					sCap := sLen
+					if nSizeArgs == 2 {
+						sCap = int(mem[sp].num) //nolint:gosec
+					}
+					mem = mem[:sp-nSizeArgs+1]
+					mem = append(mem, Value{ref: reflect.MakeSlice(sliceType, sLen, sCap)})
+				case n == 0:
 					mem = append(mem, Value{ref: reflect.Zero(sliceType)})
-				} else {
+				default:
 					slice := reflect.MakeSlice(sliceType, n, n)
 					for i := range n {
 						slice.Index(i).Set(mem[sp-n+i].Reflect())
@@ -860,6 +878,36 @@ func (m *Machine) Run() (err error) {
 					mem[sp-n] = Value{ref: slice}
 					mem = mem[:sp-n+1]
 				}
+			case MkMap:
+				keyType := mem[c.Arg[0]].ref.Type()
+				valType := mem[c.Arg[1]].ref.Type()
+				mapType := reflect.MapOf(keyType, valType)
+				mem = append(mem, Value{ref: reflect.MakeMap(mapType)})
+			case Append:
+				n := c.Arg[0]
+				sp = len(mem) - 1
+				result := mem[sp-n].ref
+				for i := range n {
+					result = reflect.Append(result, mem[sp-n+1+i].Reflect())
+				}
+				mem[sp-n] = Value{ref: result}
+				mem = mem[:sp-n+1]
+			case CopySlice:
+				sp = len(mem) - 1
+				dst := mem[sp-1].ref
+				src := mem[sp].ref
+				n := reflect.Copy(dst, src)
+				mem[sp-1] = ValueOf(n)
+				mem = mem[:sp]
+			case DeleteMap:
+				sp = len(mem) - 1
+				mem[sp-1].ref.SetMapIndex(mem[sp].Reflect(), reflect.Value{})
+				mem = mem[:sp]
+			case Cap:
+				mem = append(mem, ValueOf(mem[sp-1-c.Arg[0]].ref.Cap()))
+			case PtrNew:
+				typ := mem[c.Arg[0]].ref.Type()
+				mem = append(mem, Value{ref: reflect.New(typ)})
 			case Index:
 				idx := int(mem[sp-1].num) //nolint:gosec
 				mem[sp-2] = fromReflect(mem[sp-2].ref.Index(idx))
