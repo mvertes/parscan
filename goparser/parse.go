@@ -566,7 +566,6 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	// TODO: handle parametric types (generics)
-	// TODO: handle variadic parameters
 	var fname string    // function name
 	var recvName string // receiver variable name (non-empty for methods)
 
@@ -584,7 +583,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 			// Parse receiver declaration: get type and variable name.
 			if recvr, err := p.Scan(in[1].Block(), false); err != nil {
 				return nil, err
-			} else if rtyp, vars, err := p.parseParamTypes(recvr, parseTypeRecv); err == nil {
+			} else if rtyp, vars, _, err := p.parseParamTypes(recvr, parseTypeRecv); err == nil {
 				// Extract the base type name from the receiver tokens (e.g. [t, *, T]).
 				// reflect.Type.Name() is empty for dynamically created structs, so we
 				// cannot rely on rtyp[0].Rtype.Elem().Name(); use the token stream instead.

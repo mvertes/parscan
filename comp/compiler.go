@@ -493,7 +493,6 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				if typ == nil {
 					return goparser.ErrUndefined{Name: s.Name}
 				}
-				// TODO: pop input types (careful with variadic function).
 				// Pop function and input arg symbols, push return value symbols.
 				pop()
 				for i := 0; i < narg; i++ {
@@ -503,8 +502,18 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				for i := 0; i < nret; i++ {
 					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.Out(i)})
 				}
-				c.emit(t, vm.Call, narg, nret)
-				if typ.Rtype.NumOut() == 0 && narg >= typ.Rtype.NumIn() {
+				callNarg := narg
+				if typ.Rtype.IsVariadic() {
+					// Pack trailing arguments into a slice for the variadic parameter.
+					nFixed := typ.Rtype.NumIn() - 1
+					nExtra := narg - nFixed
+					elemType := typ.Rtype.In(nFixed).Elem() // []T → T
+					elemIdx := c.typeSym(&vm.Type{Rtype: elemType}).Index
+					c.emit(t, vm.MkSlice, nExtra, elemIdx)
+					callNarg = nFixed + 1
+				}
+				c.emit(t, vm.Call, callNarg, nret)
+				if typ.Rtype.NumOut() == 0 && callNarg >= typ.Rtype.NumIn() {
 					c.emit(t, vm.Pop, 1) // pop stale func value left by Return for void calls
 				}
 				break

@@ -166,6 +166,23 @@ func TestOutOfOrder(t *testing.T) {
 	})
 }
 
+func TestVariadic(t *testing.T) {
+	run(t, []etest{
+		// Variadic with multiple args.
+		{n: "#00", src: "func sum(a ...int) int { s := 0; for _, v := range a { s = s + v }; return s }; sum(1, 2, 3)", res: "6"},
+		// Variadic with zero args.
+		{n: "#01", src: "func sum(a ...int) int { s := 0; for _, v := range a { s = s + v }; return s }; sum()", res: "0"},
+		// Variadic with one arg.
+		{n: "#02", src: "func sum(a ...int) int { s := 0; for _, v := range a { s = s + v }; return s }; sum(42)", res: "42"},
+		// Fixed params before variadic.
+		{n: "#03", src: "func add(x int, rest ...int) int { s := x; for _, v := range rest { s = s + v }; return s }; add(10, 1, 2, 3)", res: "16"},
+		// Fixed param, no variadic args.
+		{n: "#04", src: "func add(x int, rest ...int) int { s := x; for _, v := range rest { s = s + v }; return s }; add(10)", res: "10"},
+		// Variadic void function.
+		{n: "#05", src: "var r int; func f(a ...int) { for _, v := range a { r = r + v } }; f(1, 2, 3); r", res: "6"},
+	})
+}
+
 func TestFuncNamedReturn(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "func f(a int) (r int) { r = a + 2; return }; f(3)", res: "5"},

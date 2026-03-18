@@ -51,7 +51,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		decl = decl[:i]
 	}
 	var vars []string
-	if _, vars, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
+	if _, vars, _, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
 		if errors.Is(err, ErrMissingType) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
@@ -332,7 +332,7 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 	}
 	var vars []string
 	var undefinedType bool
-	if _, vars, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
+	if _, vars, _, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
 		if errors.Is(err, ErrMissingType) {
 			undefinedType = true
 			for _, lt := range decl.Split(lang.Comma) {

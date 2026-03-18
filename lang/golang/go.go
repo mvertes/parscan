@@ -64,6 +64,7 @@ var GoSpec = &lang.Spec{
 		",":           lang.Comma,
 		";":           lang.Semicolon,
 		".":           lang.Period,
+		"...":         lang.Ellipsis,
 		":":           lang.Colon,
 		"&":           lang.And,
 		"*":           lang.Mul,

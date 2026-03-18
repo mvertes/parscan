@@ -87,6 +87,7 @@ const (
 	Recover                // -- v ; push recovered value (or nil if not panicking in a deferred call)
 	DeferPush              // func [a0..an-1] -- func [a0..an-1] [packed prevHead retIP] ; register deferred call on stack; $0=narg, $1=1 if native
 	DeferRet               // -- ; sentinel: restore outer frame after a deferred call returns
+	MkSlice                // [v0..vn-1] -- slice ; collect $0 values into []T, elem type at mem[$1]
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -845,6 +846,20 @@ func (m *Machine) Run() (err error) {
 				clear(mem[sp-n-1 : sp]) // clear code addr + cell ptr slots
 				mem = mem[:sp-n-1]
 				mem = append(mem, clo)
+			case MkSlice:
+				n := c.Arg[0]
+				elemType := mem[c.Arg[1]].ref.Type()
+				sliceType := reflect.SliceOf(elemType)
+				if n == 0 {
+					mem = append(mem, Value{ref: reflect.Zero(sliceType)})
+				} else {
+					slice := reflect.MakeSlice(sliceType, n, n)
+					for i := range n {
+						slice.Index(i).Set(mem[sp-n+i].Reflect())
+					}
+					mem[sp-n] = Value{ref: slice}
+					mem = mem[:sp-n+1]
+				}
 			case Index:
 				idx := int(mem[sp-1].num) //nolint:gosec
 				mem[sp-2] = fromReflect(mem[sp-2].ref.Index(idx))

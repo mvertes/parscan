@@ -74,7 +74,6 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 	case lang.Func:
 		// Get argument and return token positions depending on function pattern:
 		// method with receiver, named function or anonymous closure.
-		// TODO: handle variadics
 		var out Tokens
 		var indexArgs int
 		var recvr string
@@ -100,7 +99,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			if err != nil {
 				return nil, 0, err
 			}
-			if _, _, err = p.parseParamTypes(recvrToks, parseTypeRecv); err != nil {
+			if _, _, _, err = p.parseParamTypes(recvrToks, parseTypeRecv); err != nil {
 				return nil, 0, err
 			}
 		}
@@ -108,7 +107,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		if err != nil {
 			return nil, 0, err
 		}
-		arg, _, err := p.parseParamTypes(iargs, parseTypeIn)
+		arg, _, isVariadic, err := p.parseParamTypes(iargs, parseTypeIn)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -118,11 +117,11 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				return nil, 0, err
 			}
 		}
-		ret, _, err := p.parseParamTypes(out, parseTypeOut)
+		ret, _, _, err := p.parseParamTypes(out, parseTypeOut)
 		if err != nil {
 			return nil, 0, err
 		}
-		return vm.FuncOf(arg, ret, false), 1 + indexArgs, nil
+		return vm.FuncOf(arg, ret, isVariadic), 1 + indexArgs, nil
 
 	case lang.Ident:
 		// TODO: selector expression (pkg.type)
@@ -153,7 +152,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				fields = append(fields, f)
 				continue
 			}
-			types, names, err := p.parseParamTypes(lt, parseTypeType)
+			types, names, _, err := p.parseParamTypes(lt, parseTypeType)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -217,7 +216,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 
 // parseParamTypes parses a list of comma separated typed parameters and returns a list of
 // runtime types. Implicit parameter names and types are supported.
-func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, vars []string, err error) {
+func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, vars []string, variadic bool, err error) {
 	// Parse from right to left, to allow multiple comma separated parameters of the same type.
 	list := in.Split(lang.Comma)
 	for i := len(list) - 1; i >= 0; i-- {
@@ -238,10 +237,10 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 					// return ErrUndefined so the lazy fixpoint can retry.
 					if flag == parseTypeOut {
 						if _, _, ok := p.Symbols.Get(origName, p.scope); !ok {
-							return nil, nil, ErrUndefined{origName}
+							return nil, nil, false, ErrUndefined{origName}
 						}
 					}
-					return nil, nil, ErrMissingType
+					return nil, nil, false, ErrMissingType
 				}
 				// Type was omitted, apply the previous one from the right.
 				types = append([]*vm.Type{types[0]}, types...)
@@ -250,9 +249,17 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 				continue
 			}
 		}
+		// Detect variadic parameter: ...T becomes []T.
+		if len(t) > 0 && t[0].Tok == lang.Ellipsis {
+			variadic = true
+			t = t[1:]
+		}
 		typ, _, err := p.parseTypeExpr(t)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
+		}
+		if variadic && i == len(list)-1 {
+			typ = vm.SliceOf(typ)
 		}
 		if param != "" {
 			p.addSymVar(i, len(list), param, typ, flag, local)
@@ -260,7 +267,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 		types = append([]*vm.Type{typ}, types...)
 		vars = append([]string{param}, vars...)
 	}
-	return types, vars, err
+	return types, vars, variadic, err
 }
 
 func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag typeFlag, local bool) {
