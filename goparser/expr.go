@@ -116,11 +116,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			isInnerScope := sc == p.funcScope || strings.HasPrefix(sc, p.funcScope+"/")
 			if ok && s != nil && s.Local && sc != "" && p.fname != "" && !isInnerScope {
 				if cloSym := p.Symbols[p.fname]; cloSym != nil {
-					if cloSym.CapturedAs == nil {
-						cloSym.CapturedAs = map[string]int{}
-					}
-					if _, already := cloSym.CapturedAs[t.Str]; !already {
-						cloSym.CapturedAs[t.Str] = len(cloSym.FreeVars)
+					if cloSym.FreeVarIndex(t.Str) < 0 {
 						cloSym.FreeVars = append(cloSym.FreeVars, t.Str)
 						s.Captured = true
 					}

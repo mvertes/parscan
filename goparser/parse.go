@@ -661,7 +661,6 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if recvName != "" {
 		recvScoped := p.scope + "/" + recvName
 		s.FreeVars = []string{recvScoped}
-		s.CapturedAs = map[string]int{recvScoped: 0}
 		// Re-register receiver symbol at function scope so the compiler finds it
 		// with the correct type when resolving the scoped identifier inside the body.
 		// The outer-scoped key was set by addSymVar before pushScope.

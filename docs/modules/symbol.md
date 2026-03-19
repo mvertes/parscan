@@ -19,7 +19,7 @@ to resolve addresses and types.
   - `Index` -- address in the VM data segment or frame.
   - `Local` -- whether the address is frame-relative.
   - `Type` -- `*vm.Type` for the symbol's runtime type.
-  - `Captured` / `FreeVars` / `CapturedAs` -- closure capture metadata.
+  - `Captured` / `FreeVars` -- closure capture metadata.
 - **`Kind`** (int enum) -- symbol classification.
 - **`Get(name, scope string) (*Symbol, string, bool)`** -- lookup by
   walking from the innermost scope outward.

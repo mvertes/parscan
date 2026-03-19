@@ -275,7 +275,7 @@ func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag t
 	switch flag {
 	case parseTypeRecv:
 		// Receiver lives in Env[0] of the method closure, not on the call stack.
-		// Index is irrelevant; the compiler emits HGet 0 via CapturedAs.
+		// Index is irrelevant; the compiler emits HGet 0 via FreeVars.
 		p.SymSet(name, &symbol.Symbol{
 			Kind: symbol.Var, Name: name, Index: symbol.UnsetAddr,
 			Local: true, Captured: true, Used: true,

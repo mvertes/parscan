@@ -33,19 +33,28 @@ const UnsetAddr = -65535
 
 // Symbol structure used in parser and compiler.
 type Symbol struct {
-	Kind       Kind
-	Name       string         //
-	Index      int            // address of symbol in frame
-	PkgPath    string         //
-	Type       *vm.Type       //
-	Value      vm.Value       //
-	SliceLen   int            // initial slice length (slice types only)
-	Cval       constant.Value //
-	Local      bool           // if true address is relative to local frame, otherwise global
-	Used       bool           //
-	Captured   bool           // true if this variable escapes to a heap cell
-	FreeVars   []string       // closure: scoped names of captured outer-scope locals, in Env order
-	CapturedAs map[string]int // closure: maps scoped name to index in Closure.Env
+	Kind     Kind
+	Name     string         //
+	Index    int            // address of symbol in frame
+	PkgPath  string         //
+	Type     *vm.Type       //
+	Value    vm.Value       //
+	SliceLen int            // initial slice length (slice types only)
+	Cval     constant.Value //
+	Local    bool           // if true address is relative to local frame, otherwise global
+	Used     bool           //
+	Captured bool           // true if this variable escapes to a heap cell
+	FreeVars []string       // closure: scoped names of captured outer-scope locals, in Env order
+}
+
+// FreeVarIndex returns the index of name in FreeVars, or -1 if not found.
+func (s *Symbol) FreeVarIndex(name string) int {
+	for i, fv := range s.FreeVars {
+		if fv == name {
+			return i
+		}
+	}
+	return -1
 }
 
 // func (s *Symbol) String() string {

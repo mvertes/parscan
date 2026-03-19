@@ -614,7 +614,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				// Captured variable write inside closure body: use HSet.
 				if cf := curFunc(); cf != "" {
 					if cloSym := c.Symbols[cf]; cloSym != nil {
-						if idx, captOK := cloSym.CapturedAs[lhs.Name]; captOK {
+						if idx := cloSym.FreeVarIndex(lhs.Name); idx >= 0 {
 							c.emit(t, vm.HSet, idx)
 							c.emit(t, vm.Pop, 1) // pop stale value pushed by HGet in Ident
 							break
@@ -679,23 +679,25 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			// Closure creation: emit code address + captured cell pointers + MkClosure.
 			if s.Kind == symbol.Func && len(s.FreeVars) > 0 {
 				c.emit(t, vm.Get, vm.Global, s.Index)
-				// Determine the current function's CapturedAs map for transitive capture.
-				var outerCapturedAs map[string]int
+				// Determine the current function's FreeVars for transitive capture.
+				var outerCloSym *symbol.Symbol
 				if cf := curFunc(); cf != "" {
-					if cloSym := c.Symbols[cf]; cloSym != nil {
-						outerCapturedAs = cloSym.CapturedAs
-					}
+					outerCloSym = c.Symbols[cf]
 				}
 				for _, fvName := range s.FreeVars {
 					fvSym := c.Symbols[fvName]
 					if fvSym == nil {
 						return errorf("free variable not found: %s", fvName)
 					}
-					if idx, ok := outerCapturedAs[fvName]; ok {
-						// The free variable is already captured in the enclosing closure's Env.
-						// Use HPtr to push the existing cell pointer (transitive capture).
-						c.emit(t, vm.HPtr, idx)
-					} else if fvSym.Local {
+					if outerCloSym != nil {
+						if idx := outerCloSym.FreeVarIndex(fvName); idx >= 0 {
+							// The free variable is already captured in the enclosing closure's Env.
+							// Use HPtr to push the existing cell pointer (transitive capture).
+							c.emit(t, vm.HPtr, idx)
+							continue
+						}
+					}
+					if fvSym.Local {
 						c.emit(t, vm.Get, vm.Local, fvSym.Index)
 						c.emit(t, vm.HAlloc)
 					} else {
@@ -709,7 +711,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			// Captured variable read inside a closure body: use HGet.
 			if cf := curFunc(); cf != "" {
 				if cloSym := c.Symbols[cf]; cloSym != nil {
-					if idx, captOK := cloSym.CapturedAs[t.Str]; captOK {
+					if idx := cloSym.FreeVarIndex(t.Str); idx >= 0 {
 						c.emit(t, vm.HGet, idx)
 						break
 					}
