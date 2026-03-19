@@ -195,6 +195,15 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos + c.posBase), Op: op, Arg: arg})
 }
 
+// emitIfaceWrap emits IfaceWrap if assigning a concrete value to an interface type.
+func (c *Compiler) emitIfaceWrap(t goparser.Token, ifaceTyp, concreteTyp *vm.Type) {
+	if ifaceTyp == nil || !ifaceTyp.IsInterface() || concreteTyp == nil || concreteTyp.IsInterface() {
+		return
+	}
+	c.registerMethods(ifaceTyp, concreteTyp)
+	c.emit(t, vm.IfaceWrap, c.typeIndex(concreteTyp))
+}
+
 // generate generates vm code and data from parsed tokens, or returns an error.
 func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 	fixList := goparser.Tokens{}  // list of tokens to fix after all necessary information is gathered
@@ -602,8 +611,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				// If lhs has an interface type, keep it and wrap the concrete value.
 				if lhs[i].Type != nil && lhs[i].Type.IsInterface() && !typ.IsInterface() {
-					c.registerMethods(lhs[i].Type, typ)
-					c.emit(t, vm.IfaceWrap, c.typeIndex(typ))
+					c.emitIfaceWrap(t, lhs[i].Type, typ)
 					c.Data[lhs[i].Index] = vm.NewValue(lhs[i].Type.Rtype)
 				} else {
 					lhs[i].Type = typ
@@ -630,6 +638,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
 					lhs.Used = true
 				}
+				// Wrap concrete value in Iface when assigning to interface local.
+				c.emitIfaceWrap(t, lhs.Type, rhs.Type)
 				c.emit(t, vm.Set, 1, lhs.Index)
 				c.emit(t, vm.Pop, 1) // pop stale lhs value left by Ident's Get
 				break
@@ -640,10 +650,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.Symbols[lhs.Name].Type = rhs.Type
 			}
 			// Wrap concrete value in Iface when assigning to interface variable.
-			if lhs.Type != nil && lhs.Type.IsInterface() && rhs.Type != nil && !rhs.Type.IsInterface() {
-				c.registerMethods(lhs.Type, rhs.Type)
-				c.emit(t, vm.IfaceWrap, c.typeIndex(rhs.Type))
-			}
+			c.emitIfaceWrap(t, lhs.Type, rhs.Type)
 			c.emit(t, vm.SetS, t.Arg[0].(int))
 
 		case lang.DerefAssign:
