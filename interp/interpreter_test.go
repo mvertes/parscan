@@ -214,6 +214,7 @@ func TestFor(t *testing.T) {
 		{n: "#05", src: "a := []int{1,2,3,4}; b := 0; for i := range a {b = b+i}; b", res: "6"},
 		{n: "#06", src: "func f() int {a := []int{1,2,3,4}; b := 0; for i := range a {b = b+i}; return b}; f()", res: "6"},
 		{n: "#07", src: "a := []int{1,2,3,4}; b := 0; for i, e := range a {b = b+i+e}; b", res: "16"},
+		{n: "#08", src: "a := [4]int{1,2,3,4}; b := 0; for i, e := range a {b = b+i+e}; b", res: "16"},
 	})
 }
 
@@ -762,6 +763,7 @@ func TestComposite(t *testing.T) {
 		{n: "#14", src: `m := map[int]struct{b bool}{1:{true}}; m`, res: `map[1:{true}]`},
 		{n: "#15", src: `type T *struct {b bool}; m := []T{{true}}; m[0]`, res: `&{true}`},
 		{n: "#16", src: `type T *struct {b bool}; m := []T{{true}}; m[0].b`, res: `true`},
+		{n: "#17", src: `a := [3]int{1, 2, 3}; a`, res: `[1 2 3]`},
 	})
 }
 

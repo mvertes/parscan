@@ -548,7 +548,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					if ks.Value.CanInt() {
 						c.emit(t, vm.FieldFset)
 					}
-				case reflect.Slice:
+				case reflect.Array, reflect.Slice:
 					if ts.Type.Elem().IsPtr() && vs.Kind == symbol.Type {
 						c.emit(t, vm.Addr)
 					}
@@ -970,7 +970,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			// FIXME: handle all iterator types.
 			// set the correct type to the iterator variables.
 			switch typ := top().Type; typ.Rtype.Kind() {
-			case reflect.Slice:
+			case reflect.Array, reflect.Slice:
 				switch n {
 				case 1:
 					k := stack[len(stack)-2]
