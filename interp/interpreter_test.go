@@ -633,6 +633,36 @@ func (s S) Get() int { return s.n }
 var g Getter = S{7}
 _, ok := g.(Other)
 ok`, res: "false"},
+
+		{
+			n: "nil_panic", src: `var i any; i.(int)`,
+			err: "panic: interface conversion: interface is nil, not int",
+		},
+
+		{n: "nil_recover", src: `
+r := 0
+func f() {
+	defer func() { recover(); r = 1 }()
+	var i any
+	i.(int)
+}
+f()
+r`, res: "1"},
+
+		{
+			n: "wrong_type_panic", src: `var i any = "hello"; i.(int)`,
+			err: "panic: interface conversion: interface value is string, not int",
+		},
+
+		{n: "wrong_type_recover", src: `
+r := 0
+func f() {
+	defer func() { recover(); r = 1 }()
+	var i any = "hello"
+	i.(int)
+}
+f()
+r`, res: "1"},
 	})
 }
 

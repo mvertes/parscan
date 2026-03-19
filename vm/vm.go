@@ -510,9 +510,11 @@ func (m *Machine) Run() (err error) {
 				ifc := mem[sp-1]
 				if !ifc.IsIface() {
 					if !okForm {
-						// FIXME: to be replaced with a vm panic operator which stops the vm, returns
-						// an error, but does not crash the program.
-						panic(fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp))
+						m.panicking = true
+						m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp))}
+						mem = mem[:sp-1]
+						ip = panicUnwindIP
+						continue
 					}
 					mem[sp-1] = boolVal(false)
 					mem = append(mem, NewValue(dstTyp.Rtype))
@@ -527,8 +529,11 @@ func (m *Machine) Run() (err error) {
 					}
 				} else {
 					if !okForm {
-						// FIXME: replace with a vm panic operator when ready.
-						panic(fmt.Sprintf("interface conversion: interface value is %s, not %s", concrete.Typ, dstTyp))
+						m.panicking = true
+						m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface value is %s, not %s", concrete.Typ, dstTyp))}
+						mem = mem[:sp-1]
+						ip = panicUnwindIP
+						continue
 					}
 					mem[sp-1] = boolVal(false)
 					mem = append(mem, NewValue(dstTyp.Rtype))
@@ -1267,6 +1272,11 @@ func (m *Machine) Run() (err error) {
 		// Negative ip is a sentinel for special handlers.
 		if ip == panicUnwindIP {
 			// Panic unwind: dispatch deferred calls in current frame, then tear down.
+			if fp == 0 {
+				// Top-level panic: no call frame to unwind.
+				m.mem, m.ip, m.fp = mem, 0, 0
+				return fmt.Errorf("panic: %v", m.panicVal.Interface())
+			}
 			dh := int(mem[fp-3].num) //nolint:gosec
 			if dh != 0 {
 				packed := mem[dh-2].num
