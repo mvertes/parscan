@@ -44,6 +44,7 @@ func (i *Interp) Eval(src string) (res reflect.Value, err error) {
 	}
 	i.PushCode(vm.Instruction{Op: vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
+	i.SetDebugInfoBuilder(func() *vm.DebugInfo { return i.BuildDebugInfo(src) })
 	if debug {
 		i.PrintData()
 		i.PrintCode()

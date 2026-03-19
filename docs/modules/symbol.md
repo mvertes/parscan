@@ -28,7 +28,8 @@ to resolve addresses and types.
 - **`Init()`** -- populates builtin types (`int`, `string`, `bool`, ...),
   values (`nil`, `true`, `false`, `iota`), `println` (as `Value` with a
   native Go function), and builtin functions (`len`, `cap`, `append`,
-  `copy`, `delete`, `new`, `make`, `panic`, `recover`) with `Kind: Builtin`.
+  `copy`, `delete`, `new`, `make`, `panic`, `recover`, `trap`) with
+  `Kind: Builtin`.
 
 ## Internal design
 

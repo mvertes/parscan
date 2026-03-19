@@ -39,6 +39,14 @@ which retries failed declarations. See [comp](comp.md) for details.
 If a `main` function is defined, `Eval` emits a `Call` to it after pushing
 the compiled code. This mirrors `go run` behavior for standalone programs.
 
+### Lazy DebugInfo
+
+`Eval` registers a `debugInfoFn` closure on the VM via
+`SetDebugInfoBuilder`. This closure calls `Compiler.BuildDebugInfo(src)` to
+produce a `*vm.DebugInfo` populated with label names, global symbol names,
+and per-function local variable mappings. The builder is only invoked if
+the program hits a `trap()` call, so there is no cost for normal execution.
+
 ## Dependencies
 
 - `comp/` -- compiler (embedded).

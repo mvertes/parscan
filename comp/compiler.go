@@ -28,6 +28,7 @@ type Compiler struct {
 
 	strings   map[string]int // locations of strings in Data
 	methodIDs map[string]int // global method ID by method name
+	source    string         // accumulated source text across Compile calls
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
@@ -43,6 +44,11 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 // Compile parses src and generates code and data, or returns a non-nil error.
 // Code and data are added incrementally in c.Code and C.Data.
 func (c *Compiler) Compile(src string) error {
+	if c.source != "" {
+		c.source += "\n"
+	}
+	c.source += src
+
 	decls, err := c.ScanDecls(src)
 	if err != nil {
 		return err
@@ -1165,10 +1171,10 @@ func (c *Compiler) symbolsByIndex() map[int]entry {
 }
 
 // BuildDebugInfo constructs a DebugInfo from the compiler's symbol table
-// and source text. The result can be passed to DumpFrame/DumpCallStack.
-func (c *Compiler) BuildDebugInfo(source string) *vm.DebugInfo {
+// and accumulated source text. The result can be passed to DumpFrame/DumpCallStack.
+func (c *Compiler) BuildDebugInfo() *vm.DebugInfo {
 	di := vm.NewDebugInfo()
-	di.Source = source
+	di.Source = c.source
 
 	for name, sym := range c.Symbols {
 		switch {
@@ -1239,6 +1245,14 @@ func (c *Compiler) compileBuiltin(
 	stack *[]*symbol.Symbol, push func(*symbol.Symbol), pop func() *symbol.Symbol, _ func() *symbol.Symbol,
 ) (bool, error) {
 	switch s.Name {
+	case "trap":
+		if narg != 0 {
+			return true, errors.New("too many arguments to trap")
+		}
+		pop() // trap symbol
+		c.emit(t, vm.Trap)
+		return true, nil
+
 	case "panic":
 		if narg != 1 {
 			return true, errors.New("too many arguments to panic")

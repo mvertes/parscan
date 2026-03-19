@@ -207,4 +207,5 @@ func (sm SymMap) Init() {
 	sm["delete"] = &Symbol{Name: "delete", Kind: Builtin, Index: UnsetAddr}
 	sm["new"] = &Symbol{Name: "new", Kind: Builtin, Index: UnsetAddr}
 	sm["make"] = &Symbol{Name: "make", Kind: Builtin, Index: UnsetAddr}
+	sm["trap"] = &Symbol{Name: "trap", Kind: Builtin, Index: UnsetAddr}
 }

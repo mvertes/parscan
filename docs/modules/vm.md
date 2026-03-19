@@ -14,7 +14,7 @@ value representation) and `Type` (runtime type metadata).
 ### Execution
 
 - **`Machine`** -- VM state: `code`, `mem`, `ip`, `fp`, closure `env`,
-  panic state, and per-frame metadata.
+  panic state, per-frame metadata, and debug state.
 - **`Run() error`** -- main execution loop. Dispatches on `Op` via a
   switch statement.
 - **`Push(vals ...Value)`** / **`Pop() Value`** -- stack manipulation.
@@ -63,6 +63,7 @@ value representation) and `Type` (runtime type metadata).
   - Interfaces: `IfaceWrap`, `IfaceCall`.
   - Range: `Next`, `Next2`, `Pull`, `Pull2`, `Stop`.
   - Exceptions: `Panic`, `Recover`, `DeferPush`, `DeferRet`.
+  - Debug: `Trap`.
 
 ## Internal design
 
@@ -105,6 +106,44 @@ and restores the caller's env on return. `HGet`/`HSet` read/write through
 - `Recover` clears the panic state if called inside a deferred function.
 - `DeferRet` is emitted at function exit to run deferred functions in LIFO
   order.
+
+### Trap and interactive debug mode
+
+The `Trap` opcode pauses VM execution and enters an interactive debug
+session. It is emitted by the compiler for calls to the `trap()` builtin.
+
+**Sentinel IP mechanism.** The run loop uses special `ip` values to handle
+out-of-band control flow. `Trap` works the same way as `deferSentinelIP`
+and `panicUnwindIP`: the opcode handler saves the resume address in
+`trapOrig`, sets `ip = trapIP` (constant `-3`), and continues. On the next
+iteration the run loop detects the sentinel, syncs Machine state, and calls
+`enterDebug()`. When the user types `cont`, `enterDebug` returns and the
+loop restores `ip` from `Machine.ip` to resume normal execution.
+
+**Debug fields on Machine:**
+
+- `debugInfo *DebugInfo` -- symbolic info (labels, globals, locals, source).
+  Built lazily on first trap via `debugInfoFn`.
+- `debugInfoFn func() *DebugInfo` -- builder registered by the interpreter.
+  Avoids paying the cost of building debug info unless a trap is actually
+  hit.
+- `debugIn` / `debugOut` -- I/O overrides for the debug REPL (default:
+  stdin/stderr). Tests inject buffers here.
+- `trapOrig int` -- the ip to resume after the debug session ends.
+
+**Debug REPL commands:**
+
+| Command | Action |
+|---------|--------|
+| `bt`, `stack` | Dump the full call stack with frame layout and symbol names |
+| `c`, `cont` | Continue execution |
+| `h`, `help` | Show available commands |
+
+**DebugInfo** (`vm/debug.go`) holds symbolic metadata populated by
+`comp.Compiler.BuildDebugInfo()`: source text, label-to-name mappings,
+global-index-to-name mappings, and per-function local variable lists.
+`DumpFrame` and `DumpCallStack` use this information to annotate memory
+slots with human-readable names and source positions.
 
 ## Dependencies
 

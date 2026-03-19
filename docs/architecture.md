@@ -112,7 +112,8 @@ before `Call`. The callee sees a normal slice parameter.
 ## Built-in functions
 
 Go builtins (`len`, `cap`, `append`, `copy`, `delete`, `new`, `make`,
-`panic`, `recover`) are registered in `symbol.SymMap` with `Kind: Builtin`.
+`panic`, `recover`) and the parscan-specific `trap` debugger builtin are
+registered in `symbol.SymMap` with `Kind: Builtin`.
 The compiler intercepts them by name in `compileBuiltin()` and emits
 dedicated opcodes rather than generating a function call. Because `Builtin`
 symbols skip the `Get` instruction in the `Ident` handler, they have no
@@ -124,3 +125,23 @@ performs the operation.
 `panic` sets a flag and unwinds the call stack. `defer` pushes a sentinel
 frame with a `DeferRet` handler. `recover` clears the panic state inside a
 deferred function.
+
+## Debug / trap support
+
+Parscan provides an in-process debugger triggered by `trap()`, a builtin
+that compiles to the `Trap` opcode. When the VM hits `Trap`, it pauses
+execution and drops into an interactive REPL where the user can inspect the
+call stack and memory.
+
+The mechanism reuses the run loop's sentinel-IP pattern (the same approach
+used by `defer` and `panic` unwinding): `Trap` saves the resume address and
+sets `ip` to a special constant (`trapIP = -3`). The outer loop detects
+this sentinel and calls `enterDebug()`.
+
+Debug info (symbol names, source positions) is built lazily -- the
+interpreter registers a builder function on the VM, and it is only called
+when the first `trap()` fires. This avoids overhead for programs that never
+use `trap`.
+
+See [vm](modules/vm.md#trap-and-interactive-debug-mode) for implementation
+details.

@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -235,4 +236,55 @@ func formatValue(v Value) string {
 		s = s[:57] + "..."
 	}
 	return s
+}
+
+// enterDebug runs an interactive debug session. The Machine state (mem, ip, fp)
+// must be synced before calling. On return, ip is set to resume execution.
+func (m *Machine) enterDebug() {
+	in := m.debugIn
+	if in == nil {
+		in = os.Stdin
+	}
+	out := m.debugOut
+	if out == nil {
+		out = os.Stderr
+	}
+
+	var di *DebugInfo
+	if m.debugInfoFn != nil {
+		di = m.debugInfoFn()
+	}
+
+	loc := ""
+	if di != nil && m.ip > 0 && m.ip-1 < len(m.code) {
+		loc = di.PosToLine(m.code[m.ip-1].Pos)
+	}
+	if loc != "" {
+		_, _ = fmt.Fprintf(out, "trap at ip=%d (%s)\n", m.ip-1, loc)
+	} else {
+		_, _ = fmt.Fprintf(out, "trap at ip=%d\n", m.ip-1)
+	}
+
+	scanner := bufio.NewScanner(in)
+	for {
+		_, _ = fmt.Fprint(out, "debug> ")
+		if !scanner.Scan() {
+			break
+		}
+		line := strings.TrimSpace(scanner.Text())
+		switch line {
+		case "h", "help":
+			_, _ = fmt.Fprintln(out, "  stack, bt  - dump call stack")
+			_, _ = fmt.Fprintln(out, "  cont, c    - continue execution")
+			_, _ = fmt.Fprintln(out, "  help, h    - show this help")
+		case "bt", "stack":
+			m.DumpCallStack(out, di)
+		case "c", "cont":
+			return
+		case "":
+			continue
+		default:
+			_, _ = fmt.Fprintf(out, "unknown command: %s (type 'help')\n", line)
+		}
+	}
 }

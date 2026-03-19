@@ -106,8 +106,8 @@ Other items:
 - [ ] compile time error detection and diagnosis
 - [ ] stack dump
 - [ ] symbol tables, data tables, code binded to source lines
-- [ ] interactive debugger: breaks, continue, instrospection, ...
-- [ ] machine level debugger
+- [x] interactive debugger: breaks, continue, instrospection, ...
+- [x] machine level debugger
 - [ ] source level debugger
 - [ ] replay debugger, backward instruction execution
 - [ ] vm monitor: live memory / code display during run

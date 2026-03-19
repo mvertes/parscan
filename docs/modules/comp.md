@@ -77,6 +77,7 @@ handlers. Each builtin emits a dedicated opcode:
 | `make` | `MkSlice` (negative n) / `MkMap` | Reuses `MkSlice` with negative `Arg[0]` for make mode |
 | `panic` | `Panic` | |
 | `recover` | `Recover` | |
+| `trap` | `Trap` | Zero arguments; pauses VM and enters interactive debug mode |
 
 For `new` and `make`, the first argument is a type, not a value. The
 parser's `Ident` handler emits a `Fnew`/`FnewE` instruction for type

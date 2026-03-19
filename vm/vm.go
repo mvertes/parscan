@@ -3,6 +3,7 @@ package vm
 
 import (
 	"fmt" // for tracing only
+	"io"
 	"iter"
 	"log"     // for tracing only
 	"math"    // for float arithmetic
@@ -95,6 +96,7 @@ const (
 	DeleteMap              // map key -- ; delete(map, key)
 	Cap                    // -- x ; x = cap(mem[sp-$0])
 	PtrNew                 // -- ptr ; ptr = new(T), type at mem[$0]
+	Trap                   // -- ; pause VM execution and enter debug mode
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -269,6 +271,21 @@ type Machine struct {
 	panicking bool  // true while unwinding due to panic
 	panicVal  Value // value passed to panic()
 	frameInfo []int // per call frame: nret | (numIn << 16), parallel to captured
+
+	debugInfoFn func() *DebugInfo // builds DebugInfo on demand (breaks vm->comp cycle)
+	debugIn     io.Reader         // debug command input (nil = os.Stdin)
+	debugOut    io.Writer         // debug output (nil = os.Stderr)
+	stepping    bool              //nolint:unused // when true, trap after every instruction (planned)
+	trapOrig    int               // ip to resume after Trap
+}
+
+// SetDebugInfo registers a function that builds DebugInfo on demand.
+func (m *Machine) SetDebugInfo(fn func() *DebugInfo) { m.debugInfoFn = fn }
+
+// SetDebugIO sets the I/O streams for the interactive debug mode.
+func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
+	m.debugIn = in
+	m.debugOut = out
 }
 
 // deferSentinelIP is the ip value used as return address for deferred call frames.
@@ -281,6 +298,9 @@ const deferSentinelBits = ^uint64(0)
 // panicUnwindIP is the ip sentinel used during panic stack unwinding.
 // The main loop dispatches deferred calls and tears down frames when ip == panicUnwindIP.
 const panicUnwindIP = -2
+
+// trapIP is the ip sentinel that triggers interactive debug mode.
+const trapIP = -3
 
 // Run runs a program.
 func (m *Machine) Run() (err error) {
@@ -693,6 +713,11 @@ func (m *Machine) Run() (err error) {
 					Value{},                           // returnIP placeholder, filled by Return
 				)
 				mem[fp-3].num = uint64(sp + 2) //nolint:gosec // dh = index of returnIP slot
+
+			case Trap:
+				m.trapOrig = ip + 1 // resume ip after Trap instruction
+				ip = trapIP
+				continue
 
 			case Panic:
 				m.panicking = true
@@ -1374,6 +1399,12 @@ func (m *Machine) Run() (err error) {
 				m.captured[top] = nil
 				m.captured = m.captured[:top]
 			}
+			continue
+		}
+		if ip == trapIP {
+			m.mem, m.ip, m.fp = mem, m.trapOrig, fp
+			m.enterDebug()
+			mem, ip, fp = m.mem, m.ip, m.fp
 			continue
 		}
 		// ip == deferSentinelIP: restore outer frame after a deferred VM call returns.

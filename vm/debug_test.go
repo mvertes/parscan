@@ -125,6 +125,71 @@ func TestDumpCallStack_NoFrames(t *testing.T) {
 	}
 }
 
+func TestEnterDebug(t *testing.T) {
+	// Build a single-frame scenario with a Trap instruction.
+	// func foo(x int) { trap() } ; foo(10)
+	code := Code{
+		{Op: Push, Arg: []int{4}},      // 0: push func addr (ip=4)
+		{Op: Push, Arg: []int{10}},     // 1: push arg
+		{Op: Call, Arg: []int{1, 0}},   // 2: call(1 arg, 0 ret)
+		{Op: Exit},                     // 3
+		{Op: Trap},                     // 4: trap inside the function
+		{Op: Return, Arg: []int{0, 1}}, // 5
+	}
+
+	di := &DebugInfo{
+		Source:  "func foo(x int) { trap() }",
+		Labels:  map[int]string{4: "foo"},
+		Globals: map[int]string{},
+		Locals:  map[string][]LocalVar{},
+	}
+
+	in := strings.NewReader("bt\ncont\n")
+	var out bytes.Buffer
+
+	m := &Machine{}
+	m.SetDebugInfo(func() *DebugInfo { return di })
+	m.SetDebugIO(in, &out)
+	m.PushCode(code...)
+	m.SetIP(0)
+
+	if err := m.Run(); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	result := out.String()
+	for _, want := range []string{"trap at ip=4", "debug> ", "Call Stack"} {
+		if !strings.Contains(result, want) {
+			t.Errorf("enterDebug output missing %q:\n%s", want, result)
+		}
+	}
+}
+
+func TestEnterDebugHelp(t *testing.T) {
+	code := Code{
+		{Op: Trap}, // 0
+		{Op: Exit}, // 1
+	}
+
+	in := strings.NewReader("help\nc\n")
+	var out bytes.Buffer
+
+	m := &Machine{}
+	m.SetDebugIO(in, &out)
+	m.PushCode(code...)
+
+	if err := m.Run(); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	result := out.String()
+	for _, want := range []string{"stack, bt", "cont, c", "help, h"} {
+		if !strings.Contains(result, want) {
+			t.Errorf("help output missing %q:\n%s", want, result)
+		}
+	}
+}
+
 func TestDebugInfoPosToLine(t *testing.T) {
 	di := &DebugInfo{Source: "line1\nline2\nline3\n"}
 
