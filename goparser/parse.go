@@ -66,6 +66,14 @@ func (p *Parser) addLocalVar(name string) string {
 	return scoped
 }
 
+// addGlobalVar registers a new global variable in the current scope
+// and returns its scoped name for token fixup.
+func (p *Parser) addGlobalVar(name string) string {
+	scoped := p.scopedName(name)
+	p.SymAdd(symbol.UnsetAddr, scoped, vm.Value{}, symbol.Var, nil, false)
+	return scoped
+}
+
 // Parser errors.
 var (
 	ErrBody     = errors.New("missign body")
@@ -324,7 +332,7 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 				if p.funcScope != "" {
 					out[lhsPositions[i]].Str = p.addLocalVar(e[0].Str)
 				} else {
-					p.SymAdd(symbol.UnsetAddr, e[0].Str, vm.Value{}, symbol.Var, nil, false)
+					out[lhsPositions[i]].Str = p.addGlobalVar(e[0].Str)
 				}
 			}
 		}
@@ -363,7 +371,7 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 				if p.funcScope != "" {
 					out[lhsPos].Str = p.addLocalVar(lt[0].Str)
 				} else {
-					p.SymAdd(symbol.UnsetAddr, lt[0].Str, vm.Value{}, symbol.Var, nil, false)
+					out[lhsPos].Str = p.addGlobalVar(lt[0].Str)
 				}
 			}
 		}
@@ -720,55 +728,80 @@ func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 	p.labelCount[p.scope]++
 	p.pushScope(label)
 	defer p.popScope()
-	// We start from the end of the statement and examine tokens backward to
-	// get the destination labels already computed when jumps are set.
-	for sc, i := 0, len(in)-1; i > 0; sc++ {
-		ssc := strconv.Itoa(sc)
-		if in[i].Tok != lang.BraceBlock {
-			return nil, fmt.Errorf("expected '{', got %v", in[i])
+	endLabel := p.scope + "e0"
+	elseCount := 1 // counter for intermediate else-branch labels: "e1", "e2", ...
+
+	// Parse the if-else chain forward. Init is parsed before the body so that
+	// variables defined in the init are visible inside the body block.
+	i := 1 // skip initial 'if'
+	for i < len(in) {
+		clauseStart := i
+		// Find the body block ({...}) for this clause.
+		for i < len(in) && in[i].Tok != lang.BraceBlock {
+			i++
 		}
-		pre, err := p.Parse(in[i].Block())
+		if i >= len(in) {
+			return nil, errors.New("expected '{', got end of input")
+		}
+		bodyIdx := i
+		hasCondition := bodyIdx > clauseStart
+
+		// Parse init and/or condition before the body.
+		if hasCondition {
+			initcond := in[clauseStart:bodyIdx]
+			var init, cond Tokens
+			if si := initcond.Index(lang.Semicolon); si >= 0 {
+				init = initcond[:si]
+				cond = initcond[si+1:]
+			} else {
+				cond = initcond
+			}
+			// Parse init first so that variables defined here are in scope for the body.
+			if len(init) > 0 {
+				if init, err = p.parseStmt(init); err != nil {
+					return nil, err
+				}
+				out = append(out, init...)
+			}
+			if cond, err = p.parseExpr(cond, ""); err != nil {
+				return nil, err
+			}
+			out = append(out, cond...)
+		}
+
+		i++ // move past body block
+		hasMore := i < len(in) && in[i].Tok == lang.Else
+
+		// Emit conditional jump to the next else clause or to the end.
+		elseLabel := endLabel
+		if hasMore {
+			elseLabel = p.scope + "e" + strconv.Itoa(elseCount)
+		}
+		if hasCondition {
+			out = append(out, newJumpFalse(elseLabel, in[bodyIdx].Pos))
+		}
+
+		// Parse body.
+		body, err := p.Parse(in[bodyIdx].Block())
 		if err != nil {
 			return nil, err
 		}
-		if sc > 0 {
-			pre = append(pre, newGoto(p.scope+"e0", in[i].Pos))
-		}
-		pre = append(pre, newLabel(p.scope+"e"+ssc, in[i].Pos))
-		out = append(pre, out...)
-		i--
+		out = append(out, body...)
 
-		if in[i].Tok == lang.Else { // Step over final 'else'.
-			i--
-			continue
-		}
-		pre = Tokens{}
-		var init, cond Tokens
-		ifp := in[:i].LastIndex(lang.If)
-		initcond := in[ifp+1 : i+1]
-		if ii := initcond.Index(lang.Semicolon); ii < 0 {
-			cond = initcond
-		} else {
-			init = initcond[:ii]
-			cond = initcond[ii+1:]
-		}
-		if len(init) > 0 {
-			if init, err = p.parseStmt(init); err != nil {
-				return nil, err
+		if hasMore {
+			out = append(out, newGoto(endLabel, in[bodyIdx].Pos))
+			out = append(out, newLabel(elseLabel, in[bodyIdx].Pos))
+			elseCount++
+			i++ // skip 'else'
+			if i < len(in) && in[i].Tok == lang.If {
+				i++ // skip 'if' in 'else if'
 			}
-			pre = append(pre, init...)
-		}
-		if cond, err = p.parseExpr(cond, ""); err != nil {
-			return nil, err
-		}
-		pre = append(pre, cond...)
-		pre = append(pre, newJumpFalse(p.scope+"e"+ssc, in[i].Pos))
-		out = append(pre, out...)
-		i = ifp
-		if i > 1 && in[i].Tok == lang.If && in[i-1].Tok == lang.Else { // Step over 'else if'.
-			i -= 2
+		} else {
+			break
 		}
 	}
+
+	out = append(out, newLabel(endLabel, in[0].Pos))
 	return out, err
 }
 

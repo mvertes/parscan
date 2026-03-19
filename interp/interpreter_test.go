@@ -569,7 +569,7 @@ const (
 )
 type T struct { elem [n2 + 1]int }
 len(T{}.elem)`, res: "2"},
-		{n: "alias", src: "type Number = int; Number(1) < int(2)", res: "true", skip: true},
+		{n: "alias", src: "type Number = int; Number(1) < int(2)", res: "true"},
 	})
 }
 
@@ -612,8 +612,8 @@ type T struct {name string}
 func (t *T) inI() {}
 var i I = &T{name: "foo"}
 var r = ""
-if i, ok := i.(*T) ok { r = i.name }
-r`, res: "foo", skip: true},
+if i, ok := i.(*T); ok { r = i.name }
+r`, res: "foo"},
 	})
 }
 
