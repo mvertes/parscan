@@ -44,12 +44,12 @@ func (p *Parser) SymSet(key string, sym *symbol.Symbol) {
 }
 
 // SymAdd adds a new named symbol, recording the key for potential rollback.
-func (p *Parser) SymAdd(i int, name string, v vm.Value, k symbol.Kind, t *vm.Type, local bool) {
+func (p *Parser) SymAdd(i int, name string, v vm.Value, k symbol.Kind, t *vm.Type) {
 	name = strings.TrimPrefix(name, "/")
 	if p.SymTracker != nil {
 		p.SymTracker = append(p.SymTracker, name)
 	}
-	p.Symbols[name] = &symbol.Symbol{Kind: k, Name: name, Index: i, Local: local, Value: v, Type: t}
+	p.Symbols[name] = &symbol.Symbol{Kind: k, Name: name, Index: i, Value: v, Type: t}
 }
 
 // scopedName returns name qualified by the current scope (e.g. "main/foo").
@@ -61,7 +61,7 @@ func (p *Parser) scopedName(name string) string {
 // and returns its scoped name for token fixup.
 func (p *Parser) addLocalVar(name string) string {
 	scoped := p.scopedName(name)
-	p.SymAdd(p.framelen[p.funcScope], scoped, vm.Value{}, symbol.Var, nil, true)
+	p.SymAdd(p.framelen[p.funcScope], scoped, vm.Value{}, symbol.LocalVar, nil)
 	p.framelen[p.funcScope]++
 	return scoped
 }
@@ -70,7 +70,7 @@ func (p *Parser) addLocalVar(name string) string {
 // and returns its scoped name for token fixup.
 func (p *Parser) addGlobalVar(name string) string {
 	scoped := p.scopedName(name)
-	p.SymAdd(symbol.UnsetAddr, scoped, vm.Value{}, symbol.Var, nil, false)
+	p.SymAdd(symbol.UnsetAddr, scoped, vm.Value{}, symbol.Var, nil)
 	return scoped
 }
 
@@ -902,7 +902,7 @@ func (p *Parser) parseTypeSwitch(in, init, cond Tokens, periodIdx int) (out Toke
 		out = init
 	}
 	tsName := p.scope + "/_ts"
-	p.SymAdd(symbol.UnsetAddr, tsName, vm.Value{}, symbol.Var, nil, false)
+	p.SymAdd(symbol.UnsetAddr, tsName, vm.Value{}, symbol.Var, nil)
 	guardParsed, err := p.parseExpr(guardToks, "")
 	if err != nil {
 		return nil, err
@@ -955,7 +955,7 @@ func (p *Parser) parseTypeSwitchClause(in Tokens, index, maximum int, tsName, va
 	var vScoped string
 	if varName != "" {
 		vScoped = p.scope + "/" + varName
-		p.SymAdd(symbol.UnsetAddr, vScoped, vm.Value{}, symbol.Var, nil, false)
+		p.SymAdd(symbol.UnsetAddr, vScoped, vm.Value{}, symbol.Var, nil)
 	}
 	body, err := p.parseStmts(tl[1])
 	p.popScope() // back to switchScope

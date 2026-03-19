@@ -15,15 +15,16 @@ type Kind int
 
 // Symbol kinds.
 const (
-	Unset   Kind = iota
-	Value        // a value defined in the runtime
-	Type         // a type
-	Label        // a label indicating a position in the VM code
-	Const        // a constant
-	Var          // a variable, located in the VM memory
-	Func         // a function, located in the VM code
-	Pkg          // a package
-	Builtin      // a built-in function (len, cap, append, etc.)
+	Unset    Kind = iota
+	Value         // a value defined in the runtime
+	Type          // a type
+	Label         // a label indicating a position in the VM code
+	Const         // a constant
+	Var           // a variable in global data
+	LocalVar      // a variable in the local call frame
+	Func          // a function, located in the VM code
+	Pkg           // a package
+	Builtin       // a built-in function (len, cap, append, etc.)
 )
 
 //go:generate stringer -type=Kind
@@ -41,7 +42,6 @@ type Symbol struct {
 	Value    vm.Value       //
 	SliceLen int            // initial slice length (slice types only)
 	Cval     constant.Value //
-	Local    bool           // if true address is relative to local frame, otherwise global
 	Used     bool           //
 	Captured bool           // true if this variable escapes to a heap cell
 	FreeVars []string       // closure: scoped names of captured outer-scope locals, in Env order
@@ -89,12 +89,6 @@ func Vtype(s *Symbol) *vm.Type {
 
 // SymMap is a map of Symbols.
 type SymMap map[string]*Symbol
-
-// Add adds a new named symbol value at memory position i.
-func (sm SymMap) Add(i int, name string, v vm.Value, k Kind, t *vm.Type, local bool) {
-	name = strings.TrimPrefix(name, "/")
-	sm[name] = &Symbol{Kind: k, Name: name, Index: i, Local: local, Value: v, Type: t}
-}
 
 // Get searches for an existing symbol starting from the deepest scope.
 func (sm SymMap) Get(name, scope string) (sym *Symbol, sc string, ok bool) {

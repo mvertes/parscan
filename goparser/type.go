@@ -231,7 +231,6 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 			continue
 		}
 		param := ""
-		local := p.funcScope != ""
 		if p.hasFirstParam(t) {
 			origName := t[0].Str
 			param = p.scopedName(origName)
@@ -250,7 +249,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 				}
 				// Type was omitted, apply the previous one from the right.
 				types = append([]*vm.Type{types[0]}, types...)
-				p.addSymVar(i, len(list), param, types[0], flag, local)
+				p.addSymVar(i, len(list), param, types[0], flag)
 				vars = append([]string{param}, vars...)
 				continue
 			}
@@ -268,7 +267,7 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 			typ = vm.SliceOf(typ)
 		}
 		if param != "" {
-			p.addSymVar(i, len(list), param, typ, flag, local)
+			p.addSymVar(i, len(list), param, typ, flag)
 		}
 		types = append([]*vm.Type{typ}, types...)
 		vars = append([]string{param}, vars...)
@@ -276,31 +275,31 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 	return types, vars, variadic, err
 }
 
-func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag typeFlag, local bool) {
+func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag typeFlag) {
 	zv := vm.NewValue(typ.Rtype)
 	switch flag {
 	case parseTypeRecv:
 		// Receiver lives in Env[0] of the method closure, not on the call stack.
 		// Index is irrelevant; the compiler emits HGet 0 via FreeVars.
 		p.SymSet(name, &symbol.Symbol{
-			Kind: symbol.Var, Name: name, Index: symbol.UnsetAddr,
-			Local: true, Captured: true, Used: true,
+			Kind: symbol.LocalVar, Name: name, Index: symbol.UnsetAddr,
+			Captured: true, Used: true,
 			Type: typ, Value: zv,
 		})
 	case parseTypeIn:
-		p.SymAdd(index-nparams-2, name, zv, symbol.Var, typ, true)
+		p.SymAdd(index-nparams-2, name, zv, symbol.LocalVar, typ)
 	case parseTypeOut:
-		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.Var, typ, true)
+		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.LocalVar, typ)
 		p.framelen[p.funcScope]++
 		if name != "" {
 			p.namedOut = append(p.namedOut, name)
 		}
 	case parseTypeVar:
-		if !local {
-			p.SymAdd(symbol.UnsetAddr, name, zv, symbol.Var, typ, local)
+		if p.funcScope == "" {
+			p.SymAdd(symbol.UnsetAddr, name, zv, symbol.Var, typ)
 			break
 		}
-		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.Var, typ, local)
+		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.LocalVar, typ)
 		p.framelen[p.funcScope]++
 	}
 }

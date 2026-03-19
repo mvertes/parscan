@@ -56,7 +56,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
 				name := p.scopedName(lt[0].Str)
-				p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Const, nil, false)
+				p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Const, nil)
 			}
 		} else {
 			return out, err
@@ -80,7 +80,6 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			Index: symbol.UnsetAddr,
 			Cval:  cval,
 			Value: vm.ValueOf(constValue(cval)),
-			Local: p.funcScope != "",
 			Used:  true,
 		})
 		// TODO: type conversion when applicable.
@@ -301,7 +300,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	}
 	typ.Name = in[0].Str
 	// Use scoped name so local type declarations don't overwrite outer-scope types.
-	p.SymAdd(symbol.UnsetAddr, p.scopedName(in[0].Str), vm.NewValue(typ.Rtype), symbol.Type, typ, false)
+	p.SymAdd(symbol.UnsetAddr, p.scopedName(in[0].Str), vm.NewValue(typ.Rtype), symbol.Type, typ)
 	return out, err
 }
 
@@ -341,7 +340,7 @@ func (p *Parser) zeroInitLocals(vars []string, types []*vm.Type) (out Tokens) {
 			}
 		} else if !ok {
 			// Anonymous type not yet in the symbol table; register it globally now.
-			p.SymAdd(symbol.UnsetAddr, typKey, vm.NewValue(typ.Rtype), symbol.Type, typ, false)
+			p.SymAdd(symbol.UnsetAddr, typKey, vm.NewValue(typ.Rtype), symbol.Type, typ)
 		}
 		out = append(out, newIdent(v, 0))
 		out = append(out, newIdent(typKey, 0))
@@ -364,13 +363,13 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		if errors.Is(err, ErrMissingType) {
 			undefinedType = true
 			for _, lt := range decl.Split(lang.Comma) {
-				vars = append(vars, lt[0].Str)
 				name := p.scopedName(lt[0].Str)
+				vars = append(vars, name)
 				if p.funcScope == "" {
-					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil, false)
+					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
 					continue
 				}
-				p.SymAdd(p.framelen[p.funcScope], name, nilValue, symbol.Var, nil, false)
+				p.SymAdd(p.framelen[p.funcScope], name, nilValue, symbol.LocalVar, nil)
 				p.framelen[p.funcScope]++
 			}
 		} else {

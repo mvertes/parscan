@@ -150,6 +150,8 @@ func TestFunc(t *testing.T) {
 		// recursion (requires correct local frame isolation per call)
 		{n: "#17", src: "func fib(n int) int { if n < 2 { return n }; return fib(n-1) + fib(n-2) }; fib(6)", res: "8"},
 		{n: "#18", src: "var a int; func f() { a:=2 }; f(); a", res: "0"},
+		// var declaration without explicit type inside a function (undefinedType path)
+		{n: "#19", src: "func f() int { var x = 42; return x }; f()", res: "42"},
 	})
 }
 

@@ -14,14 +14,15 @@ func _() {
 	_ = x[Label-3]
 	_ = x[Const-4]
 	_ = x[Var-5]
-	_ = x[Func-6]
-	_ = x[Pkg-7]
-	_ = x[Builtin-8]
+	_ = x[LocalVar-6]
+	_ = x[Func-7]
+	_ = x[Pkg-8]
+	_ = x[Builtin-9]
 }
 
-const _Kind_name = "UnsetValueTypeLabelConstVarFuncPkgBuiltin"
+const _Kind_name = "UnsetValueTypeLabelConstVarLocalVarFuncPkgBuiltin"
 
-var _Kind_index = [...]uint8{0, 5, 10, 14, 19, 24, 27, 31, 34, 41}
+var _Kind_index = [...]uint8{0, 5, 10, 14, 19, 24, 27, 35, 39, 42, 49}
 
 func (i Kind) String() string {
 	idx := int(i) - 0

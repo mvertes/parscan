@@ -116,7 +116,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			// Free variable detection: defined in an enclosing function scope.
 			// Exclude variables defined in sub-scopes of the current function (e.g. for loops).
 			isInnerScope := sc == p.funcScope || strings.HasPrefix(sc, p.funcScope+"/")
-			if ok && s != nil && s.Local && sc != "" && p.fname != "" && !isInnerScope {
+			if ok && s != nil && s.Kind == symbol.LocalVar && sc != "" && p.fname != "" && !isInnerScope {
 				if cloSym := p.Symbols[p.fname]; cloSym != nil {
 					if cloSym.FreeVarIndex(t.Str) < 0 {
 						cloSym.FreeVars = append(cloSym.FreeVars, t.Str)
@@ -148,7 +148,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				// Infer composite inner type from passed typeStr.
 				typ := p.Symbols[typeStr].Type.Elem()
 				ctype = typ.String()
-				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, false)
+				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
 				out = append(out, newIdent(ctype, t.Pos))
 			}
 			toks, err := p.parseComposite(t.Block(), ctype)
@@ -166,7 +166,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 					return out, err
 				}
 				ctype = typ.String()
-				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, false)
+				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
 				out = append(out, newIdent(ctype, t.Pos))
 				i += n - 1
 				break
@@ -189,7 +189,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				return out, err
 			}
 			ctype = typ.String()
-			p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, false)
+			p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
 			out = append(out, newIdent(ctype, t.Pos))
 			i++
 
@@ -199,7 +199,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				return out, err
 			}
 			ctype = typ.String()
-			p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ, false)
+			p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
 			out = append(out, newIdent(ctype, t.Pos))
 			i += n - 1
 

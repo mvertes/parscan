@@ -577,7 +577,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			stack = stack[:l-n]
 			showStack(stack)
 			// Local define: initialize local slots and assign via Set.
-			if n > 0 && lhs[0].Local {
+			if n > 0 && lhs[0].Kind == symbol.LocalVar {
 				for i, r := range rhs {
 					typ := r.Type
 					if typ == nil {
@@ -614,7 +614,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Assign:
 			rhs := pop()
 			lhs := pop()
-			if lhs.Local {
+			if lhs.Kind == symbol.LocalVar {
 				// Captured variable write inside closure body: use HSet.
 				if cf := curFunc(); cf != "" {
 					if cloSym := c.Symbols[cf]; cloSym != nil {
@@ -701,7 +701,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 							continue
 						}
 					}
-					if fvSym.Local {
+					if fvSym.Kind == symbol.LocalVar {
 						c.emit(t, vm.Get, vm.Local, fvSym.Index)
 						c.emit(t, vm.HAlloc)
 					} else {
@@ -722,8 +722,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 			}
 			// Regular local or global access.
-			// Type symbols are always in Data regardless of Local flag.
-			if s.Local && s.Kind != symbol.Type {
+			// Type symbols are always in global Data.
+			if s.Kind == symbol.LocalVar {
 				c.emit(t, vm.Get, vm.Local, s.Index)
 			} else {
 				if s.Index == symbol.UnsetAddr {
@@ -859,7 +859,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				} else {
 					l = len(c.Data)
 					c.Data = append(c.Data, v)
-					c.SymAdd(l, name, v, symbol.Value, vm.TypeOf(v.Interface()), false)
+					c.SymAdd(l, name, v, symbol.Value, vm.TypeOf(v.Interface()))
 					sym = c.Symbols[name]
 				}
 				push(sym)
@@ -953,14 +953,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				v := stack[len(stack)-2]
 				k := stack[len(stack)-3]
 				localFlag := vm.Global
-				if k.Local {
+				if k.Kind == symbol.LocalVar {
 					localFlag = vm.Local
 				}
 				c.emit(t, vm.Next2, i, localFlag, k.Index, v.Index)
 			} else {
 				k := stack[len(stack)-2]
 				localFlag := vm.Global
-				if k.Local {
+				if k.Kind == symbol.LocalVar {
 					localFlag = vm.Local
 				}
 				c.emit(t, vm.Next, i, localFlag, k.Index)
@@ -976,7 +976,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				case 1:
 					k := stack[len(stack)-2]
 					k.Type = c.Symbols["int"].Type
-					if k.Local {
+					if k.Kind == symbol.LocalVar {
 						c.emit(t, vm.New, k.Index, c.typeSym(k.Type).Index)
 					} else {
 						c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
@@ -986,7 +986,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					k, v := stack[len(stack)-3], stack[len(stack)-2]
 					k.Type = c.Symbols["int"].Type
 					v.Type = typ.Elem()
-					if k.Local {
+					if k.Kind == symbol.LocalVar {
 						c.emit(t, vm.New, k.Index, c.typeSym(k.Type).Index)
 						c.emit(t, vm.New, v.Index, c.typeSym(v.Type).Index)
 					} else {
@@ -1187,7 +1187,7 @@ func (c *Compiler) BuildDebugInfo() *vm.DebugInfo {
 				di.Labels[addr] = name
 			}
 
-		case sym.Local && sym.Used && sym.Index != symbol.UnsetAddr:
+		case sym.Kind == symbol.LocalVar && sym.Used && sym.Index != symbol.UnsetAddr:
 			// Extract function scope and short variable name from scoped name.
 			// Scoped name format: "main/foo/for0/x" -> funcScope = closest Func ancestor.
 			shortName := name
@@ -1203,7 +1203,7 @@ func (c *Compiler) BuildDebugInfo() *vm.DebugInfo {
 		}
 	}
 	for idx, e := range c.symbolsByIndex() {
-		if !e.Local {
+		if e.Kind != symbol.LocalVar {
 			di.Globals[idx] = e.name
 		}
 	}
