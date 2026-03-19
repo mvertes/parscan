@@ -160,6 +160,9 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				return nil, 0, err
 			}
 			for i, name := range names {
+				if j := strings.LastIndex(name, "/"); j >= 0 {
+					name = name[j+1:]
+				}
 				fields = append(fields, &vm.Type{Name: name, PkgPath: p.pkgName, Rtype: types[i].Rtype})
 			}
 		}

@@ -722,7 +722,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 			}
 			// Regular local or global access.
-			if s.Local {
+			// Type symbols are always in Data regardless of Local flag.
+			if s.Local && s.Kind != symbol.Type {
 				c.emit(t, vm.Get, vm.Local, s.Index)
 			} else {
 				if s.Index == symbol.UnsetAddr {

@@ -529,6 +529,7 @@ func TestMap(t *testing.T) {
 		{n: "#02", src: src0 + `m := M{"xx": true}; m`, res: `map[xx:true]`},
 		{n: "#03", src: src0 + `var m = M{"xx": true}; m`, res: `map[xx:true]`},
 		{n: "#04", src: src0 + `var m = M{"xx": true}; m["xx"] = false`, res: `map[xx:false]`},
+		{n: "#05", src: "var m map[string]int64; func f() {m = make(map[string]int64)}; f(); len(m)", res: "0"},
 	})
 }
 
@@ -571,6 +572,14 @@ const (
 type T struct { elem [n2 + 1]int }
 len(T{}.elem)`, res: "2"},
 		{n: "alias", src: "type Number = int; Number(1) < int(2)", res: "true"},
+		{n: "local_shadow", src: `
+type T int
+func f() int {
+	type T string
+	v := T("hello")
+	return len(string(v))
+}
+f()`, res: "5"},
 	})
 }
 
