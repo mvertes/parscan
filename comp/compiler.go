@@ -197,10 +197,11 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 
 // generate generates vm code and data from parsed tokens, or returns an error.
 func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
-	fixList := goparser.Tokens{} // list of tokens to fix after all necessary information is gathered
-	stack := []*symbol.Symbol{}  // for symbolic evaluation and type checking
-	flen := []int{}              // stack length according to function scopes
-	funcStack := []string{}      // names of functions currently being compiled
+	fixList := goparser.Tokens{}  // list of tokens to fix after all necessary information is gathered
+	stack := []*symbol.Symbol{}   // for symbolic evaluation and type checking
+	flen := []int{}               // stack length according to function scopes
+	funcStack := []string{}       // names of functions currently being compiled
+	jumpDepth := map[string]int{} // expected compile-stack depth at short-circuit merge labels
 
 	push := func(s *symbol.Symbol) { stack = append(stack, s) }
 	top := func() *symbol.Symbol { return stack[len(stack)-1] }
@@ -749,6 +750,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 
 		case lang.Label:
+			if expected, ok := jumpDepth[t.Str]; ok && len(stack) != expected {
+				return fmt.Errorf("stack depth mismatch at label %s: got %d, want %d", t.Str, len(stack), expected)
+			}
 			lc := len(c.Code)
 			if s, ok := c.Symbols[t.Str]; ok {
 				s.Value = vm.ValueOf(lc)
@@ -807,6 +811,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.JumpFalse, i)
 
 		case lang.JumpSetFalse:
+			pop()                             // LHS result: consumed on the non-jumping path; both paths leave one value at label.
+			jumpDepth[t.Str] = len(stack) + 1 // one value (LHS or RHS) arrives at the merge label
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
 				t.Arg = []any{len(c.Code)} // current code location
@@ -817,6 +823,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.JumpSetFalse, i)
 
 		case lang.JumpSetTrue:
+			pop()                             // LHS result: consumed on the non-jumping path; both paths leave one value at label.
+			jumpDepth[t.Str] = len(stack) + 1 // one value (LHS or RHS) arrives at the merge label
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
 				t.Arg = []any{len(c.Code)} // current code location

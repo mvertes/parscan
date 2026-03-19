@@ -123,6 +123,7 @@ func TestLogical(t *testing.T) {
 		{n: "#09", src: "a := 1+1 < 3 || 3 == 2+2; a", res: "true"},
 		{n: "#10", src: "a := 1+1 < 3 && 4 == 2+2; a", res: "true"},
 		{n: "#11", src: "a := 1+1 < 3 || 3 == 2+2; a", res: "true"},
+		{n: "#12", src: "func f1() bool {return true}; func f2() bool {return false}; a := f1() && f2(); a", res: "false"},
 	})
 }
 
