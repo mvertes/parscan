@@ -8,12 +8,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mvertes/parscan/scan"
 )
 
 // DebugInfo holds symbolic information for annotating debug output.
-// Built by the compiler from the symbol table and source.
+// Built by the compiler from the symbol table and source registry.
 type DebugInfo struct {
-	Source  string                // original source text (for pos -> line mapping)
+	Sources scan.Sources          // source position registry (multi-file / REPL)
 	Labels  map[int]string        // code address -> label/function name
 	Globals map[int]string        // data index -> symbol name
 	Locals  map[string][]LocalVar // function name -> local variable list
@@ -34,16 +36,13 @@ func NewDebugInfo() *DebugInfo {
 	}
 }
 
-// PosToLine converts a byte offset in source to a "line:col" string.
-// Returns "" if source is empty or pos is out of range.
+// PosToLine converts a global byte offset to a human-readable location string.
+// Returns "" if no sources are registered or pos is out of range.
 func (d *DebugInfo) PosToLine(pos Pos) string {
-	if d == nil || d.Source == "" || int(pos) < 0 || int(pos) > len(d.Source) {
+	if d == nil || len(d.Sources) == 0 {
 		return ""
 	}
-	p := int(pos)
-	line := 1 + strings.Count(d.Source[:p], "\n")
-	col := p - strings.LastIndex(d.Source[:p], "\n")
-	return strconv.Itoa(line) + ":" + strconv.Itoa(col)
+	return d.Sources.FormatPos(int(pos))
 }
 
 // LocalName returns the variable name for a local slot offset within func funcName.

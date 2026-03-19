@@ -10,13 +10,13 @@ import (
 func TestDump(t *testing.T) {
 	initProgram := "var a int = 2+1; a"
 	intp := interp.NewInterpreter(golang.GoSpec)
-	r, e := intp.Eval(initProgram)
+	r, e := intp.Eval("m:test", initProgram)
 	t.Log(r, e)
 	if e != nil {
 		t.Fatal(e)
 	}
 
-	r, e = intp.Eval("a = 100")
+	r, e = intp.Eval("m:test", "a = 100")
 	t.Log(r, e)
 	if e != nil {
 		t.Fatal(e)
@@ -26,7 +26,7 @@ func TestDump(t *testing.T) {
 	t.Log(d)
 
 	intp = interp.NewInterpreter(golang.GoSpec)
-	r, e = intp.Eval(initProgram)
+	r, e = intp.Eval("m:test", initProgram)
 	t.Log(r, e)
 	if e != nil {
 		t.Fatal(e)
@@ -37,7 +37,7 @@ func TestDump(t *testing.T) {
 		t.Fatal(e)
 	}
 
-	r, e = intp.Eval("a = a + 1;a")
+	r, e = intp.Eval("m:test", "a = a + 1;a")
 	t.Log(r, e)
 	if e != nil {
 		t.Fatal(e)

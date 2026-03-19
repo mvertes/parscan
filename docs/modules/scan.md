@@ -10,8 +10,12 @@ It sits at the start of the pipeline, feeding tokens to `goparser`.
 
 ## Key types and functions
 
-- **`Scanner`** -- holds a `*lang.Spec` and a compiled regex for string
-  delimiters. Created via `NewScanner(spec)`.
+- **`Scanner`** -- holds a `*lang.Spec`, a compiled regex for string
+  delimiters, and a `Sources` registry. Created via `NewScanner(spec)`.
+- **`Source`** -- describes a registered source: name, base offset, length.
+- **`Sources`** -- ordered list of `Source` entries mapping global byte
+  offsets to file/line/col. Methods: `Add(name, src) int` (returns base
+  offset), `Resolve(pos) (name, line, col)`, `FormatPos(pos) string`.
 - **`Token`** -- a single lexical unit: token type (`lang.Token`), source
   position, text, and block delimiter lengths.
 - **`Scan(src string, semiEOF bool) ([]Token, error)`** -- tokenizes the

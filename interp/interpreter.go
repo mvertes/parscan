@@ -23,7 +23,8 @@ func NewInterpreter(s *lang.Spec) *Interp {
 }
 
 // Eval evaluates code string and return the last produced value if any, or an error.
-func (i *Interp) Eval(src string) (res reflect.Value, err error) {
+// name identifies the source ("m:<content>" for inline, "f:<path>" for file).
+func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 	codeOffset := len(i.Code)
 	dataOffset := 0
 	if codeOffset > 0 {
@@ -32,7 +33,7 @@ func (i *Interp) Eval(src string) (res reflect.Value, err error) {
 	}
 	i.PopExit() // Remove last exit from previous run (re-entrance).
 
-	if err = i.Compile(src); err != nil {
+	if err = i.Compile(name, src); err != nil {
 		return res, err
 	}
 
@@ -44,7 +45,7 @@ func (i *Interp) Eval(src string) (res reflect.Value, err error) {
 	}
 	i.PushCode(vm.Instruction{Op: vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
-	i.SetDebugInfoBuilder(func() *vm.DebugInfo { return i.BuildDebugInfo(src) })
+	i.SetDebugInfo(func() *vm.DebugInfo { return i.BuildDebugInfo() })
 	if debug {
 		i.PrintData()
 		i.PrintCode()

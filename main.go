@@ -35,19 +35,17 @@ func run(arg []string) error {
 
 	i := interp.NewInterpreter(golang.GoSpec)
 	if str != "" {
-		return evalStr(i, str)
+		_, err := i.Eval("m:"+str, str)
+		return err
 	}
 	if len(args) == 0 {
 		return i.Repl(os.Stdin)
 	}
-	buf, err := os.ReadFile(filepath.Clean(args[0]))
+	fpath := filepath.Clean(args[0])
+	buf, err := os.ReadFile(fpath)
 	if err != nil {
 		return err
 	}
-	return evalStr(i, string(buf))
-}
-
-func evalStr(i *interp.Interp, s string) error {
-	_, err := i.Eval(s)
+	_, err = i.Eval("f:"+fpath, string(buf))
 	return err
 }

@@ -122,8 +122,8 @@ loop restores `ip` from `Machine.ip` to resume normal execution.
 
 **Debug fields on Machine:**
 
-- `debugInfo *DebugInfo` -- symbolic info (labels, globals, locals, source).
-  Built lazily on first trap via `debugInfoFn`.
+- `debugInfo *DebugInfo` -- symbolic info (labels, globals, locals, source
+  registry). Built lazily on first trap via `debugInfoFn`.
 - `debugInfoFn func() *DebugInfo` -- builder registered by the interpreter.
   Avoids paying the cost of building debug info unless a trap is actually
   hit.
@@ -140,11 +140,12 @@ loop restores `ip` from `Machine.ip` to resume normal execution.
 | `h`, `help` | Show available commands |
 
 **DebugInfo** (`vm/debug.go`) holds symbolic metadata populated by
-`comp.Compiler.BuildDebugInfo()`: source text, label-to-name mappings,
+`comp.Compiler.BuildDebugInfo()`: a `scan.Sources` registry for
+multi-file/REPL position resolution, label-to-name mappings,
 global-index-to-name mappings, and per-function local variable lists.
 `DumpFrame` and `DumpCallStack` use this information to annotate memory
 slots with human-readable names and source positions.
 
 ## Dependencies
 
-None (leaf package -- only standard library).
+- `scan` -- for `scan.Sources` (source position registry used by `DebugInfo`).

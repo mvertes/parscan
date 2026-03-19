@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/mvertes/parscan/scan"
 )
 
 func TestDumpFrame(t *testing.T) {
@@ -57,9 +59,11 @@ func TestDumpFrame_WithDebugInfo(t *testing.T) {
 		{Pos: 0, Op: Push},
 		{Pos: 10, Op: Call}, // retIP=5 points here
 	}
+	var sources scan.Sources
+	sources.Add("m:test", "func foo(n int) int {\n\treturn n + 1\n}\n")
 	di := &DebugInfo{
-		Source: "func foo(n int) int {\n\treturn n + 1\n}\n",
-		Labels: map[int]string{42: "main/foo"},
+		Sources: sources,
+		Labels:  map[int]string{42: "main/foo"},
 		Locals: map[string][]LocalVar{
 			"main/foo": {
 				{Offset: 1, Name: "n"},
@@ -137,8 +141,10 @@ func TestEnterDebug(t *testing.T) {
 		{Op: Return, Arg: []int{0, 1}}, // 5
 	}
 
+	var sources2 scan.Sources
+	sources2.Add("m:test", "func foo(x int) { trap() }")
 	di := &DebugInfo{
-		Source:  "func foo(x int) { trap() }",
+		Sources: sources2,
 		Labels:  map[int]string{4: "foo"},
 		Globals: map[int]string{},
 		Locals:  map[string][]LocalVar{},
@@ -191,7 +197,9 @@ func TestEnterDebugHelp(t *testing.T) {
 }
 
 func TestDebugInfoPosToLine(t *testing.T) {
-	di := &DebugInfo{Source: "line1\nline2\nline3\n"}
+	var sources scan.Sources
+	sources.Add("m:test", "line1\nline2\nline3\n")
+	di := &DebugInfo{Sources: sources}
 
 	tests := []struct {
 		pos  Pos

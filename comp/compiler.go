@@ -28,7 +28,7 @@ type Compiler struct {
 
 	strings   map[string]int // locations of strings in Data
 	methodIDs map[string]int // global method ID by method name
-	source    string         // accumulated source text across Compile calls
+	posBase   int            // base offset for current source (from Sources.Add)
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
@@ -43,11 +43,9 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 
 // Compile parses src and generates code and data, or returns a non-nil error.
 // Code and data are added incrementally in c.Code and C.Data.
-func (c *Compiler) Compile(src string) error {
-	if c.source != "" {
-		c.source += "\n"
-	}
-	c.source += src
+// name identifies the source ("m:<content>" for inline, "f:<path>" for file).
+func (c *Compiler) Compile(name, src string) error {
+	c.posBase = c.Sources.Add(name, src)
 
 	decls, err := c.ScanDecls(src)
 	if err != nil {
@@ -194,7 +192,7 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
 		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 	}
-	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos), Op: op, Arg: arg})
+	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos + c.posBase), Op: op, Arg: arg})
 }
 
 // generate generates vm code and data from parsed tokens, or returns an error.
@@ -1171,10 +1169,10 @@ func (c *Compiler) symbolsByIndex() map[int]entry {
 }
 
 // BuildDebugInfo constructs a DebugInfo from the compiler's symbol table
-// and accumulated source text. The result can be passed to DumpFrame/DumpCallStack.
+// and source registry. The result can be passed to DumpFrame/DumpCallStack.
 func (c *Compiler) BuildDebugInfo() *vm.DebugInfo {
 	di := vm.NewDebugInfo()
-	di.Source = c.source
+	di.Sources = c.Sources
 
 	for name, sym := range c.Symbols {
 		switch {

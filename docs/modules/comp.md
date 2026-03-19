@@ -14,8 +14,10 @@ parser and walks the flat token stream in a single pass, emitting
 
 - **`Compiler`** -- embeds `*goparser.Parser`. Manages `Code`, `Data`,
   `Entry` (start IP), string deduplication, and method ID allocation.
-- **`Compile(src string) error`** -- end-to-end: parse, register forward
-  references, then generate bytecode with lazy fixpoint retry.
+- **`Compile(name, src string) error`** -- end-to-end: parse, register forward
+  references, then generate bytecode with lazy fixpoint retry. `name`
+  identifies the source (`"m:<content>"` for inline, `"f:<path>"` for file)
+  and is registered in the scanner's `Sources` table for position resolution.
 - **`Dump() / ApplyDump(d)`** -- snapshot and restore global variable
   state (used for REPL resets).
 

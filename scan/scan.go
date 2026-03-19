@@ -57,6 +57,7 @@ func (t *Token) String() string {
 // Scanner contains the scanner rules for a language.
 type Scanner struct {
 	*lang.Spec
+	Sources Sources // source position registry (multi-file / REPL)
 
 	sdre *regexp.Regexp // string delimiters regular expression
 }
@@ -155,10 +156,8 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 }
 
 func loc(s string, p int) string {
-	s = s[:p]
-	l := strings.Count(s, "\n")
-	li := max(strings.LastIndex(s, "\n"), 0)
-	return fmt.Sprintf("%d:%d", 1+l, 1+len(s)-li)
+	line, col := lineCol(s, p)
+	return fmt.Sprintf("%d:%d", line, col)
 }
 
 // Next returns the next token in string.

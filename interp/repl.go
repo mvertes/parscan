@@ -16,7 +16,7 @@ func (i *Interp) Repl(in io.Reader) (err error) {
 	fmt.Print(prompt)
 	for liner.Scan() {
 		text += liner.Text()
-		res, err := i.Eval(text + "\n")
+		res, err := i.Eval("m:<repl>", text+"\n")
 		switch {
 		case err == nil:
 			if res.IsValid() {

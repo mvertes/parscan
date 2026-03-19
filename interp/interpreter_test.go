@@ -27,7 +27,7 @@ func gen(test etest) func(*testing.T) {
 		}
 		intp := interp.NewInterpreter(golang.GoSpec)
 		errStr := ""
-		r, e := intp.Eval(test.src)
+		r, e := intp.Eval("m:test", test.src)
 		t.Log(r, e)
 		if e != nil {
 			errStr = e.Error()
@@ -56,12 +56,12 @@ func fib(i int) int {
 
 func BenchmarkFib(b *testing.B) {
 	intp := interp.NewInterpreter(golang.GoSpec)
-	if _, err := intp.Eval(fibSrc); err != nil {
+	if _, err := intp.Eval("m:fib", fibSrc); err != nil {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := intp.Eval("fib(20)"); err != nil {
+		if _, err := intp.Eval("m:bench", "fib(20)"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -560,6 +560,14 @@ func TestType(t *testing.T) {
 		{n: "named_arith", src: "type t int; var a, b t = 3, 4; a + b", res: "7"},
 		{n: "named_conv", src: "type t int; t(42)", res: "42"},
 		{n: "named_method", src: "type t int; func (v t) Double() int { return int(v) * 2 }; var a t = 5; a.Double()", res: "10"},
+		{n: "const_len", src: `
+type t1 uint8
+const (
+	n1 t1 = iota
+	n2
+)
+type T struct { elem [n2 + 1]int }
+len(T{}.elem)`, res: "2"},
 	})
 }
 

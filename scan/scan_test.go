@@ -69,7 +69,7 @@ var tests = []struct {
 }, { // #07
 	src: `abc
 def "foo truc`,
-	err: "2:6: block not terminated",
+	err: "2:5: block not terminated",
 }, { // #08
 	src: `"ab\"`,
 	err: "1:1: block not terminated",

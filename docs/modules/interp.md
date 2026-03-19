@@ -14,9 +14,10 @@ and powers the REPL.
 - **`Interp`** -- embeds compiler and VM.
 - **`NewInterpreter(spec *lang.Spec) *Interp`** -- create an interpreter
   for the given language spec.
-- **`Eval(src string) (reflect.Value, error)`** -- compile and execute
-  source code. Pushes new data and code to the VM incrementally. Calls
-  `main()` automatically if defined.
+- **`Eval(name, src string) (reflect.Value, error)`** -- compile and execute
+  source code. `name` identifies the source (`"m:<content>"` for inline,
+  `"f:<path>"` for file). Pushes new data and code to the VM incrementally.
+  Calls `main()` automatically if defined.
 - **`Repl(in io.Reader) error`** -- interactive read-eval-print loop.
   Accumulates multiline input when the scanner reports an incomplete block
   (`scan.ErrBlock`).
@@ -41,11 +42,12 @@ the compiled code. This mirrors `go run` behavior for standalone programs.
 
 ### Lazy DebugInfo
 
-`Eval` registers a `debugInfoFn` closure on the VM via
-`SetDebugInfoBuilder`. This closure calls `Compiler.BuildDebugInfo(src)` to
-produce a `*vm.DebugInfo` populated with label names, global symbol names,
-and per-function local variable mappings. The builder is only invoked if
-the program hits a `trap()` call, so there is no cost for normal execution.
+`Eval` registers a `debugInfoFn` closure on the VM via `SetDebugInfo`.
+This closure calls `Compiler.BuildDebugInfo()` to produce a `*vm.DebugInfo`
+populated with the `scan.Sources` registry, label names, global symbol
+names, and per-function local variable mappings. The builder is only
+invoked if the program hits a `trap()` call, so there is no cost for
+normal execution.
 
 ## Dependencies
 

@@ -52,6 +52,9 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			if err != nil {
 				return nil, 0, err
 			}
+			if x, err = p.parseExpr(x, ""); err != nil {
+				return nil, 0, err
+			}
 			cval, _, err := p.evalConstExpr(x)
 			if err != nil {
 				return nil, 0, err
