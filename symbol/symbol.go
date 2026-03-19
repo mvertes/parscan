@@ -45,7 +45,7 @@ type Symbol struct {
 	Used       bool           //
 	Captured   bool           // true if this variable escapes to a heap cell
 	FreeVars   []string       // closure: scoped names of captured outer-scope locals, in Env order
-	CapturedAs map[string]int // closure: maps scoped name → index in Closure.Env
+	CapturedAs map[string]int // closure: maps scoped name to index in Closure.Env
 }
 
 // func (s *Symbol) String() string {

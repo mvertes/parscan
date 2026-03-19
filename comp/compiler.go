@@ -500,7 +500,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					// Pack trailing arguments into a slice for the variadic parameter.
 					nFixed := typ.Rtype.NumIn() - 1
 					nExtra := narg - nFixed
-					elemType := typ.Rtype.In(nFixed).Elem() // []T → T
+					elemType := typ.Rtype.In(nFixed).Elem()
 					elemIdx := c.typeSym(&vm.Type{Rtype: elemType}).Index
 					c.emit(t, vm.MkSlice, nExtra, elemIdx)
 					callNarg = nFixed + 1
@@ -1160,6 +1160,62 @@ func (c *Compiler) symbolsByIndex() map[int]entry {
 		dict[sym.Index] = entry{name, sym}
 	}
 	return dict
+}
+
+// BuildDebugInfo constructs a DebugInfo from the compiler's symbol table
+// and source text. The result can be passed to DumpFrame/DumpCallStack.
+func (c *Compiler) BuildDebugInfo(source string) *vm.DebugInfo {
+	di := vm.NewDebugInfo()
+	di.Source = source
+
+	for name, sym := range c.Symbols {
+		switch {
+		case sym.Kind == symbol.Func:
+			if !sym.Value.IsValid() {
+				continue
+			}
+			addr := int(sym.Value.Int())
+			// Prefer shorter (less-scoped) names when multiple funcs share an address.
+			if existing, ok := di.Labels[addr]; !ok || len(name) < len(existing) {
+				di.Labels[addr] = name
+			}
+
+		case sym.Local && sym.Used && sym.Index != symbol.UnsetAddr:
+			// Extract function scope and short variable name from scoped name.
+			// Scoped name format: "main/foo/for0/x" -> funcScope = closest Func ancestor.
+			shortName := name
+			if i := strings.LastIndex(name, "/"); i >= 0 {
+				shortName = name[i+1:]
+			}
+			// Walk up the scope to find the enclosing function.
+			funcName := enclosingFunc(name, c.Symbols)
+			di.Locals[funcName] = append(di.Locals[funcName], vm.LocalVar{
+				Offset: sym.Index,
+				Name:   shortName,
+			})
+		}
+	}
+	for idx, e := range c.symbolsByIndex() {
+		if !e.Local {
+			di.Globals[idx] = e.name
+		}
+	}
+	return di
+}
+
+// enclosingFunc finds the nearest enclosing Func symbol for a scoped name.
+func enclosingFunc(scopedName string, syms symbol.SymMap) string {
+	scope := scopedName
+	for {
+		i := strings.LastIndex(scope, "/")
+		if i < 0 {
+			return ""
+		}
+		scope = scope[:i]
+		if s, ok := syms[scope]; ok && s.Kind == symbol.Func {
+			return scope
+		}
+	}
 }
 
 // removeFnew removes the Fnew/FnewE instruction for the given symbol index.

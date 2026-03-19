@@ -230,6 +230,10 @@ const (
 	Local  = 1
 )
 
+// frameOverhead is the number of bookkeeping slots in a call frame
+// (deferHead, retIP, prevFP), between the arguments and locals.
+const frameOverhead = 3
+
 // Pos is the source code position of instruction.
 type Pos int
 
