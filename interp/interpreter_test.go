@@ -163,6 +163,7 @@ func TestOutOfOrder(t *testing.T) {
 		{n: "#02", src: "func f() int { return g() + h() }; func g() int { return 3 }; func h() int { return 4 }; f()", res: "7"},
 		// three-level chain: a depends on b, b depends on c
 		{n: "#03", src: "func a() int { return b() }; func b() int { return c() }; func c() int { return 7 }; a()", res: "7"},
+		{n: "#04", src: `type T1 T; func foo() T1 {return T1(T{"foo"})}; type T struct {Name string}; foo().Name`, res: "foo"},
 	})
 }
 
@@ -568,6 +569,7 @@ const (
 )
 type T struct { elem [n2 + 1]int }
 len(T{}.elem)`, res: "2"},
+		{n: "alias", src: "type Number = int; Number(1) < int(2)", res: "true", skip: true},
 	})
 }
 
@@ -603,6 +605,15 @@ type S struct { n int }
 func (s S) Get() int { return s.n }
 var g Getter = S{42}
 g.Get()`, res: "42"},
+
+		{n: "iface_method", src: `
+type I interface { inI() }
+type T struct {name string}
+func (t *T) inI() {}
+var i I = &T{name: "foo"}
+var r = ""
+if i, ok := i.(*T) ok { r = i.name }
+r`, res: "foo", skip: true},
 	})
 }
 

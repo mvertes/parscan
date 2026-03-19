@@ -69,9 +69,11 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				out = append(out, newTypeAssert(typ, t.Pos, 0))
 				i++ // Skip following ParenBlock.
 			} else {
-				// Normal field selector.
+				// Normal field selector. Use left-associative flushing so that
+				// postfix chains like foo().Name evaluate the call before the access.
 				t.Str += in[i+1].Str
-				addop(t)
+				flushops(p.precedence(t))
+				ops = append(ops, t)
 				i++ // Skip over next ident.
 			}
 
@@ -135,7 +137,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				out = append(out, toks...)
 			} else {
-				flushops(p.precedence(newCall(0)) + 1)
+				flushops(p.precedence(newCall(0)))
 				// func call: ensure that the func token in on the top of the stack, after args.
 				ops = append(ops, newCall(t.Pos, p.numItems(t.Block(), lang.Comma)))
 				out = append(out, toks...)

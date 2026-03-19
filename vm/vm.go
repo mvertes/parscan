@@ -1473,9 +1473,10 @@ func Vstring(lv []Value) string {
 }
 
 // forceSettable returns fv as-is if settable, or makes it settable via unsafe.
-// Use it only on unexported struct fields.
+// Use it only on unexported struct fields. If the value is not addressable,
+// it is returned as-is (e.g. field of a temporary struct is readable but not settable).
 func forceSettable(fv reflect.Value) reflect.Value {
-	if !fv.CanSet() {
+	if !fv.CanSet() && fv.CanAddr() {
 		fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
 	}
 	return fv
