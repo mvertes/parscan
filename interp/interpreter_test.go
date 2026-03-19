@@ -218,6 +218,7 @@ func TestFor(t *testing.T) {
 		{n: "#06", src: "func f() int {a := []int{1,2,3,4}; b := 0; for i := range a {b = b+i}; return b}; f()", res: "6"},
 		{n: "#07", src: "a := []int{1,2,3,4}; b := 0; for i, e := range a {b = b+i+e}; b", res: "16"},
 		{n: "#08", src: "a := [4]int{1,2,3,4}; b := 0; for i, e := range a {b = b+i+e}; b", res: "16"},
+		{n: "#09", src: "a:= 0; for i := 0; i < 10; i++ { if i < 5 {a++; continue}}; a", res: "5"},
 	})
 }
 
@@ -635,6 +636,8 @@ var i I = &T{name: "foo"}
 var r = ""
 if i, ok := i.(*T); ok { r = i.name }
 r`, res: "foo"},
+
+		{n: "any_set", src: "var a interface{} = 2 + 5; a.(int)", res: "7"},
 	})
 }
 

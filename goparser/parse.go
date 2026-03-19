@@ -542,6 +542,10 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		p.popScope()
 	}()
 	pre := in[1 : len(in)-1].Split(lang.Semicolon)
+	// condLabel is the top of the loop (where Goto jumps back to).
+	// For 3-clause for loops, continueLabel is set to the post-statement label
+	// so that continue executes the post statement before re-checking the condition.
+	condLabel := p.scope + "b"
 	switch len(pre) {
 	case 1:
 		if hasRange {
@@ -561,10 +565,12 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 			return nil, err
 		}
 		out = init
+		// continue must run the post statement before looping; use a separate label.
+		p.continueLabel = p.scope + "p"
 	default:
 		return nil, ErrFor
 	}
-	out = append(out, newLabel(p.continueLabel, in[0].Pos))
+	out = append(out, newLabel(condLabel, in[0].Pos))
 	if len(cond) > 0 {
 		if cond, err = p.parseExpr(cond, ""); err != nil {
 			return nil, err
@@ -582,10 +588,13 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		if post, err = p.parseStmt(post); err != nil {
 			return nil, err
 		}
+		if p.continueLabel != condLabel {
+			out = append(out, newLabel(p.continueLabel, in[0].Pos))
+		}
 		out = append(out, post...)
 	}
 	out = append(out,
-		newGoto(p.continueLabel, in[0].Pos),
+		newGoto(condLabel, in[0].Pos),
 		newLabel(p.breakLabel, in[0].Pos),
 	)
 	out = append(out, final...)
