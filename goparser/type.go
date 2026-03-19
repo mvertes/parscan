@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"unicode"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/symbol"
@@ -163,7 +164,11 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				if j := strings.LastIndex(name, "/"); j >= 0 {
 					name = name[j+1:]
 				}
-				fields = append(fields, &vm.Type{Name: name, PkgPath: p.pkgName, Rtype: types[i].Rtype})
+				pkgPath := ""
+				if len(name) > 0 && unicode.IsLower(rune(name[0])) {
+					pkgPath = p.pkgName
+				}
+				fields = append(fields, &vm.Type{Name: name, PkgPath: pkgPath, Rtype: types[i].Rtype})
 			}
 		}
 		return vm.StructOf(fields, embedded), 2, nil

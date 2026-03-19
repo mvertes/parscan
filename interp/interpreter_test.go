@@ -100,6 +100,9 @@ func TestAssign(t *testing.T) {
 		{n: "#05", src: "func f() (int, int) {return 2, 3}; a, b := f(); b", res: "3"},
 		{n: "#06", src: "func f() (int, int) {return 2, 3}; var a, b = f(); b", res: "3"},
 		{n: "#07", src: "func f() (int, int) {return 2, 3}; _, b := f(); b", res: "3"},
+		{n: "#08", src: "a, b := 1, 2; a, b = b, a; 10*a+b", res: "21"},
+		{n: "#09", src: "func f() int { a, b := 1, 2; a, b = b, a; return 10*a+b }; f()", res: "21"},
+		{n: "#10", src: "var g int; func f() int { l := 1; g, l = l, g; return 10*g+l }; g = 2; f()", res: "12"},
 	})
 }
 

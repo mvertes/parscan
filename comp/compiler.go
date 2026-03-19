@@ -97,6 +97,15 @@ func (c *Compiler) rollback(dataLen, codeLen int) {
 		delete(c.Symbols, k)
 	}
 	c.SymTracker = nil
+	// Reset stale Index values: if a symbol's Index was allocated into the
+	// rolled-back region (>= dataLen), restore it to UnsetAddr so the next
+	// generate attempt re-allocates it correctly instead of clobbering an
+	// earlier symbol's slot.
+	for _, sym := range c.Symbols {
+		if sym.Index >= dataLen {
+			sym.Index = symbol.UnsetAddr
+		}
+	}
 	c.Data = c.Data[:dataLen]
 	c.Code = c.Code[:codeLen]
 }
@@ -621,6 +630,27 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.SetS, n)
 
 		case lang.Assign:
+			if n := t.Arg[0].(int); n > 1 {
+				// Batched multi-assign: compiler stack has [lhs0..lhs_(n-1), rhs0..rhs_(n-1)].
+				// All RHS were pushed before any assignment, so swaps like a,b=b,a work correctly.
+				l := len(stack)
+				rhss := stack[l-n:]
+				stack = stack[:l-n]
+				lhss := stack[len(stack)-n:]
+				stack = stack[:len(stack)-n]
+				// Process from top of stack (rhs[n-1]) down to rhs[0].
+				// Set always pops the rhs value; after the loop n lhs copies remain.
+				for i := n - 1; i >= 0; i-- {
+					c.emitIfaceWrap(t, lhss[i].Type, rhss[i].Type)
+					if lhss[i].Kind == symbol.LocalVar {
+						c.emit(t, vm.Set, vm.Local, lhss[i].Index)
+					} else {
+						c.emit(t, vm.Set, vm.Global, lhss[i].Index)
+					}
+				}
+				c.emit(t, vm.Pop, n) // pop the n lhs copies
+				break
+			}
 			rhs := pop()
 			lhs := pop()
 			if lhs.Kind == symbol.LocalVar {
