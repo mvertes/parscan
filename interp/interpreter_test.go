@@ -573,13 +573,21 @@ type T struct { elem [n2 + 1]int }
 len(T{}.elem)`, res: "2"},
 		{n: "alias", src: "type Number = int; Number(1) < int(2)", res: "true"},
 		{n: "local_shadow", src: `
-type T int
+type T struct { X int }
 func f() int {
-	type T string
-	v := T("hello")
-	return len(string(v))
+	type T struct { Y string }
+	var v T
+	v.Y = "hello"
+	return len(v.Y)
 }
 f()`, res: "5"},
+		{n: "local_shadow_outer", src: `
+type T struct { X int }
+func f() { type T struct { Y string }; var v T; v.Y = "ok" }
+f()
+var t T
+t.X = 99
+t.X`, res: "99"},
 	})
 }
 

@@ -300,7 +300,8 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 		return out, err
 	}
 	typ.Name = in[0].Str
-	p.SymAdd(symbol.UnsetAddr, in[0].Str, vm.NewValue(typ.Rtype), symbol.Type, typ, p.funcScope != "")
+	// Use scoped name so local type declarations don't overwrite outer-scope types.
+	p.SymAdd(symbol.UnsetAddr, p.scopedName(in[0].Str), vm.NewValue(typ.Rtype), symbol.Type, typ, false)
 	return out, err
 }
 
@@ -323,6 +324,32 @@ func (p *Parser) parseVar(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
+// zeroInitLocals emits Assign tokens that zero-initialize typed local variables.
+// Each var gets [Ident(var), Ident(type), Assign(1)] so the compiler emits New+Set.
+func (p *Parser) zeroInitLocals(vars []string, types []*vm.Type) (out Tokens) {
+	for i, v := range vars {
+		typ := types[i]
+		typName := typ.Name
+		if typName == "" {
+			typName = typ.Rtype.String()
+		}
+		// Resolve type symbol key, honouring scope (e.g. "f/T" vs global "T").
+		typKey := typName
+		if sym, sc, ok := p.Symbols.Get(typName, p.scope); ok && sym.Kind == symbol.Type {
+			if sc != "" {
+				typKey = sc + "/" + typName
+			}
+		} else if !ok {
+			// Anonymous type not yet in the symbol table; register it globally now.
+			p.SymAdd(symbol.UnsetAddr, typKey, vm.NewValue(typ.Rtype), symbol.Type, typ, false)
+		}
+		out = append(out, newIdent(v, 0))
+		out = append(out, newIdent(typKey, 0))
+		out = append(out, newToken(lang.Assign, "", 0, 1))
+	}
+	return out
+}
+
 func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 	decl := in
 	var assign Tokens
@@ -331,8 +358,9 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		decl = decl[:i]
 	}
 	var vars []string
+	var types []*vm.Type
 	var undefinedType bool
-	if _, vars, _, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
+	if types, vars, _, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
 		if errors.Is(err, ErrMissingType) {
 			undefinedType = true
 			for _, lt := range decl.Split(lang.Comma) {
@@ -352,6 +380,10 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 	values := assign.Split(lang.Comma)
 	if len(values) == 1 {
 		if len(values[0]) == 0 {
+			// No initializer: emit zero-init for typed local vars.
+			if !undefinedType && p.funcScope != "" {
+				out = append(out, p.zeroInitLocals(vars, types)...)
+			}
 			return out, err
 		}
 		for _, v := range vars {
