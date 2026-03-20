@@ -168,6 +168,7 @@ var gotok = map[lang.Token]token.Token{
 	lang.Imag:         token.IMAG,
 	lang.Int:          token.INT,
 	lang.Float:        token.FLOAT,
+	lang.String:       token.STRING,
 	lang.Add:          token.ADD,
 	lang.Sub:          token.SUB,
 	lang.Mul:          token.MUL,

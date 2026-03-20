@@ -312,6 +312,7 @@ func TestConst(t *testing.T) {
 		{n: "#02", src: "const huge = 1 << 100; const four = huge >> 98; four", res: "4"},
 
 		{n: "#03", src: src0 + "c", res: "2"},
+		{n: "#04", src: `func f() string {return a}; const a = "hello"; f()`, res: "hello"},
 	})
 }
 
