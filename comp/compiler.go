@@ -120,6 +120,12 @@ func (c *Compiler) rollback(dataLen, codeLen int) {
 	for _, s := range c.savedSlots {
 		c.Data[s.idx] = s.val
 	}
+	// Remove string cache entries whose data slot falls in the rolled-back region.
+	for s, i := range c.strings {
+		if i >= dataLen {
+			delete(c.strings, s)
+		}
+	}
 	c.Data = c.Data[:dataLen]
 	c.Code = c.Code[:codeLen]
 }
