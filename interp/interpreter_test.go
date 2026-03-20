@@ -155,7 +155,8 @@ func TestFunc(t *testing.T) {
 		{n: "#17", src: "func fib(n int) int { if n < 2 { return n }; return fib(n-1) + fib(n-2) }; fib(6)", res: "8"},
 		{n: "#18", src: "var a int; func f() { a:=2 }; f(); a", res: "0"},
 		// var declaration without explicit type inside a function (undefinedType path)
-		{n: "#19", src: "func f() int { var x = 42; return x }; f()", res: "42"},
+		{n: "#19", src: "func f() int {var x = 42; return x}; f()", res: "42"},
+		{n: "#20", src: "func f() int {var a, b = 2, 3; return 10*a+b}; f()", res: "23"},
 	})
 }
 
@@ -222,6 +223,8 @@ func TestFor(t *testing.T) {
 		{n: "#07", src: "a := []int{1,2,3,4}; b := 0; for i, e := range a {b = b+i+e}; b", res: "16"},
 		{n: "#08", src: "a := [4]int{1,2,3,4}; b := 0; for i, e := range a {b = b+i+e}; b", res: "16"},
 		{n: "#09", src: "a:= 0; for i := 0; i < 10; i++ { if i < 5 {a++; continue}}; a", res: "5"},
+		{n: "#10", src: `a := 0; Outer: for i := 0; i < 3; i++ { for j := 0; j < 3; j++ { if j == 1 { continue Outer }; a++ } }; a`, res: "3"},
+		{n: "#11", src: `a := 0; Outer: for i := 0; i < 3; i++ { switch i { case 1: continue Outer }; a++ }; a`, res: "2"},
 	})
 }
 

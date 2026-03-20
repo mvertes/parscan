@@ -408,7 +408,7 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		out = append(out, newIdent(vars[i], 0))
 		out = append(out, v...)
 		if undefinedType {
-			out = append(out, newToken(lang.Define, "", 0, len(vars)))
+			out = append(out, newToken(lang.Define, "", 0, 1))
 		} else {
 			out = append(out, newToken(lang.Assign, "", 0, 1))
 		}

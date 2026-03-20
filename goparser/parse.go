@@ -30,9 +30,11 @@ type Parser struct {
 	labelCount    map[string]int
 	breakLabel    string
 	continueLabel string
-	clonum        int      // closure instance number
-	namedOut      []string // scoped names of named return vars for current function
-	SymTracker    []string // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
+	pendingLabel  string               // user label preceding the current for/switch statement
+	labeledJump   map[string][2]string // maps user label → [continueLabel, breakLabel]
+	clonum        int                  // closure instance number
+	namedOut      []string             // scoped names of named return vars for current function
+	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
 }
 
 // SymSet inserts sym at key in the symbol table, recording the key for potential rollback.
@@ -55,6 +57,16 @@ func (p *Parser) SymAdd(i int, name string, v vm.Value, k symbol.Kind, t *vm.Typ
 // scopedName returns name qualified by the current scope (e.g. "main/foo").
 func (p *Parser) scopedName(name string) string {
 	return strings.TrimPrefix(p.scope+"/"+name, "/")
+}
+
+// labelName returns name qualified by the current function scope, for labels and gotos.
+func (p *Parser) labelName(name string) string { return p.funcScope + "/" + name }
+
+// takePendingLabel returns any pending user label and clears it.
+func (p *Parser) takePendingLabel() string {
+	l := p.pendingLabel
+	p.pendingLabel = ""
+	return l
 }
 
 // addLocalVar registers a new local variable in the current function frame
@@ -86,11 +98,12 @@ var (
 // NewParser returns a new parser.
 func NewParser(spec *lang.Spec, noPkg bool) *Parser {
 	p := &Parser{
-		Scanner:    scan.NewScanner(spec),
-		Symbols:    symbol.SymMap{},
-		noPkg:      noPkg,
-		framelen:   map[string]int{},
-		labelCount: map[string]int{},
+		Scanner:     scan.NewScanner(spec),
+		Symbols:     symbol.SymMap{},
+		noPkg:       noPkg,
+		framelen:    map[string]int{},
+		labelCount:  map[string]int{},
+		labeledJump: map[string][2]string{},
 	}
 	p.Symbols.Init()
 	return p
@@ -119,12 +132,18 @@ func (p *Parser) Parse(src string) (out Tokens, err error) {
 
 // stmtEnd returns the index of the semicolon ending the first statement in toks,
 // accounting for HasInit tokens (if, for, switch) which contain internal semicolons.
+// Labeled statements (Label: for/switch ...) are treated as a single statement.
 func (p *Parser) stmtEnd(toks Tokens) (int, error) {
 	end := toks.Index(lang.Semicolon)
 	if end == -1 {
 		return -1, scan.ErrBlock
 	}
-	if p.TokenProps[toks[0].Tok].HasInit {
+	firstTok := toks[0].Tok
+	// A label "Ident :" followed by a HasInit statement is treated as one statement.
+	if firstTok == lang.Ident && len(toks) > 2 && toks[1].Tok == lang.Colon {
+		firstTok = toks[2].Tok
+	}
+	if p.TokenProps[firstTok].HasInit {
 		for toks[end-1].Tok != lang.BraceBlock {
 			e2 := toks[end+1:].Index(lang.Semicolon)
 			if e2 == -1 {
@@ -523,8 +542,11 @@ func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {
 		if in[1].Tok != lang.Ident {
 			return nil, ErrBreak
 		}
-		// TODO: check validity of user provided label
-		label = in[1].Str
+		j, ok := p.labeledJump[p.labelName(in[1].Str)]
+		if !ok {
+			return nil, ErrBreak
+		}
+		label = j[1]
 	default:
 		return nil, ErrBreak
 	}
@@ -541,8 +563,11 @@ func (p *Parser) parseContinue(in Tokens) (out Tokens, err error) {
 		if in[1].Tok != lang.Ident {
 			return nil, ErrContinue
 		}
-		// TODO: check validity of user provided label
-		label = in[1].Str
+		j, ok := p.labeledJump[p.labelName(in[1].Str)]
+		if !ok || j[0] == "" {
+			return nil, ErrContinue
+		}
+		label = j[0]
 	default:
 		return nil, ErrContinue
 	}
@@ -555,13 +580,14 @@ func (p *Parser) parseGoto(in Tokens) (out Tokens, err error) {
 		return nil, ErrGoto
 	}
 	// TODO: check validity of user provided label
-	return Tokens{newGoto(p.funcScope+"/"+in[1].Str, in[0].Pos)}, nil
+	return Tokens{newGoto(p.labelName(in[1].Str), in[0].Pos)}, nil
 }
 
 func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	// TODO: detect invalid code.
 	var init, cond, post, body, final Tokens
 	hasRange := in.Index(lang.Range) >= 0
+	pendingLabel := p.takePendingLabel()
 	fc := strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
 	breakLabel, continueLabel := p.breakLabel, p.continueLabel
@@ -599,6 +625,9 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		p.continueLabel = p.scope + "p"
 	default:
 		return nil, ErrFor
+	}
+	if pendingLabel != "" {
+		p.labeledJump[pendingLabel] = [2]string{p.continueLabel, p.breakLabel}
 	}
 	out = append(out, newLabel(condLabel, in[0].Pos))
 	if len(cond) > 0 {
@@ -861,11 +890,15 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 			}
 		}
 	}
+	pendingLabel := p.takePendingLabel()
 	label := "switch" + strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
 	breakLabel := p.breakLabel
 	p.pushScope(label)
 	p.breakLabel = p.scope + "e"
+	if pendingLabel != "" {
+		p.labeledJump[pendingLabel] = [2]string{"", p.breakLabel}
+	}
 	defer func() {
 		p.breakLabel = breakLabel
 		p.popScope()
@@ -925,11 +958,15 @@ func (p *Parser) parseTypeSwitch(in, init, cond Tokens, periodIdx int) (out Toke
 		}
 		guardToks = guardToks[defPos+1:]
 	}
+	pendingLabel := p.takePendingLabel()
 	label := "switch" + strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++
 	breakLabel := p.breakLabel
 	p.pushScope(label)
 	p.breakLabel = p.scope + "e"
+	if pendingLabel != "" {
+		p.labeledJump[pendingLabel] = [2]string{"", p.breakLabel}
+	}
 	defer func() {
 		p.breakLabel = breakLabel
 		p.popScope()
@@ -1138,7 +1175,17 @@ func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch, prev
 }
 
 func (p *Parser) parseLabel(in Tokens) (out Tokens, err error) {
-	return Tokens{newLabel(p.funcScope+"/"+in[0].Str, in[0].Pos)}, nil
+	p.pendingLabel = p.labelName(in[0].Str)
+	out = Tokens{newLabel(p.pendingLabel, in[0].Pos)}
+	if len(in) > 2 {
+		// Label followed by a compound statement (for, switch, ...) on the same line.
+		stmtOut, err := p.parseStmt(in[2:])
+		if err != nil {
+			return out, err
+		}
+		out = append(out, stmtOut...)
+	}
+	return out, nil
 }
 
 func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
