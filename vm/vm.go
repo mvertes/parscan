@@ -505,7 +505,8 @@ func (m *Machine) Run() (err error) {
 
 			case IfaceWrap:
 				typ := mem[c.Arg[0]].ref.Interface().(*Type)
-				mem[sp-1] = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: mem[sp-1]})}
+				idx := sp - 1 - c.Arg[1]
+				mem[idx] = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: mem[idx]})}
 
 			case IfaceCall:
 				ifc := mem[sp-1].IfaceVal()
@@ -733,7 +734,7 @@ func (m *Machine) Run() (err error) {
 					// Wrap in Iface so type assertions on the recovered value work.
 					if pv.IsValid() && !pv.IsIface() {
 						rt := pv.Reflect().Type()
-					typ := &Type{Name: rt.Name(), Rtype: rt}
+						typ := &Type{Name: rt.Name(), Rtype: rt}
 						pv = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: pv})}
 					}
 					mem = append(mem, pv)

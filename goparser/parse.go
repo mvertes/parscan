@@ -758,7 +758,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 		newLabel(fname, in[0].Pos),
 	}
 
-	bi := in.Index(lang.BraceBlock)
+	bi := in.LastIndex(lang.BraceBlock)
 	if bi < 0 {
 		return out, ErrBody
 	}
@@ -1206,7 +1206,7 @@ func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 	// TODO: the function symbol should be already present in the parser context.
 	// otherwise no way to handle anonymous func.
 	s := p.function
-	in[0].Arg = []any{s.Type.Rtype.NumOut(), s.Type.Rtype.NumIn()}
+	in[0].Arg = []any{s.Type.Rtype.NumOut(), s.Type.Rtype.NumIn(), s.Type}
 	out = append(out, in[0])
 	return out, err
 }

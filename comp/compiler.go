@@ -206,11 +206,16 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 
 // emitIfaceWrap emits IfaceWrap if assigning a concrete value to an interface type.
 func (c *Compiler) emitIfaceWrap(t goparser.Token, ifaceTyp, concreteTyp *vm.Type) {
+	c.emitIfaceWrapAt(t, ifaceTyp, concreteTyp, 0)
+}
+
+// emitIfaceWrapAt emits IfaceWrap with a depth offset for non-top stack values.
+func (c *Compiler) emitIfaceWrapAt(t goparser.Token, ifaceTyp, concreteTyp *vm.Type, depth int) {
 	if ifaceTyp == nil || !ifaceTyp.IsInterface() || concreteTyp == nil || concreteTyp.IsInterface() {
 		return
 	}
 	c.registerMethods(ifaceTyp, concreteTyp)
-	c.emit(t, vm.IfaceWrap, c.typeIndex(concreteTyp))
+	c.emit(t, vm.IfaceWrap, c.typeIndex(concreteTyp), depth)
 }
 
 // generate generates vm code and data from parsed tokens, or returns an error.
@@ -1182,6 +1187,13 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			numOut, numIn := t.Arg[0].(int), t.Arg[1].(int)
 			if err := checkTopN(numOut); err != nil {
 				return err
+			}
+			// Wrap concrete return values in Iface when the function return type is an interface.
+			if funcType, ok := t.Arg[2].(*vm.Type); ok {
+				for i := 0; i < numOut; i++ {
+					stackSym := stack[len(stack)-numOut+i]
+					c.emitIfaceWrapAt(t, funcType.Out(i), stackSym.Type, numOut-1-i)
+				}
 			}
 			c.emit(t, vm.Return, numOut, numIn)
 

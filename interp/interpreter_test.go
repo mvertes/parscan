@@ -645,6 +645,23 @@ if i, ok := i.(*T); ok { r = i.name }
 r`, res: "foo"},
 
 		{n: "any_set", src: "var a interface{} = 2 + 5; a.(int)", res: "7"},
+
+		// interface{} as function return type (was: syntax error: Interface)
+		{n: "iface_return", src: `
+func f(x int) interface{} { return x }
+f(42).(int)`, res: "42"},
+
+		// return concrete value from interface{} func, then type-assert
+		{n: "iface_return_cap", src: `
+func f(a []int) interface{} { return cap(a) }
+a := []int{1, 2, 3}
+f(a).(int)`, res: "3"},
+
+		// multi-value return where first result is interface{} (multi-value comma parsing not yet supported)
+		{n: "iface_return_multi", skip: true, src: `
+func f(x int) (interface{}, int) { return x, x + 1 }
+a, b := f(5)
+a.(int) + b`, res: "11"},
 	})
 }
 
