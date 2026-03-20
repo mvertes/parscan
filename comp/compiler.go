@@ -383,7 +383,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			s := pop()
-			if s.Type == nil || !s.Type.IsPtr() {
+			if s.Type == nil {
+				return goparser.ErrUndefined{Name: s.Name}
+			}
+			if !s.Type.IsPtr() {
 				return errorf("cannot dereference non-pointer type %v", s.Type)
 			}
 			push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type.Elem()})
@@ -427,6 +430,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			pop()
 			s := pop()
+			if s.Type == nil {
+				return goparser.ErrUndefined{Name: s.Name}
+			}
 			if s.Type.Rtype.Kind() == reflect.Map {
 				c.emit(t, vm.MapIndex)
 			} else {
@@ -861,7 +867,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				for _, fvName := range s.FreeVars {
 					fvSym := c.Symbols[fvName]
 					if fvSym == nil {
-						return errorf("free variable not found: %s", fvName)
+						return goparser.ErrUndefined{Name: fvName}
 					}
 					if outerCloSym != nil {
 						if idx := outerCloSym.FreeVarIndex(fvName); idx >= 0 {
@@ -1028,6 +1034,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if len(stack) < 1 {
 				return errorf("missing symbol")
 			}
+			if err := checkTopN(1); err != nil {
+				return err
+			}
 			s := pop()
 			switch s.Kind {
 			case symbol.Pkg:
@@ -1068,7 +1077,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						}
 					}
 					if methodSym == nil {
-						return fmt.Errorf("method not found: %s", methodName)
+						return goparser.ErrUndefined{Name: methodName}
 					}
 					push(methodSym)
 					c.emit(t, vm.IfaceCall, c.methodID(methodName))
@@ -1110,6 +1119,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emit(t, vm.MkClosure, 1)
 					break
 				}
+				if s.Type == nil {
+					return goparser.ErrUndefined{Name: s.Name}
+				}
 				typ := s.Type.Rtype
 				isPtr := typ.Kind() == reflect.Pointer
 				if isPtr {
@@ -1117,14 +1129,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				if f, ok := typ.FieldByName(t.Str[1:]); ok {
 					if isPtr {
-						push(&symbol.Symbol{Type: s.Type.Elem().FieldType(t.Str[1:])})
+						push(&symbol.Symbol{Kind: symbol.Var, Type: s.Type.Elem().FieldType(t.Str[1:])})
 					} else {
-						push(&symbol.Symbol{Type: s.Type.FieldType(t.Str[1:])})
+						push(&symbol.Symbol{Kind: symbol.Var, Type: s.Type.FieldType(t.Str[1:])})
 					}
 					c.emit(t, vm.Field, f.Index...)
 					break
 				}
-				return fmt.Errorf("field or method not found: %s", t.Str[1:])
+				return goparser.ErrUndefined{Name: t.Str[1:]}
 			}
 
 		case lang.Next:

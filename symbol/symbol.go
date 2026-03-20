@@ -117,13 +117,20 @@ func (sm SymMap) MethodByName(sym *Symbol, name string) (*Symbol, []int) {
 			return m, nil
 		}
 		return sm.promotedMethod(sym.Type, name, nil)
-	case Var:
+	case Var, LocalVar, Value:
+		if sym.Type == nil {
+			return nil, nil
+		}
 		typName := sym.Type.Name
-		// For pointer types with no Name, find the element type's Name via Rtype.
-		if typName == "" && sym.Type.Rtype.Kind() == reflect.Pointer {
-			elemRtype := sym.Type.Rtype.Elem()
+		// For types with no Name (e.g. parscan-created structs, or pointer types),
+		// search the symbol table for a named Type with a matching Rtype.
+		if typName == "" {
+			rtype := sym.Type.Rtype
+			if rtype.Kind() == reflect.Pointer {
+				rtype = rtype.Elem()
+			}
 			for k, s := range sm {
-				if s.Kind == Type && s.Type != nil && s.Type.Rtype == elemRtype && k != "" {
+				if s.Kind == Type && s.Type != nil && s.Type.Rtype == rtype && k != "" {
 					typName = k
 					break
 				}

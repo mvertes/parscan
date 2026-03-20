@@ -171,6 +171,23 @@ func TestOutOfOrder(t *testing.T) {
 		// three-level chain: a depends on b, b depends on c
 		{n: "#03", src: "func a() int { return b() }; func b() int { return c() }; func c() int { return 7 }; a()", res: "7"},
 		{n: "#04", src: `type T1 T; func foo() T1 {return T1(T{"foo"})}; type T struct {Name string}; foo().Name`, res: "foo"},
+
+		// Deref of a global pointer var declared after the function using it.
+		// Exercises the s.Type==nil guard in lang.Deref.
+		{n: "deref_fwd", src: `
+func f() int { return *p }
+var n int = 42
+var p = &n
+f()`, res: "42"},
+
+		// Method call on a global var declared after the function using it.
+		// Exercises checkTopN(1) in lang.Period and the s.Type==nil guards.
+		{n: "method_on_fwd_var", src: `
+func bar() bool { return obj.Foo() }
+type T struct{}
+func (t *T) Foo() bool { return t != nil }
+var obj = &T{}
+bar()`, res: "true"},
 	})
 }
 
@@ -529,6 +546,25 @@ p := new(N); *p = N(3); p.IsPos()`, res: "true"},
 type N int
 func (n *N) Inc() { *n = *n + 1 }
 var v N = 10; v.Inc(); v`, res: "11"},
+
+		{n: "local_var", src: `
+type T struct { X int }
+func (t T) GetX() int { return t.X }
+func f() int { v := T{42}; return v.GetX() }
+f()`, res: "42"},
+
+		{n: "field_access", src: `
+type Coord struct { x, y int }
+func (c Coord) dist() int { return c.x*c.x + c.y*c.y }
+type Point struct { Coord; z int }
+o := Point{Coord{3, 4}, 5}
+o.Coord.dist()`, res: "25"},
+
+		{n: "slice_elem", src: `
+type S struct { X int }
+func (s S) GetX() int { return s.X }
+a := []S{S{7}, S{9}}
+a[0].GetX()`, res: "7"},
 	})
 }
 
@@ -783,7 +819,7 @@ func TestImport(t *testing.T) {
 )
 `
 	run(t, []etest{
-		{n: "#00", src: "fmt.Println(4)", err: "invalid symbol: fmt"},
+		{n: "#00", src: "fmt.Println(4)", err: "undefined: fmt"},
 		{n: "#01", src: `import "xxx"`, err: "package not found: xxx"},
 		{n: "#02", src: `import "fmt"; fmt.Println(4)`, res: "<nil>"},
 		{n: "#03", src: src0 + "fmt.Println(4)", res: "<nil>"},

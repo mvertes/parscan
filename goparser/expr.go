@@ -146,7 +146,16 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 		case lang.BraceBlock:
 			if ctype == "" {
 				// Infer composite inner type from passed typeStr.
-				typ := p.Symbols[typeStr].Type.Elem()
+				sym := p.Symbols[typeStr]
+				if sym == nil || sym.Type == nil {
+					// Type not yet defined: look for preceding Ident in output.
+					name := typeStr
+					if len(out) > 0 && out[len(out)-1].Tok == lang.Ident {
+						name = out[len(out)-1].Str
+					}
+					return out, ErrUndefined{Name: name}
+				}
+				typ := sym.Type.Elem()
 				ctype = typ.String()
 				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
 				out = append(out, newIdent(ctype, t.Pos))
@@ -225,6 +234,9 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, error) {
 	var result Tokens
 	var sliceLen int
 	for i, sub := range tokens.Split(lang.Comma) {
+		if len(sub) == 0 {
+			continue
+		}
 		toks, err := p.parseExpr(sub, typ)
 		if err != nil {
 			return result, err
