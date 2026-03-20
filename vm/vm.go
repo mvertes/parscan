@@ -545,12 +545,25 @@ func (m *Machine) Run() (err error) {
 					mem = append(mem, NewValue(dstTyp.Rtype))
 					break
 				}
-				if concrete := ifc.IfaceVal(); concrete.Typ.Rtype == dstTyp.Rtype && concrete.Typ.Name == dstTyp.Name {
+				concrete := ifc.IfaceVal()
+				var matched bool
+				dstIsIface := dstTyp.IsInterface()
+				if dstIsIface {
+					matched = concrete.Typ.Implements(dstTyp)
+				} else {
+					matched = concrete.Typ.Rtype == dstTyp.Rtype && concrete.Typ.Name == dstTyp.Name
+				}
+				if matched {
+					// For interface targets, keep the Iface wrapping so IfaceCall still works.
+					result := concrete.Val
+					if dstIsIface {
+						result = ifc
+					}
 					if okForm {
 						mem[sp-1] = boolVal(true)
-						mem = append(mem, concrete.Val)
+						mem = append(mem, result)
 					} else {
-						mem[sp-1] = concrete.Val
+						mem[sp-1] = result
 					}
 				} else {
 					if !okForm {

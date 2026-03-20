@@ -739,6 +739,34 @@ var g Getter = S{7}
 _, ok := g.(Other)
 ok`, res: "false"},
 
+		{n: "iface_to_iface", src: `
+type Root struct { Name string }
+type One struct { Root }
+type Hi interface { Hello() string }
+type Hey interface { Hello() string }
+func (r *Root) Hello() string { return "Hello " + r.Name }
+var one Hey = &One{Root{Name: "test2"}}
+one.(Hi).Hello()`, res: "Hello test2"},
+
+		{n: "iface_to_iface_ok", src: `
+type Root struct { Name string }
+type One struct { Root }
+type Hi interface { Hello() string }
+type Hey interface { Hello() string }
+func (r *Root) Hello() string { return "Hello " + r.Name }
+var one Hey = &One{Root{Name: "test2"}}
+_, ok := one.(Hi)
+ok`, res: "true"},
+
+		{n: "iface_to_iface_fail", src: `
+type S struct{}
+type A interface { Foo() }
+type B interface { Bar() }
+func (s S) Foo() {}
+var a A = S{}
+_, ok := a.(B)
+ok`, res: "false"},
+
 		{
 			n: "nil_panic", src: `var i any; i.(int)`,
 			err: "panic: interface conversion: interface is nil, not int",

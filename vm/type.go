@@ -33,6 +33,7 @@ type Type struct {
 // IfaceMethod describes a method required by an interface type.
 type IfaceMethod struct {
 	Name string
+	ID   int // global method ID; -1 = not yet assigned
 }
 
 // Iface represents a boxed interface value at runtime.
@@ -47,6 +48,17 @@ var ifaceRtype = reflect.TypeOf(Iface{})
 // IsInterface reports whether t represents an interface type.
 func (t *Type) IsInterface() bool {
 	return t != nil && t.Rtype.Kind() == reflect.Interface
+}
+
+// Implements reports whether the concrete type t satisfies interface iface.
+// iface.IfaceMethods must have IDs populated (by the compiler) before calling this.
+func (t *Type) Implements(iface *Type) bool {
+	for _, im := range iface.IfaceMethods {
+		if im.ID < 0 || im.ID >= len(t.Methods) || t.Methods[im.ID].Index < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *Type) String() string {

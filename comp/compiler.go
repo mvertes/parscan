@@ -404,6 +404,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			okForm := t.Arg[0].(int)
 			typ := t.Arg[1].(*vm.Type)
+			if typ.IsInterface() && len(typ.IfaceMethods) > 0 && typ.IfaceMethods[0].ID < 0 {
+				for i, im := range typ.IfaceMethods {
+					typ.IfaceMethods[i].ID = c.methodID(im.Name)
+				}
+			}
 			pop() // interface value
 			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
 			if okForm == 1 {

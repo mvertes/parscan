@@ -212,7 +212,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			if lt[0].Tok != lang.Ident {
 				return nil, 0, fmt.Errorf("%w: expected method name in interface", ErrSyntax)
 			}
-			methods = append(methods, vm.IfaceMethod{Name: lt[0].Str})
+			methods = append(methods, vm.IfaceMethod{Name: lt[0].Str, ID: -1})
 		}
 		// Use any as underlying reflect type; method set is tracked in IfaceMethods.
 		return &vm.Type{
