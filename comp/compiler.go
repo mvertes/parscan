@@ -19,6 +19,12 @@ import (
 
 const debug = false
 
+// savedSlot records a data slot update to restore on rollback.
+type savedSlot struct {
+	idx int
+	val vm.Value
+}
+
 // Compiler represents the state of a compiler.
 type Compiler struct {
 	*goparser.Parser
@@ -26,9 +32,10 @@ type Compiler struct {
 	Data    []vm.Value // produced data, will be at the bottom of VM stack
 	Entry   int        // offset in Code to start execution from
 
-	strings   map[string]int // locations of strings in Data
-	methodIDs map[string]int // global method ID by method name
-	posBase   int            // base offset for current source (from Sources.Add)
+	strings    map[string]int // locations of strings in Data
+	methodIDs  map[string]int // global method ID by method name
+	posBase    int            // base offset for current source (from Sources.Add)
+	savedSlots []savedSlot    // data slot updates to restore on rollback
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
@@ -65,8 +72,10 @@ func (c *Compiler) Compile(name, src string) error {
 	pending := decls
 	for len(pending) > 0 {
 		var retry []goparser.Tokens
+		var firstErr error
 		for _, decl := range pending {
 			c.SymTracker = nil
+			c.savedSlots = c.savedSlots[:0]
 			dataLen, codeLen := len(c.Data), len(c.Code)
 			toks, parseErr := c.ParseOneStmt(decl)
 			if parseErr == nil {
@@ -77,15 +86,16 @@ func (c *Compiler) Compile(name, src string) error {
 				if errors.As(parseErr, &eu) {
 					c.rollback(dataLen, codeLen)
 					retry = append(retry, decl)
+					if firstErr == nil {
+						firstErr = parseErr
+					}
 					continue
 				}
 				return parseErr
 			}
 		}
 		if len(retry) == len(pending) {
-			// No progress: return first error.
-			_, err = c.ParseOneStmt(pending[0])
-			return err
+			return firstErr
 		}
 		pending = retry
 	}
@@ -105,6 +115,10 @@ func (c *Compiler) rollback(dataLen, codeLen int) {
 		if sym.Index >= dataLen {
 			sym.Index = symbol.UnsetAddr
 		}
+	}
+	// Restore data slots that were updated in-place (pre-allocated before this attempt).
+	for _, s := range c.savedSlots {
+		c.Data[s.idx] = s.val
 	}
 	c.Data = c.Data[:dataLen]
 	c.Code = c.Code[:codeLen]
@@ -913,6 +927,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						// Slot was pre-allocated by an Ident reference before this Label:
 						// update in place so all Get Global N instructions already emitted
 						// load the correct code address at runtime.
+						// Save old value so rollback can restore it if this attempt fails.
+						c.savedSlots = append(c.savedSlots, savedSlot{s.Index, c.Data[s.Index]})
 						c.Data[s.Index] = s.Value
 					}
 					flen = append(flen, len(stack))

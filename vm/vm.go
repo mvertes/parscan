@@ -1468,7 +1468,11 @@ func Vstring(lv []Value) string {
 		if i > 0 {
 			sb.WriteByte(' ')
 		}
-		fmt.Fprintf(&sb, "%v", v.Interface())
+		if !v.ref.IsValid() {
+			fmt.Fprintf(&sb, "<%d>", v.num)
+		} else {
+			fmt.Fprintf(&sb, "%v", v.Interface())
+		}
 	}
 	sb.WriteByte(']')
 	return sb.String()
