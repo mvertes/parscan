@@ -5,17 +5,15 @@ import (
 	"strings"
 )
 
-// Source describes a source text registered with a Sources table.
+// Source describes a source text.
 type Source struct {
-	Name     string // "m:<label>" for inline, "f:<path>" for file
-	Base     int    // base byte offset in the unified position space
-	Len      int    // length in bytes
-	contents string // source text for line/col resolution
+	Name    string // "m:<label>" for inline, "f:<path>" for file
+	Base    int    // base byte offset in the unified position space
+	Len     int    // length in bytes
+	content string // source text for line/col resolution
 }
 
-// Sources is an ordered list of Source entries that maps global byte offsets
-// to file/line/col triples. Multiple Compile calls (REPL, multi-file) each
-// register their source via Add; Resolve translates any position back.
+// Sources is an ordered list of Source entries.
 type Sources []Source
 
 // Add registers a new source and returns its base offset. The name follows
@@ -24,14 +22,9 @@ func (ss *Sources) Add(name, src string) int {
 	base := 0
 	if n := len(*ss); n > 0 {
 		last := (*ss)[n-1]
-		base = last.Base + last.Len + 1 // +1 for implicit newline separator
+		base = last.Base + last.Len + 1 // +1 for implicit newline separator:w
 	}
-	*ss = append(*ss, Source{
-		Name:     name,
-		Base:     base,
-		Len:      len(src),
-		contents: src,
-	})
+	*ss = append(*ss, Source{Name: name, Base: base, Len: len(src), content: src})
 	return base
 }
 
@@ -41,7 +34,6 @@ func (ss Sources) Resolve(pos int) (name string, line, col int) {
 	if len(ss) == 0 || pos < 0 {
 		return "", 0, 0
 	}
-	// Linear scan backward (most recent source is the most likely match).
 	i := len(ss) - 1
 	for i > 0 && ss[i].Base > pos {
 		i--
@@ -51,12 +43,11 @@ func (ss Sources) Resolve(pos int) (name string, line, col int) {
 	if local < 0 || local > s.Len {
 		return "", 0, 0
 	}
-	line, col = lineCol(s.contents, local)
+	line, col = lineCol(s.content, local)
 	return s.Name, line, col
 }
 
-// FormatPos converts a global byte offset to a human-readable "file:line:col" string.
-// For inline sources ("m:..."), the name is omitted and only "line:col" is returned.
+// FormatPos converts a global byte offset to a "[file:]line:col" string.
 func (ss Sources) FormatPos(pos int) string {
 	name, line, col := ss.Resolve(pos)
 	if name == "" {
@@ -65,15 +56,11 @@ func (ss Sources) FormatPos(pos int) string {
 	if strings.HasPrefix(name, "m:") {
 		return fmt.Sprintf("%d:%d", line, col)
 	}
-	// Strip "f:" prefix for file sources.
 	return fmt.Sprintf("%s:%d:%d", name[2:], line, col)
 }
 
-// lineCol computes 1-based line and column from a source string and byte offset.
 func lineCol(src string, offset int) (line, col int) {
-	if offset > len(src) {
-		offset = len(src)
-	}
+	offset = min(offset, len(src))
 	prefix := src[:offset]
 	line = 1 + strings.Count(prefix, "\n")
 	col = offset - strings.LastIndex(prefix, "\n")
