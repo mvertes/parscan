@@ -1214,13 +1214,21 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.Return, numOut, numIn)
 
 		case lang.Slice:
+			var coll *symbol.Symbol
 			if stack[len(stack)-3].IsInt() {
+				coll = stack[len(stack)-4]
 				c.emit(t, vm.Slice3)
 				stack = stack[:len(stack)-4]
 			} else {
+				coll = stack[len(stack)-3]
 				c.emit(t, vm.Slice)
 				stack = stack[:len(stack)-3]
 			}
+			rtype := coll.Type.Rtype
+			if rtype.Kind() == reflect.Array {
+				rtype = reflect.SliceOf(rtype.Elem())
+			}
+			push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtype}})
 
 		default:
 			return fmt.Errorf("generate: unsupported token %v", t)

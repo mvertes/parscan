@@ -558,6 +558,8 @@ func TestSlice(t *testing.T) {
 		{n: "#08", src: src0 + `s[:0]`, res: `[]`},
 		{n: "#09", src: `"Hello"[1:3]`, res: `el`},
 		{n: "#10", src: `s := "Hello"; s[1:3]`, res: `el`},
+		{n: "#11", src: src0 + `z := s[1:3]; z`, res: `[1 2]`},
+		{n: "#12", src: `s := "Hello"; z := s[1:3]; z`, res: `el`},
 	})
 }
 
