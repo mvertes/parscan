@@ -60,10 +60,16 @@ func (t *Type) String() string {
 }
 
 // Elem returns a type's element type.
-func (t *Type) Elem() *Type { return &Type{Rtype: t.Rtype.Elem()} }
+func (t *Type) Elem() *Type {
+	e := t.Rtype.Elem()
+	return &Type{Name: e.Name(), Rtype: e}
+}
 
 // Out returns the type's i'th output parameter.
-func (t *Type) Out(i int) *Type { return &Type{Rtype: t.Rtype.Out(i)} }
+func (t *Type) Out(i int) *Type {
+	o := t.Rtype.Out(i)
+	return &Type{Name: o.Name(), Rtype: o}
+}
 
 // Value is the VM runtime value.
 // Numeric types (bool, int*, uint*, float*) store their value inline in num.

@@ -732,7 +732,8 @@ func (m *Machine) Run() (err error) {
 					pv := m.panicVal
 					// Wrap in Iface so type assertions on the recovered value work.
 					if pv.IsValid() && !pv.IsIface() {
-						typ := &Type{Rtype: pv.Reflect().Type()}
+						rt := pv.Reflect().Type()
+					typ := &Type{Name: rt.Name(), Rtype: rt}
 						pv = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: pv})}
 					}
 					mem = append(mem, pv)
