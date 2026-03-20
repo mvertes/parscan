@@ -751,16 +751,24 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				lhss := stack[len(stack)-n:]
 				stack = stack[:len(stack)-n]
 				// Process from top of stack (rhs[n-1]) down to rhs[0].
-				// Set always pops the rhs value; after the loop n lhs copies remain.
+				// Blank idents (Kind=Unset) have no slot on the VM stack; just discard their rhs.
+				slotCount := 0
 				for i := n - 1; i >= 0; i-- {
+					if lhss[i].Kind == symbol.Unset {
+						c.emit(t, vm.Pop, 1) // discard rhs for blank ident
+						continue
+					}
 					c.emitIfaceWrap(t, lhss[i].Type, rhss[i].Type)
 					if lhss[i].Kind == symbol.LocalVar {
 						c.emit(t, vm.Set, vm.Local, lhss[i].Index)
 					} else {
 						c.emit(t, vm.Set, vm.Global, lhss[i].Index)
 					}
+					slotCount++
 				}
-				c.emit(t, vm.Pop, n) // pop the n lhs copies
+				if slotCount > 0 {
+					c.emit(t, vm.Pop, slotCount) // pop the lhs slot copies for non-blank vars
+				}
 				break
 			}
 			rhs := pop()

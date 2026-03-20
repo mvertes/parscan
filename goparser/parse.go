@@ -33,6 +33,7 @@ type Parser struct {
 	pendingLabel  string               // user label preceding the current for/switch statement
 	labeledJump   map[string][2]string // maps user label → [continueLabel, breakLabel]
 	clonum        int                  // closure instance number
+	blankSeq      int                  // counter for unique blank identifier names
 	namedOut      []string             // scoped names of named return vars for current function
 	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
 }
@@ -69,9 +70,20 @@ func (p *Parser) takePendingLabel() string {
 	return l
 }
 
+// blankName returns a unique internal name for the blank identifier "_", so
+// that multiple "_" in the same declaration each get their own symbol entry.
+func (p *Parser) blankName() string {
+	n := "_" + strconv.Itoa(p.blankSeq)
+	p.blankSeq++
+	return n
+}
+
 // addLocalVar registers a new local variable in the current function frame
 // and returns its scoped name for token fixup.
 func (p *Parser) addLocalVar(name string) string {
+	if name == "_" {
+		name = p.blankName()
+	}
 	scoped := p.scopedName(name)
 	p.SymAdd(p.framelen[p.funcScope], scoped, vm.Value{}, symbol.LocalVar, nil)
 	p.framelen[p.funcScope]++
@@ -81,6 +93,9 @@ func (p *Parser) addLocalVar(name string) string {
 // addGlobalVar registers a new global variable in the current scope
 // and returns its scoped name for token fixup.
 func (p *Parser) addGlobalVar(name string) string {
+	if name == "_" {
+		name = p.blankName()
+	}
 	scoped := p.scopedName(name)
 	p.SymAdd(symbol.UnsetAddr, scoped, vm.Value{}, symbol.Var, nil)
 	return scoped

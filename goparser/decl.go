@@ -364,7 +364,11 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		if errors.Is(err, ErrMissingType) {
 			undefinedType = true
 			for _, lt := range decl.Split(lang.Comma) {
-				name := p.scopedName(lt[0].Str)
+				rawName := lt[0].Str
+				if rawName == "_" {
+					rawName = p.blankName()
+				}
+				name := p.scopedName(rawName)
 				vars = append(vars, name)
 				if p.funcScope == "" {
 					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
