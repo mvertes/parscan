@@ -14,8 +14,9 @@ to resolve addresses and types.
 - **`SymMap`** (type `map[string]*Symbol`) -- symbol table. Keys are
   scoped names like `main/foo/x` or `0/int` (scope `0` for builtins).
 - **`Symbol`** -- a table entry:
-  - `Kind` -- one of `Value`, `Type`, `Label`, `Const`, `Var`, `Func`,
-    `Pkg`, `Builtin`.
+  - `Kind` -- one of `Value`, `Type`, `Label`, `Const`, `Var`,
+    `LocalVar`, `Func`, `Pkg`, `Builtin`. `Var` is for global data;
+    `LocalVar` is for frame-relative locals.
   - `Index` -- address in the VM data segment or frame.
   - `Local` -- whether the address is frame-relative.
   - `Type` -- `*vm.Type` for the symbol's runtime type.
@@ -26,10 +27,10 @@ to resolve addresses and types.
 - **`MethodByName(sym, name) (*Symbol, []int)`** -- find a method on a
   type, including promoted methods from embedded fields.
 - **`Init()`** -- populates builtin types (`int`, `string`, `bool`, ...),
-  values (`nil`, `true`, `false`, `iota`), `println` (as `Value` with a
-  native Go function), and builtin functions (`len`, `cap`, `append`,
-  `copy`, `delete`, `new`, `make`, `panic`, `recover`, `trap`) with
-  `Kind: Builtin`.
+  values (`nil`, `true`, `false`, `iota`), `print` and `println` (as
+  `Value` with native Go functions via `fmt.Print`/`fmt.Println`), and
+  builtin functions (`len`, `cap`, `append`, `copy`, `delete`, `new`,
+  `make`, `panic`, `recover`, `trap`) with `Kind: Builtin`.
 
 ## Internal design
 

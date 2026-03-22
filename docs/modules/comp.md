@@ -13,7 +13,10 @@ parser and walks the flat token stream in a single pass, emitting
 ## Key types and functions
 
 - **`Compiler`** -- embeds `*goparser.Parser`. Manages `Code`, `Data`,
-  `Entry` (start IP), string deduplication, and method ID allocation.
+  `Entry` (start IP), string deduplication (`strings` map), method ID
+  allocation (`methodIDs` map), a type-pointer dedup cache (`typeIdxs`),
+  and `posBase` (byte offset of the current source in the `Sources`
+  registry for position resolution).
 - **`Compile(name, src string) error`** -- end-to-end: parse, register forward
   references, then generate bytecode with lazy fixpoint retry. `name`
   identifies the source (`"m:<content>"` for inline, `"f:<path>"` for file)
@@ -70,6 +73,8 @@ handlers. Each builtin emits a dedicated opcode:
 
 | Builtin | Opcode(s) | Notes |
 |---------|-----------|-------|
+| `print` | (native `Value`) | Dispatched as a regular `CallX`; not a `Builtin` symbol |
+| `println` | (native `Value`) | Same as `print` |
 | `len` | `Len` + `Swap` + `Pop` | `Len` does not consume input (used in slice exprs too) |
 | `cap` | `Cap` + `Swap` + `Pop` | Same pattern as `len` |
 | `append` | `Append` | Uses `reflect.Append` for amortized growth |

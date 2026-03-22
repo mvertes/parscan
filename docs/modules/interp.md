@@ -19,16 +19,20 @@ and powers the REPL.
   `"f:<path>"` for file). Pushes new data and code to the VM incrementally.
   Calls `main()` automatically if defined.
 - **`Repl(in io.Reader) error`** -- interactive read-eval-print loop.
-  Accumulates multiline input when the scanner reports an incomplete block
-  (`scan.ErrBlock`).
+  Feeds input line by line to `Eval`. When `Eval` returns `scan.ErrBlock`
+  (the scanner detected an unbalanced block), the prompt switches to `>>`
+  and the line is accumulated for retry on the next input.
 
 ## Internal design
 
 ### Incremental evaluation
 
 `Eval` tracks the previous lengths of `Data` and `Code`. On each call it
-compiles new source, then pushes only the delta to the VM. This allows the
-REPL to build up state across evaluations without recompiling everything.
+removes the trailing `Exit` instruction added by the previous run
+(`PopExit`), compiles new source, then pushes only the delta to the VM.
+This allows the REPL to build up state across evaluations without
+recompiling everything. The entry point for the new code is
+`max(codeOffset, i.Entry)`, so module-level init code runs before `main`.
 
 ### Lazy fixpoint (via compiler)
 

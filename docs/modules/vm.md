@@ -14,7 +14,9 @@ value representation) and `Type` (runtime type metadata).
 ### Execution
 
 - **`Machine`** -- VM state: `code`, `mem`, `ip`, `fp`, closure `env`,
-  panic state, per-frame metadata, and debug state.
+  panic state (`panicking`, `panicVal`), per-frame metadata
+  (`frameInfo`, `captured`), a `funcFields` side-table for parscan funcs
+  stored in native struct fields, and debug state.
 - **`Run() error`** -- main execution loop. Dispatches on `Op` via a
   switch statement.
 - **`Push(vals ...Value)`** / **`Pop() Value`** -- stack manipulation.
@@ -38,29 +40,43 @@ value representation) and `Type` (runtime type metadata).
 
 - **`Type`** -- runtime type: `Rtype reflect.Type`, `Name`, `PkgPath`,
   `Methods []Method`, `IfaceMethods []IfaceMethod`,
-  `Embedded []EmbeddedField`.
+  `Embedded []EmbeddedField`, `Params []*Type`, `Fields []*Type`.
 - **`Iface{Typ *Type, Val Value}`** -- boxed interface value.
 - **`Closure{Code int, Env []*Value}`** -- captured function.
+- **`ParscanFunc{Val Value, GF reflect.Value}`** -- wraps a parscan
+  function value alongside its `reflect.MakeFunc`-generated Go wrapper.
+  Stored when a parscan func is assigned to a struct field of func type
+  so that native Go callbacks (e.g. HTTP handlers) can call back into
+  the VM. `WrapFunc` creates it; the inner VM always dispatches via `Val`.
 
 ### Opcodes
 
-- **`Op`** (int enum) -- 170+ opcodes organized in groups:
+- **`Op`** (int enum) -- 200+ opcodes organized in groups:
   - Stack/control: `Nop`, `Pop`, `Push`, `Swap`, `Exit`, `Jump`,
-    `JumpTrue`, `JumpFalse`, `Call`, `Return`.
-  - Memory: `Get`, `Set`, `Addr`, `Deref`, `Grow`.
-  - Arithmetic: `Add`, `Sub`, `Mul`, `Neg`, `Equal`, `Greater`, `Lower`
-    (plus per-type variants: `AddInt`, `AddFloat64`, etc.).
+    `JumpTrue`, `JumpFalse`, `JumpSetTrue`, `JumpSetFalse`, `Call`,
+    `CallX`, `Return`.
+  - Memory: `Get`, `Set`, `SetS`, `Addr`, `Deref`, `DerefSet`, `Grow`.
+  - Arithmetic: `Add`, `Sub`, `Mul`, `Neg`, `Equal`, `EqualSet`,
+    `Greater`, `Lower` (generic); per-type variants:
+    `AddInt`...`AddFloat64`, `SubInt`...`SubFloat64`,
+    `MulInt`...`MulFloat64`, `DivInt`...`DivFloat64`,
+    `RemInt`...`RemUint64`, `NegInt`...`NegFloat64`,
+    `GreaterInt`...`GreaterFloat64`, `LowerInt`...`LowerFloat64`.
   - Immediate: `AddIntImm`, `SubIntImm`, `MulIntImm`, `GreaterIntImm`,
-    `LowerIntImm`, `EqualIntImm`.
-  - Bitwise: `BitAnd`, `BitOr`, `BitXor`, `BitShl`, `BitShr`, `BitComp`.
+    `GreaterUintImm`, `LowerIntImm`, `LowerUintImm`, `EqualIntImm`.
+  - Bitwise: `BitAnd`, `BitOr`, `BitXor`, `BitAndNot`, `BitShl`,
+    `BitShr`, `BitComp`.
   - Collections: `Index`, `IndexSet`, `MapIndex`, `MapSet`, `Slice`,
-    `Field`, `FieldSet`.
-  - Types: `Convert`, `TypeAssert`, `TypeBranch`, `New`, `MkSlice`,
-    `Composite`.
-  - Builtins: `Append`, `CopySlice`, `DeleteMap`, `Cap`, `PtrNew`,
-    `MkMap`.
+    `Slice3`, `Field`, `FieldSet`, `FieldFset`.
+  - Types: `Convert`, `TypeAssert`, `TypeBranch`, `Fnew`, `FnewE`,
+    `New`, `MkSlice`, `MkMap`.
+  - Builtins: `Append`, `CopySlice`, `DeleteMap`, `Cap`, `Len`,
+    `PtrNew`.
   - Closures: `HAlloc`, `HGet`, `HSet`, `HPtr`, `MkClosure`.
   - Interfaces: `IfaceWrap`, `IfaceCall`.
+  - Native interop: `WrapFunc` -- wraps a parscan function value in a
+    `reflect.MakeFunc` adapter so it can be called by native Go code.
+    Produces a `ParscanFunc` on the stack.
   - Range: `Next`, `Next2`, `Pull`, `Pull2`, `Stop`.
   - Exceptions: `Panic`, `Recover`, `DeferPush`, `DeferRet`.
   - Debug: `Trap`.
@@ -77,13 +93,20 @@ mem[dataLen ..]        call stack (grows upward)
 ### Call frame
 
 ```
-[ ... args | retIP | prevFP | locals ... ]
-              ^
-              fp
+[ ... args | deferHead | retIP | prevFP | locals ... ]
+                                  ^
+                                  fp  (frameOverhead = 3 slots)
 ```
 
-`Call` pushes `retIP` and `prevFP`, then sets `fp` past them. `Return`
-restores `fp` and `ip` from the frame.
+`Call` pushes `deferHead`, `retIP`, and `prevFP`, then sets `fp` past all
+three. `Return` inspects `deferHead` (at `mem[fp-3]`) for pending deferred
+calls before restoring `fp` and `ip`.
+
+- `mem[fp-3]` -- `deferHead`: index of the topmost deferred-call record
+  (0 = none). Updated by `DeferPush`.
+- `mem[fp-2]` -- `retIP`: return address (or `deferSentinelIP = -1` for
+  a deferred frame).
+- `mem[fp-1]` -- `prevFP`: the caller's frame pointer.
 
 ### Per-type numeric ops
 
@@ -106,6 +129,26 @@ and restores the caller's env on return. `HGet`/`HSet` read/write through
 - `Recover` clears the panic state if called inside a deferred function.
 - `DeferRet` is emitted at function exit to run deferred functions in LIFO
   order.
+
+### Native Go interop (WrapFunc / CallFunc)
+
+Parscan functions are integers (code addresses) or `Closure` values at
+runtime. Neither can be stored directly in a typed Go `func` field via
+`reflect.Set`. Two mechanisms bridge this gap:
+
+1. **`funcFields` side-table.** The VM maintains a `map[uintptr]Value`
+   keyed by the address of the target reflect.Value. When the compiler
+   detects assignment of a parscan func to a native struct field, it emits
+   an instruction that stores the parscan func into `funcFields` while
+   writing a zero/stub into the actual field.
+
+2. **`WrapFunc` opcode.** Converts the parscan func on the stack into a
+   `ParscanFunc` by calling `reflect.MakeFunc` with a trampoline that
+   re-enters the VM via `Machine.CallFunc`. The resulting `GF`
+   `reflect.Value` is assignable to any Go func field of the matching type.
+   `CallFunc` is safe for single-threaded synchronous callbacks; concurrent
+   goroutines calling different wrapped functions on the same `Machine` are
+   not safe.
 
 ### Trap and interactive debug mode
 

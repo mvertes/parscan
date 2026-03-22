@@ -62,10 +62,13 @@ mem[dataLen ..]       call stack (grows upward)
 Each call frame is laid out as:
 
 ```
-[ ... args | retIP | prevFP | locals ... ]
-              ^
-              fp points here (after retIP, prevFP)
+[ ... args | deferHead | retIP | prevFP | locals ... ]
+                                  ^
+                                  fp points here (past deferHead, retIP, prevFP)
 ```
+
+`frameOverhead = 3` accounts for the three bookkeeping slots. `deferHead`
+holds the index of the topmost deferred-call record (0 = none).
 
 - `Get Global N` reads `mem[N]`
 - `Get Local N` reads `mem[fp - 1 + N]`
@@ -92,6 +95,11 @@ Each call frame is laid out as:
 5. **Per-type opcodes** -- 12 numeric type variants for arithmetic ops,
    plus immediate-operand variants that fold `Push+BinOp` into one instruction.
    See [ADR-005](decisions/ADR-005-per-type-opcodes.md).
+
+6. **Native Go interop** -- parscan functions are wrapped via `WrapFunc`
+   and `reflect.MakeFunc` to be callable from native Go code. A `funcFields`
+   side-table handles assignment to typed struct func fields.
+   See [ADR-006](decisions/ADR-006-native-func-interop.md).
 
 ## Closure and interface dispatch
 
