@@ -32,10 +32,11 @@ type Compiler struct {
 	Data    []vm.Value // produced data, will be at the bottom of VM stack
 	Entry   int        // offset in Code to start execution from
 
-	strings    map[string]int // locations of strings in Data
-	methodIDs  map[string]int // global method ID by method name
-	posBase    int            // base offset for current source (from Sources.Add)
-	savedSlots []savedSlot    // data slot updates to restore on rollback
+	strings    map[string]int   // locations of strings in Data
+	methodIDs  map[string]int   // global method ID by method name
+	typeIdxs   map[*vm.Type]int // dedup cache for typeIndex, keyed by parscan type pointer
+	posBase    int              // base offset for current source (from Sources.Add)
+	savedSlots []savedSlot      // data slot updates to restore on rollback
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
@@ -45,6 +46,7 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 		Entry:     -1,
 		strings:   map[string]int{},
 		methodIDs: map[string]int{},
+		typeIdxs:  map[*vm.Type]int{},
 	}
 }
 
@@ -140,9 +142,24 @@ func (c *Compiler) methodID(name string) int {
 }
 
 func (c *Compiler) typeIndex(typ *vm.Type) int {
+	if i, ok := c.typeIdxs[typ]; ok {
+		return i
+	}
 	i := len(c.Data)
 	c.Data = append(c.Data, vm.ValueOf(typ))
+	c.typeIdxs[typ] = i
 	return i
+}
+
+// findTypeSym searches the symbol table for the parscan *vm.Type registered under rtype.
+// Returns nil if not found (e.g. rtype is a native Go type with no parscan-level info).
+func (c *Compiler) findTypeSym(rtype reflect.Type) *vm.Type {
+	for _, sym := range c.Symbols {
+		if sym.Kind == symbol.Type && sym.Type != nil && sym.Type.Rtype == rtype {
+			return sym.Type
+		}
+	}
+	return nil
 }
 
 // registerMethods registers promoted methods from embedded types into typ so that
@@ -153,12 +170,8 @@ func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 	isPtr := typ.Rtype.Kind() == reflect.Pointer
 	lookupTyp := typ
 	if isPtr {
-		elemRtype := typ.Rtype.Elem()
-		for _, sym := range c.Symbols {
-			if sym.Kind == symbol.Type && sym.Type != nil && sym.Type.Rtype == elemRtype {
-				lookupTyp = sym.Type
-				break
-			}
+		if t := c.findTypeSym(typ.Rtype.Elem()); t != nil {
+			lookupTyp = t
 		}
 	}
 	for _, im := range iface.IfaceMethods {
@@ -628,6 +641,22 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				if typ == nil {
 					return goparser.ErrUndefined{Name: s.Name}
 				}
+				// Wrap concrete args in Iface when the parameter expects an interface type.
+				// Use parscan-level Params types (which carry IfaceMethods) when available.
+				nIn := typ.Rtype.NumIn()
+				for k := 0; k < narg && k < nIn; k++ {
+					argSym := stack[len(stack)-narg+k]
+					if argSym.Type == nil || argSym.Type.IsInterface() {
+						continue
+					}
+					var ifaceTyp *vm.Type
+					if k < len(typ.Params) {
+						ifaceTyp = typ.Params[k]
+					} else {
+						ifaceTyp = &vm.Type{Rtype: typ.Rtype.In(k)}
+					}
+					c.emitIfaceWrapAt(t, ifaceTyp, argSym.Type, narg-1-k)
+				}
 				// Pop function and input arg symbols, push return value symbols.
 				pop()
 				for i := 0; i < narg; i++ {
@@ -687,6 +716,13 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				switch ts.Type.Rtype.Kind() {
 				case reflect.Struct:
 					if ks.Value.CanInt() {
+						// Wrap parscan func in a real Go func for native callbacks.
+						fieldIdx := int(ks.Value.Int()) //nolint:gosec
+						if fieldIdx < len(ts.Type.Fields) {
+							if ft := ts.Type.Fields[fieldIdx]; ft != nil && ft.Rtype.Kind() == reflect.Func {
+								c.emit(t, vm.WrapFunc, c.typeIndex(ft))
+							}
+						}
 						c.emit(t, vm.FieldFset)
 					}
 				case reflect.Array, reflect.Slice:
@@ -699,6 +735,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 			case symbol.Unset:
 				j := top().Type.FieldIndex(ks.Name)
+				// Wrap parscan func in a real Go func for native callbacks.
+				if ft := ts.Type.FieldType(ks.Name); ft != nil && ft.Rtype.Kind() == reflect.Func {
+					c.emit(t, vm.WrapFunc, c.typeIndex(ft))
+				}
 				c.emit(t, vm.FieldSet, j...)
 			}
 
@@ -1139,11 +1179,16 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					typ = typ.Elem()
 				}
 				if f, ok := typ.FieldByName(t.Str[1:]); ok {
-					if isPtr {
-						push(&symbol.Symbol{Kind: symbol.Var, Type: s.Type.Elem().FieldType(t.Str[1:])})
-					} else {
-						push(&symbol.Symbol{Kind: symbol.Var, Type: s.Type.FieldType(t.Str[1:])})
+					// Look up struct type in symbol table to get parscan-level Fields/Params info.
+					structType := c.findTypeSym(typ)
+					if structType == nil {
+						if isPtr {
+							structType = s.Type.Elem()
+						} else {
+							structType = s.Type
+						}
 					}
+					push(&symbol.Symbol{Kind: symbol.Var, Type: structType.FieldType(t.Str[1:])})
 					c.emit(t, vm.Field, f.Index...)
 					break
 				}

@@ -1293,6 +1293,50 @@ func TestPanic(t *testing.T) {
 	})
 }
 
+func TestStructFuncField(t *testing.T) {
+	run(t, []etest{
+		{n: "assign_call", src: `
+type S struct { F func(int) int }
+var s S
+s.F = func(n int) int { return n * 2 }
+s.F(7)`, res: "14"},
+
+		{n: "literal", skip: true, src: `
+type S struct { F func(int) int }
+s := S{F: func(n int) int { return n + 1 }}
+s.F(10)`, res: "11"},
+
+		{n: "closure_capture", src: `
+type S struct { F func() int }
+x := 42
+var s S
+s.F = func() int { return x }
+s.F()`, res: "42"},
+
+		{n: "reassign", src: `
+type S struct { F func() int }
+var s S
+s.F = func() int { return 1 }
+s.F = func() int { return 2 }
+s.F()`, res: "2"},
+
+		{n: "iface_param", src: `
+type I interface { Hello() string }
+type T struct{ name string }
+func (t T) Hello() string { return t.name }
+type S struct { Handler func(I) string }
+var s S
+s.Handler = func(i I) string { return i.Hello() }
+s.Handler(T{name: "world"})`, res: "world"},
+
+		{n: "native_call", src: `
+type S struct { F func(int) int }
+var s S
+s.F = func(n int) int { return n * 3 }
+s.F(5)`, res: "15"},
+	})
+}
+
 func TestBuiltin(t *testing.T) {
 	run(t, []etest{
 		{n: "len_slice", src: `a := []int{1, 2, 3}; len(a)`, res: "3"},

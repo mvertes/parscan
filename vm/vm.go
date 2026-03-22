@@ -97,6 +97,7 @@ const (
 	Cap                    // -- x ; x = cap(mem[sp-$0])
 	PtrNew                 // -- ptr ; ptr = new(T), type at mem[$0]
 	Trap                   // -- ; pause VM execution and enter debug mode
+	WrapFunc               // parscanFuncVal -- ParscanFunc ; wrap parscan func in reflect.MakeFunc for native callbacks; $0=typeIdx
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -264,6 +265,7 @@ type Machine struct {
 	code     Code       // code to execute
 	mem      []Value    // memory, as a stack
 	ip, fp   int        // instruction pointer and frame pointer
+	dataLen  int        // number of global data slots in mem (set by Push)
 	env      []*Value   // active closure's captured cells (nil for plain functions)
 	captured [][]*Value // saved env per call frame
 	// flags  uint      // to set options such as restrict CallX, etc...
@@ -271,6 +273,10 @@ type Machine struct {
 	panicking bool  // true while unwinding due to panic
 	panicVal  Value // value passed to panic()
 	frameInfo []int // per call frame: nret | (numIn << 16), parallel to captured
+
+	// funcFields maps struct func field addresses to parscan func values (int code addresses
+	// or Closures). Parscan funcs cannot be stored directly in typed Go func fields via reflect.
+	funcFields map[uintptr]Value
 
 	debugInfoFn func() *DebugInfo // builds DebugInfo on demand (breaks vm->comp cycle)
 	debugIn     io.Reader         // debug command input (nil = os.Stdin)
@@ -348,11 +354,17 @@ func (m *Machine) Run() (err error) {
 					mem[sp-1] = Value{ref: v.Reflect().Addr()}
 				}
 			case Set:
-				assignSlot(&mem[c.Arg[0]*(fp-1)+c.Arg[1]], mem[sp-1])
+				m.assignSlot(&mem[c.Arg[0]*(fp-1)+c.Arg[1]], mem[sp-1])
 				mem = mem[:sp-1]
 			case Call:
 				narg := c.Arg[0]
 				fval := mem[sp-1-narg]
+				// If fval is a struct func field, look up the parscan func for fast dispatch.
+				if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
+					if pf, ok := m.funcFields[fval.ref.UnsafeAddr()]; ok {
+						fval = pf
+					}
+				}
 				prevEnv := m.env
 				var nip int
 				if isNum(fval.ref.Kind()) {
@@ -599,18 +611,22 @@ func (m *Machine) Run() (err error) {
 				mem = append(mem, NewValue(mem[c.Arg[0]].ref.Type().Elem(), c.Arg[1:]...))
 			case Field:
 				fv := forceSettable(reflect.Indirect(mem[sp-1].ref).FieldByIndex(c.Arg))
-				if isNum(fv.Kind()) {
+				switch {
+				case isNum(fv.Kind()):
 					// Preserve addressable ref for write-through on struct field mutations.
 					mem[sp-1] = Value{num: numBits(fv), ref: fv}
-				} else {
+				case fv.Kind() == reflect.Func && fv.CanAddr():
+					// Always return addressable ref so SetS can update funcFields on reassignment.
+					// Call checks funcFields for fast parscan dispatch.
+					mem[sp-1] = Value{ref: fv}
+				default:
 					mem[sp-1] = Value{ref: fv}
 				}
 			case FieldSet:
-				forceSettable(mem[sp-2].ref.FieldByIndex(c.Arg)).Set(mem[sp-1].Reflect())
+				m.setFuncField(forceSettable(mem[sp-2].ref.FieldByIndex(c.Arg)), mem[sp-1])
 				mem = mem[:sp-1]
 			case FieldFset:
-				fv := forceSettable(mem[sp-3].ref.Field(int(mem[sp-2].num))) //nolint:gosec
-				fv.Set(mem[sp-1].Reflect())
+				m.setFuncField(forceSettable(mem[sp-3].ref.Field(int(mem[sp-2].num))), mem[sp-1]) //nolint:gosec
 				mem = mem[:sp-2]
 			case Jump:
 				ip += c.Arg[0]
@@ -674,7 +690,7 @@ func (m *Machine) Run() (err error) {
 					if c.Arg[1] == Local {
 						addr += fp - 1
 					}
-					assignSlot(&mem[addr], fromReflect(k))
+					m.assignSlot(&mem[addr], fromReflect(k))
 				} else {
 					ip += c.Arg[0]
 					continue
@@ -685,8 +701,8 @@ func (m *Machine) Run() (err error) {
 					if c.Arg[1] == Local {
 						base = fp - 1
 					}
-					assignSlot(&mem[base+c.Arg[2]], fromReflect(k))
-					assignSlot(&mem[base+c.Arg[3]], fromReflect(v))
+					m.assignSlot(&mem[base+c.Arg[2]], fromReflect(k))
+					m.assignSlot(&mem[base+c.Arg[3]], fromReflect(v))
 				} else {
 					ip += c.Arg[0]
 					continue
@@ -727,6 +743,22 @@ func (m *Machine) Run() (err error) {
 					Value{},                           // returnIP placeholder, filled by Return
 				)
 				mem[fp-3].num = uint64(sp + 2) //nolint:gosec // dh = index of returnIP slot
+
+			case WrapFunc:
+				// Wrap the parscan func value on the stack in a reflect.MakeFunc for native Go callbacks.
+				// The original parscan func is preserved in ParscanFunc.Val for fast in-VM dispatch.
+				// CallFunc is re-entrant for single-threaded synchronous callbacks; concurrent goroutine
+				// calls to different wrapped functions on the same Machine are NOT safe.
+				typ := mem[c.Arg[0]].ref.Interface().(*Type)
+				fval := mem[sp-1]
+				goFunc := reflect.MakeFunc(typ.Rtype, func(args []reflect.Value) []reflect.Value {
+					out, err := m.CallFunc(fval, typ.Rtype, args)
+					if err != nil {
+						panic(err)
+					}
+					return out
+				})
+				mem[sp-1] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: goFunc})}
 
 			case Trap:
 				m.trapOrig = ip + 1 // resume ip after Trap instruction
@@ -986,7 +1018,7 @@ func (m *Machine) Run() (err error) {
 			case SetS:
 				n := c.Arg[0]
 				for i := 0; i < n; i++ {
-					assignSlot(&mem[sp-n-i-1], mem[sp-n+i])
+					m.assignSlot(&mem[sp-n-i-1], mem[sp-n+i])
 				}
 				mem = mem[:sp-n-1]
 
@@ -1452,10 +1484,79 @@ func (m *Machine) PushCode(code ...Instruction) (p int) {
 func (m *Machine) SetIP(ip int) { m.ip = ip }
 
 // Push pushes data values on top of machine memory stack.
+// It also records the new length as the global data boundary (dataLen),
+// since globals are always loaded via Push before Run is called.
 func (m *Machine) Push(v ...Value) (l int) {
 	l = len(m.mem)
 	m.mem = append(m.mem, v...)
+	m.dataLen = len(m.mem)
 	return l
+}
+
+// CallFunc executes a parscan function value with the given arguments and returns the results.
+// It saves and restores all execution state so it can be called from native Go callbacks
+// (reflect.MakeFunc wrappers) even while Run is in progress (single-threaded re-entrancy).
+func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Value) ([]reflect.Value, error) {
+	// Save all volatile execution state.
+	savedMem := m.mem
+	savedIP := m.ip
+	savedFP := m.fp
+	savedEnv := m.env
+	savedCaptured := m.captured
+	savedFrameInfo := m.frameInfo
+	savedPanicking := m.panicking
+	savedPanicVal := m.panicVal
+	savedCodeLen := len(m.code)
+
+	defer func() {
+		m.mem = savedMem
+		m.ip = savedIP
+		m.fp = savedFP
+		m.env = savedEnv
+		m.captured = savedCaptured
+		m.frameInfo = savedFrameInfo
+		m.panicking = savedPanicking
+		m.panicVal = savedPanicVal
+		m.code = m.code[:savedCodeLen]
+	}()
+
+	// Reset per-call state.
+	m.env = nil
+	m.captured = nil
+	m.frameInfo = nil
+	m.panicking = false
+	m.panicVal = Value{}
+
+	// Fresh stack: copy globals to a new backing array so the outer Run's mem is unaffected.
+	m.mem = append([]Value(nil), m.mem[:m.dataLen]...)
+
+	// Push func value and args.
+	m.mem = append(m.mem, fval)
+	for _, a := range args {
+		m.mem = append(m.mem, fromReflect(a))
+	}
+
+	// Temporarily append Call + Exit to drive the function to completion.
+	narg := funcType.NumIn()
+	nret := funcType.NumOut()
+	callIP := len(m.code)
+	m.code = append(m.code,
+		Instruction{Op: Call, Arg: []int{narg, nret}},
+		Instruction{Op: Exit},
+	)
+	m.ip = callIP
+	m.fp = 0
+
+	if err := m.Run(); err != nil {
+		return nil, err
+	}
+
+	// Return values land at m.mem[dataLen:dataLen+nret] after the call frame tears down.
+	out := make([]reflect.Value, nret)
+	for i := range out {
+		out[i] = m.mem[m.dataLen+i].Reflect()
+	}
+	return out, nil
 }
 
 // Top returns (but not remove)  the value on the top of machine stack.
@@ -1501,9 +1602,40 @@ func forceSettable(fv reflect.Value) reflect.Value {
 	return fv
 }
 
+// setFuncField stores val into a settable struct field fv.
+// If val is a ParscanFunc (from WrapFunc), the original parscan func goes into the
+// funcFields side table (for in-VM dispatch) and the Go func is set on the field
+// (for native Go callbacks). Handles both addressable and plain reflect.Func fields.
+func (m *Machine) setFuncField(fv reflect.Value, val Value) {
+	if pf, ok := val.ref.Interface().(ParscanFunc); ok && fv.CanAddr() {
+		if m.funcFields == nil {
+			m.funcFields = make(map[uintptr]Value)
+		}
+		m.funcFields[fv.UnsafeAddr()] = pf.Val
+		fv.Set(pf.GF)
+	} else if fv.Kind() == reflect.Func && fv.CanAddr() {
+		if m.funcFields == nil {
+			m.funcFields = make(map[uintptr]Value)
+		}
+		m.funcFields[fv.UnsafeAddr()] = val
+	} else {
+		fv.Set(val.Reflect())
+	}
+}
+
 // assignSlot writes src into the memory slot dst, updating both num and ref
 // for numeric types to maintain the dual-storage invariant.
-func assignSlot(dst *Value, src Value) {
+func (m *Machine) assignSlot(dst *Value, src Value) {
+	// Struct func fields can't hold parscan func values (int code addresses or Closures)
+	// via reflect.Set. Store them in a side table keyed by the field's memory address.
+	if dst.ref.Kind() == reflect.Func && dst.ref.CanAddr() {
+		if m.funcFields == nil {
+			m.funcFields = make(map[uintptr]Value)
+		}
+		m.funcFields[dst.ref.UnsafeAddr()] = src
+		dst.num = src.num
+		return
+	}
 	if isNum(src.ref.Kind()) {
 		dst.num = src.num
 		if dst.ref.CanSet() {

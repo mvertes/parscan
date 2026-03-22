@@ -28,6 +28,8 @@ type Type struct {
 	IfaceMethods []IfaceMethod   // non-nil for interface types: required method signatures
 	Methods      []Method        // concrete types: methods[methodID] = code location + receiver path
 	Embedded     []EmbeddedField // parscan types of anonymous (embedded) fields, for promoted method lookup
+	Params       []*Type         // parscan-level parameter types for func types (nil for non-func or if unknown)
+	Fields       []*Type         // parscan-level field types for struct types, parallel to reflect visible fields
 }
 
 // IfaceMethod describes a method required by an interface type.
@@ -44,6 +46,15 @@ type Iface struct {
 }
 
 var ifaceRtype = reflect.TypeOf(Iface{})
+
+// ParscanFunc bundles a parscan func value with its native Go reflect.MakeFunc wrapper.
+// Stored when a parscan func is assigned to a struct field of func type:
+// GF is callable from native Go (HTTP handlers, callbacks, etc.);
+// Val is the original parscan func dispatched directly by the VM.
+type ParscanFunc struct {
+	Val Value         // parscan func (int code addr or Closure)
+	GF  reflect.Value // reflect.MakeFunc wrapper for native Go callbacks
+}
 
 // IsInterface reports whether t represents an interface type.
 func (t *Type) IsInterface() bool {
@@ -396,7 +407,7 @@ func FuncOf(arg, ret []*Type, variadic bool) *Type {
 	for i, e := range ret {
 		r[i] = e.Rtype
 	}
-	return &Type{Rtype: reflect.FuncOf(a, r, variadic)}
+	return &Type{Rtype: reflect.FuncOf(a, r, variadic), Params: arg}
 }
 
 // StructOf returns the struct type with the given field types and embedded field info.
@@ -412,7 +423,7 @@ func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 		rf[i].Type = f.Rtype
 		rf[i].Anonymous = embSet[i]
 	}
-	return &Type{Rtype: reflect.StructOf(rf), Embedded: embedded}
+	return &Type{Rtype: reflect.StructOf(rf), Embedded: embedded, Fields: fields}
 }
 
 // FieldIndex returns the index of struct field name.
@@ -425,10 +436,13 @@ func (t *Type) FieldIndex(name string) []int {
 	return nil
 }
 
-// FieldType returns the type of struct field name.
+// FieldType returns the type of struct field name, using parscan-level info when available.
 func (t *Type) FieldType(name string) *Type {
-	for _, f := range reflect.VisibleFields(t.Rtype) {
+	for i, f := range reflect.VisibleFields(t.Rtype) {
 		if f.Name == name {
+			if i < len(t.Fields) {
+				return t.Fields[i]
+			}
 			return &Type{Name: f.Name, PkgPath: f.PkgPath, Rtype: f.Type}
 		}
 	}

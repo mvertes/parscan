@@ -168,7 +168,11 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				if len(name) > 0 && unicode.IsLower(rune(name[0])) {
 					pkgPath = p.pkgName
 				}
-				fields = append(fields, &vm.Type{Name: name, PkgPath: pkgPath, Rtype: types[i].Rtype})
+				// Copy parscan-level type (preserving Params, IfaceMethods, etc.) and set field name.
+				ft := *types[i]
+				ft.Name = name
+				ft.PkgPath = pkgPath
+				fields = append(fields, &ft)
 			}
 		}
 		return vm.StructOf(fields, embedded), 2, nil
