@@ -100,9 +100,12 @@ func TestAssign(t *testing.T) {
 		{n: "#05", src: "func f() (int, int) {return 2, 3}; a, b := f(); b", res: "3"},
 		{n: "#06", src: "func f() (int, int) {return 2, 3}; var a, b = f(); b", res: "3"},
 		{n: "#07", src: "func f() (int, int) {return 2, 3}; _, b := f(); b", res: "3"},
-		{n: "#08", src: "a, b := 1, 2; a, b = b, a; 10*a+b", res: "21"},
-		{n: "#09", src: "func f() int { a, b := 1, 2; a, b = b, a; return 10*a+b }; f()", res: "21"},
-		{n: "#10", src: "var g int; func f() int { l := 1; g, l = l, g; return 10*g+l }; g = 2; f()", res: "12"},
+		{n: "#08", src: "func f() (int, int, int) {return 1, 2, 3}; a, b, c := f(); a*100+b*10+c", res: "123"},
+		{n: "#09", src: "func f(x int) (int, int) {return x, x+1}; a, b := f(5); a*10+b", res: "56"},
+		{n: "#10", src: "func f() (int, int) {return 2, 3}; func g() int { a, b := f(); return a+b }; g()", res: "5"},
+		{n: "#11", src: "a, b := 1, 2; a, b = b, a; 10*a+b", res: "21"},
+		{n: "#12", src: "func f() int { a, b := 1, 2; a, b = b, a; return 10*a+b }; f()", res: "21"},
+		{n: "#13", src: "var g int; func f() int { l := 1; g, l = l, g; return 10*g+l }; g = 2; f()", res: "12"},
 	})
 }
 
@@ -695,8 +698,7 @@ func f(a []int) interface{} { return cap(a) }
 a := []int{1, 2, 3}
 f(a).(int)`, res: "3"},
 
-		// multi-value return where first result is interface{} (multi-value comma parsing not yet supported)
-		{n: "iface_return_multi", skip: true, src: `
+		{n: "iface_return_multi", src: `
 func f(x int) (interface{}, int) { return x, x + 1 }
 a, b := f(5)
 a.(int) + b`, res: "11"},
