@@ -1205,8 +1205,15 @@ func (p *Parser) parseLabel(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 	if l := len(in); l > 1 {
-		if out, err = p.parseExpr(in[1:], ""); err != nil {
-			return out, err
+		for _, val := range in[1:].Split(lang.Comma) {
+			if len(val) == 0 {
+				continue
+			}
+			toks, err := p.parseExpr(val, "")
+			if err != nil {
+				return out, err
+			}
+			out = append(out, toks...)
 		}
 	} else {
 		if l == 0 {
@@ -1221,7 +1228,7 @@ func (p *Parser) parseReturn(in Tokens) (out Tokens, err error) {
 	// TODO: the function symbol should be already present in the parser context.
 	// otherwise no way to handle anonymous func.
 	s := p.function
-	in[0].Arg = []any{s.Type.Rtype.NumOut(), s.Type.Rtype.NumIn(), s.Type}
+	in[0].Arg = []any{s.Type.Rtype.NumOut(), s.Type}
 	out = append(out, in[0])
 	return out, err
 }

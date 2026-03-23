@@ -677,9 +677,6 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					callNarg = nFixed + 1
 				}
 				c.emit(t, vm.Call, callNarg, nret)
-				if typ.Rtype.NumOut() == 0 && callNarg >= typ.Rtype.NumIn() {
-					c.emit(t, vm.Pop, 1) // pop stale func value left by Return for void calls
-				}
 				break
 			}
 			fallthrough // A symValue must be called through callX.
@@ -1276,18 +1273,18 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.DeferPush, narg, isX)
 
 		case lang.Return:
-			numOut, numIn := t.Arg[0].(int), t.Arg[1].(int)
+			numOut := t.Arg[0].(int)
 			if err := checkTopN(numOut); err != nil {
 				return err
 			}
 			// Wrap concrete return values in Iface when the function return type is an interface.
-			if funcType, ok := t.Arg[2].(*vm.Type); ok {
+			if funcType, ok := t.Arg[1].(*vm.Type); ok {
 				for i := 0; i < numOut; i++ {
 					stackSym := stack[len(stack)-numOut+i]
 					c.emitIfaceWrapAt(t, funcType.Out(i), stackSym.Type, numOut-1-i)
 				}
 			}
-			c.emit(t, vm.Return, numOut, numIn)
+			c.emit(t, vm.Return)
 
 		case lang.Slice:
 			var coll *symbol.Symbol

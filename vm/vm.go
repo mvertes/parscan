@@ -67,7 +67,7 @@ const (
 	Push                   // -- v
 	Pull                   // a -- a s n; pull iterator next and stop function
 	Pull2                  // a -- a s n; pull iterator next and stop function
-	Return                 // [r1 .. ri] -- ; exit frame: sp = fp, fp = pop
+	Return                 // [r1 .. ri] -- ; exit frame, nret and callNarg from frameInfo
 	Set                    // v --  ; mem[$1,$2] = v
 	SetS                   // dest val -- ; dest.Set(val)
 	Slice                  // a l h -- a; a = a [l:h]
@@ -553,8 +553,8 @@ func (m *Machine) Run() (err error) {
 						ip = panicUnwindIP
 						continue
 					}
-					mem[sp-1] = boolVal(false)
-					mem = append(mem, NewValue(dstTyp.Rtype))
+					mem[sp-1] = NewValue(dstTyp.Rtype)
+					mem = append(mem, boolVal(false))
 					break
 				}
 				concrete := ifc.IfaceVal()
@@ -572,8 +572,8 @@ func (m *Machine) Run() (err error) {
 						result = ifc
 					}
 					if okForm {
-						mem[sp-1] = boolVal(true)
-						mem = append(mem, result)
+						mem[sp-1] = result
+						mem = append(mem, boolVal(true))
 					} else {
 						mem[sp-1] = result
 					}
@@ -585,8 +585,8 @@ func (m *Machine) Run() (err error) {
 						ip = panicUnwindIP
 						continue
 					}
-					mem[sp-1] = boolVal(false)
-					mem = append(mem, NewValue(dstTyp.Rtype))
+					mem[sp-1] = NewValue(dstTyp.Rtype)
+					mem = append(mem, boolVal(false))
 				}
 
 			case TypeBranch: // Arg[0]=offset, Arg[1]=typeIdx (-1 for nil case)
@@ -789,6 +789,13 @@ func (m *Machine) Run() (err error) {
 				}
 
 			case Return:
+				// Read nret and callNarg from frameInfo (packed by Call).
+				nret, callNarg := 0, 0
+				if top := len(m.frameInfo) - 1; top >= 0 {
+					info := m.frameInfo[top]
+					nret = info & 0xFFFF
+					callNarg = info >> 16
+				}
 				// If there are pending defers in this frame, dispatch the top one (LIFO).
 				dh := int(mem[fp-3].num) //nolint:gosec
 				if dh != 0 {
@@ -797,7 +804,6 @@ func (m *Machine) Run() (err error) {
 					isX := packed&1 == 1
 					prevHead := int(mem[dh-1].num) //nolint:gosec
 					funcVal := mem[dh-narg-3]
-					nret := c.Arg[0]
 					if isX {
 						// Native function: call via reflect, discard results.
 						rin := make([]reflect.Value, narg)
@@ -847,8 +853,10 @@ func (m *Machine) Run() (err error) {
 				ip = int(mem[fp-2].num) //nolint:gosec
 				ofp := fp
 				fp = int(mem[fp-1].num) //nolint:gosec
-				nret := c.Arg[0]
-				newBase := ofp - nret - c.Arg[1] - 3
+				if top := len(m.frameInfo) - 1; top >= 0 {
+					m.frameInfo = m.frameInfo[:top]
+				}
+				newBase := ofp - callNarg - 4
 				copy(mem[newBase:], mem[sp-nret:sp])
 				newSP := newBase + nret
 				clear(mem[newSP:sp]) // clear stale slots so GC can reclaim references
@@ -857,9 +865,6 @@ func (m *Machine) Run() (err error) {
 					m.env = m.captured[top]
 					m.captured[top] = nil // clear for GC
 					m.captured = m.captured[:top]
-				}
-				if top := len(m.frameInfo) - 1; top >= 0 {
-					m.frameInfo = m.frameInfo[:top]
 				}
 				continue
 			case Slice:
@@ -1018,9 +1023,9 @@ func (m *Machine) Run() (err error) {
 			case SetS:
 				n := c.Arg[0]
 				for i := 0; i < n; i++ {
-					m.assignSlot(&mem[sp-n-i-1], mem[sp-n+i])
+					m.assignSlot(&mem[sp-2*n+i], mem[sp-n+i])
 				}
-				mem = mem[:sp-n-1]
+				mem = mem[:sp-2*n]
 
 				// Per-type Add.
 			case AddInt:
@@ -1414,7 +1419,7 @@ func (m *Machine) Run() (err error) {
 				ip = int(mem[fp-2].num) //nolint:gosec
 				ofp := fp
 				fp = int(mem[fp-1].num) //nolint:gosec
-				newBase := ofp - nret - numIn - 3
+				newBase := ofp - numIn - 4
 				newSP := newBase + nret
 				clear(mem[newBase:newSP]) // clear return slots
 				clear(mem[newSP:])        // clear stale slots
