@@ -276,6 +276,9 @@ func TestIf(t *testing.T) {
 		{n: "#03", src: "a := 0; if a == 1 { a = 2 } else if a == 2 { a = 3 } else { a = 1 }; a", res: "1"},
 		{n: "#04", src: "a := 1; if a > 0 && a < 2 { a = 3 }; a", res: "3"},
 		{n: "#05", src: "a := 1; if a < 0 || a < 2 { a = 3 }; a", res: "3"},
+		// nil interface from multi-return function assigned via if-init short decl
+		{n: "#06", src: `func f() (int, error) { return 3, nil }; r := 0; if a, err := f(); err != nil { r = 1 } else { r = a }; r`, res: "3"},
+		{n: "#07", src: `func f() (int, error) { return 0, nil }; func g() ([]int, error) { return []int{1,2}, nil }; r := 0; if a, err := f(); err != nil { r = a } else if _, err2 := g(); err2 != nil { r = 1 } else { r = 3 }; r`, res: "3"},
 	})
 }
 
