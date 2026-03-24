@@ -1007,7 +1007,11 @@ func (m *Machine) Run() (err error) {
 				mem = append(mem, Value{ref: reflect.New(typ)})
 			case Index:
 				idx := int(mem[sp-1].num) //nolint:gosec
-				mem[sp-2] = fromReflect(mem[sp-2].ref.Index(idx))
+				if mem[sp-2].ref.Kind() == reflect.String {
+					mem[sp-2] = Value{num: uint64(mem[sp-2].ref.String()[idx]), ref: zuint8}
+				} else {
+					mem[sp-2] = fromReflect(mem[sp-2].ref.Index(idx))
+				}
 				mem = mem[:sp-1]
 			case IndexSet:
 				idx := int(mem[sp-2].num) //nolint:gosec

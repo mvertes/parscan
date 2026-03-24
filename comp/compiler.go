@@ -331,6 +331,15 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emit(t, vm.Get, vm.Global, di)
 
 		case lang.String:
+			if t.Prefix() == "'" {
+				r, _, _, err2 := strconv.UnquoteChar(t.Block(), '\'')
+				if err2 != nil {
+					return err2
+				}
+				push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(r), Type: c.Symbols["rune"].Type})
+				c.emit(t, vm.Push, int(r))
+				break
+			}
 			s := t.Block()
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(s), Type: c.Symbols["string"].Type})
 			c.emit(t, vm.Get, vm.Global, c.stringIndex(s))
@@ -476,15 +485,23 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			pop()
 			s := pop()
-			if s.Type == nil {
+			vt := symbol.Vtype(s)
+			if vt == nil {
 				return goparser.ErrUndefined{Name: s.Name}
 			}
-			if s.Type.Rtype.Kind() == reflect.Map {
+			var elemType *vm.Type
+			switch vt.Rtype.Kind() {
+			case reflect.Map:
 				c.emit(t, vm.MapIndex)
-			} else {
+				elemType = vt.Elem()
+			case reflect.String:
 				c.emit(t, vm.Index)
+				elemType = c.Symbols["uint8"].Type
+			default:
+				c.emit(t, vm.Index)
+				elemType = vt.Elem()
 			}
-			push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type.Elem()})
+			push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
 
 		case lang.Greater:
 			if err := checkTopN(2); err != nil {
@@ -1258,8 +1275,20 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			n := t.Arg[0].(int)
 			// FIXME: handle all iterator types.
 			// set the correct type to the iterator variables.
-			switch typ := top().Type; typ.Rtype.Kind() {
-			case reflect.Array, reflect.Slice:
+			topSym := top()
+			vt := symbol.Vtype(topSym)
+			var rangeKind reflect.Kind
+			if vt != nil {
+				rangeKind = vt.Rtype.Kind()
+			}
+			switch rangeKind {
+			case reflect.Array, reflect.Slice, reflect.String:
+				var vType *vm.Type
+				if rangeKind == reflect.String {
+					vType = c.Symbols["rune"].Type
+				} else {
+					vType = vt.Elem()
+				}
 				switch n {
 				case 1:
 					k := stack[len(stack)-2]
@@ -1273,7 +1302,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				case 2:
 					k, v := stack[len(stack)-3], stack[len(stack)-2]
 					k.Type = c.Symbols["int"].Type
-					v.Type = typ.Elem()
+					v.Type = vType
 					if k.Kind == symbol.LocalVar {
 						c.emit(t, vm.New, k.Index, c.typeSym(k.Type).Index)
 						c.emit(t, vm.New, v.Index, c.typeSym(v.Type).Index)

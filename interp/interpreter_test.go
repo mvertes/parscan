@@ -296,6 +296,10 @@ func TestFor(t *testing.T) {
 		{n: "#09", src: "a:= 0; for i := 0; i < 10; i++ { if i < 5 {a++; continue}}; a", res: "5"},
 		{n: "#10", src: `a := 0; Outer: for i := 0; i < 3; i++ { for j := 0; j < 3; j++ { if j == 1 { continue Outer }; a++ } }; a`, res: "3"},
 		{n: "#11", src: `a := 0; Outer: for i := 0; i < 3; i++ { switch i { case 1: continue Outer }; a++ }; a`, res: "2"},
+		{n: "#12", src: `s := "abc"; b := 0; for i := range s { b += i }; b`, res: "3"},
+		{n: "#13", src: `s := "abc"; n := 0; for _, r := range s { n += int(r) }; n`, res: "294"},
+		{n: "#14", src: `const s = "ab"; b := 0; for i, r := range s { b += i + int(r) }; b`, res: "196"},
+		{n: "#15", src: `s := "a1b"; n := 0; for i, r := range s { if r == '1' { n = i } }; n`, res: "1"},
 	})
 }
 
@@ -1122,6 +1126,13 @@ func TestString(t *testing.T) {
 		{n: "slice_mid", src: `a := "hello world"; a[6:11]`, res: "world"},
 		{n: "slice_open_high", src: `a := "hello"; a[1:]`, res: "ello"},
 		{n: "slice_open_low", src: `a := "hello"; a[:3]`, res: "hel"},
+
+		{n: "index_var", src: `a := "hello"; a[1]`, res: "101"},
+		{n: "index_const", src: `const s = "hello"; s[1]`, res: "101"},
+
+		{n: "rune_lit", src: `'a'`, res: "97"},
+		{n: "rune_lit_escape", src: `'\n'`, res: "10"},
+		{n: "rune_compare", src: `var r rune = 97; r == 'a'`, res: "true"},
 	})
 }
 
