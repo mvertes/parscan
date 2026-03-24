@@ -67,7 +67,7 @@ const (
 	Push                   // -- v
 	Pull                   // a -- a s n; pull iterator next and stop function
 	Pull2                  // a -- a s n; pull iterator next and stop function
-	Return                 // [r1 .. ri] -- ; exit frame, nret and callNarg from frameInfo
+	Return                 // [r1 .. ri] -- ; exit frame, nret and callNarg from frames
 	Set                    // v --  ; mem[$1,$2] = v
 	SetS                   // dest val -- ; dest.Set(val)
 	Slice                  // a l h -- a; a = a [l:h]
@@ -261,18 +261,22 @@ func (i Instruction) String() (s string) {
 type Code []Instruction
 
 // Machine represents a virtual machine.
+// frame holds per-call-frame metadata saved on the caller side.
+type frame struct {
+	env  []*Value // caller's closure env (nil for plain functions)
+	info int      // nret | (narg << 16)
+}
+
 type Machine struct {
-	code     Code       // code to execute
-	mem      []Value    // memory, as a stack
-	ip, fp   int        // instruction pointer and frame pointer
-	dataLen  int        // number of global data slots in mem (set by Push)
-	env      []*Value   // active closure's captured cells (nil for plain functions)
-	captured [][]*Value // saved env per call frame
-	// flags  uint      // to set options such as restrict CallX, etc...
+	code    Code    // code to execute
+	mem     []Value // memory, as a stack
+	ip, fp  int     // instruction pointer and frame pointer
+	dataLen int     // number of global data slots in mem (set by Push)
+	env     []*Value // active closure's captured cells (nil for plain functions)
+	frames  []frame  // saved caller frames (one per call depth)
 
 	panicking bool  // true while unwinding due to panic
 	panicVal  Value // value passed to panic()
-	frameInfo []int // per call frame: nret | (numIn << 16), parallel to captured
 
 	// funcFields maps struct func field addresses to parscan func values (int code addresses
 	// or Closures). Parscan funcs cannot be stored directly in typed Go func fields via reflect.
@@ -383,8 +387,7 @@ func (m *Machine) Run() (err error) {
 					m.env = nil
 				}
 				nret := c.Arg[1]
-				m.captured = append(m.captured, prevEnv)
-				m.frameInfo = append(m.frameInfo, nret|narg<<16)
+				m.frames = append(m.frames, frame{env: prevEnv, info: nret | narg<<16})
 				mem = append(mem, Value{}, Value{num: uint64(ip + 1)}, Value{num: uint64(fp)}) //nolint:gosec // deferHead, retIP, prevFP
 				ip = nip
 				fp = sp + 3
@@ -789,10 +792,10 @@ func (m *Machine) Run() (err error) {
 				}
 
 			case Return:
-				// Read nret and callNarg from frameInfo (packed by Call).
+				// Read nret and callNarg from the current frame.
 				nret, callNarg := 0, 0
-				if top := len(m.frameInfo) - 1; top >= 0 {
-					info := m.frameInfo[top]
+				if top := len(m.frames) - 1; top >= 0 {
+					info := m.frames[top].info
 					nret = info & 0xFFFF
 					callNarg = info >> 16
 				}
@@ -843,8 +846,7 @@ func (m *Machine) Run() (err error) {
 					mem = append(mem, funcVal)
 					mem = append(mem, mem[dh-narg-2:dh-2]...)
 					mem = append(mem, Value{}, Value{num: deferSentinelBits}, Value{num: uint64(fp)}) //nolint:gosec
-					m.captured = append(m.captured, prevEnv)
-					m.frameInfo = append(m.frameInfo, 0)
+					m.frames = append(m.frames, frame{env: prevEnv})
 					fp = base + 1 + narg + 3
 					ip = nip
 					continue
@@ -853,19 +855,16 @@ func (m *Machine) Run() (err error) {
 				ip = int(mem[fp-2].num) //nolint:gosec
 				ofp := fp
 				fp = int(mem[fp-1].num) //nolint:gosec
-				if top := len(m.frameInfo) - 1; top >= 0 {
-					m.frameInfo = m.frameInfo[:top]
+				if top := len(m.frames) - 1; top >= 0 {
+					m.env = m.frames[top].env
+					m.frames[top].env = nil // clear for GC
+					m.frames = m.frames[:top]
 				}
 				newBase := ofp - callNarg - 4
 				copy(mem[newBase:], mem[sp-nret:sp])
 				newSP := newBase + nret
 				clear(mem[newSP:sp]) // clear stale slots so GC can reclaim references
 				mem = mem[:newSP]
-				if top := len(m.captured) - 1; top >= 0 {
-					m.env = m.captured[top]
-					m.captured[top] = nil // clear for GC
-					m.captured = m.captured[:top]
-				}
 				continue
 			case Slice:
 				low := int(mem[sp-2].num)  //nolint:gosec
@@ -1379,8 +1378,8 @@ func (m *Machine) Run() (err error) {
 					continue
 				}
 				// VM defer: store panicUnwindIP as return address, push frame.
-				top := len(m.frameInfo) - 1
-				nret := m.frameInfo[top] & 0xFFFF
+				top := len(m.frames) - 1
+				nret := m.frames[top].info & 0xFFFF
 				pip := int32(panicUnwindIP)
 				mem[dh].num = uint64(*(*uint32)(unsafe.Pointer(&pip))) | uint64(nret)<<32 //nolint:gosec
 				prevEnv := m.env
@@ -1402,8 +1401,7 @@ func (m *Machine) Run() (err error) {
 				mem = append(mem, funcVal)
 				mem = append(mem, mem[dh-narg-2:dh-2]...)
 				mem = append(mem, Value{}, Value{num: deferSentinelBits}, Value{num: uint64(fp)}) //nolint:gosec
-				m.captured = append(m.captured, prevEnv)
-				m.frameInfo = append(m.frameInfo, 0)
+				m.frames = append(m.frames, frame{env: prevEnv})
 				fp = base + 1 + narg + 3
 				ip = nip
 				continue
@@ -1411,11 +1409,13 @@ func (m *Machine) Run() (err error) {
 			// No more defers in this frame.
 			if !m.panicking {
 				// Recovered: tear down frame, return zero values to caller.
-				top := len(m.frameInfo) - 1
-				info := m.frameInfo[top]
-				nret := info & 0xFFFF
-				numIn := info >> 16
-				m.frameInfo = m.frameInfo[:top]
+				top := len(m.frames) - 1
+				f := m.frames[top]
+				nret := f.info & 0xFFFF
+				numIn := f.info >> 16
+				m.env = f.env
+				m.frames[top] = frame{} // clear for GC
+				m.frames = m.frames[:top]
 				ip = int(mem[fp-2].num) //nolint:gosec
 				ofp := fp
 				fp = int(mem[fp-1].num) //nolint:gosec
@@ -1424,18 +1424,15 @@ func (m *Machine) Run() (err error) {
 				clear(mem[newBase:newSP]) // clear return slots
 				clear(mem[newSP:])        // clear stale slots
 				mem = mem[:newSP]
-				if top := len(m.captured) - 1; top >= 0 {
-					m.env = m.captured[top]
-					m.captured[top] = nil
-					m.captured = m.captured[:top]
-				}
 				continue
 			}
 			// Still panicking: tear down frame, continue unwinding parent.
-			top := len(m.frameInfo) - 1
-			info := m.frameInfo[top]
-			numIn := info >> 16
-			m.frameInfo = m.frameInfo[:top]
+			top := len(m.frames) - 1
+			f := m.frames[top]
+			numIn := f.info >> 16
+			m.env = f.env
+			m.frames[top] = frame{} // clear for GC
+			m.frames = m.frames[:top]
 			ofp := fp
 			fp = int(mem[fp-1].num) //nolint:gosec
 			if fp == 0 {
@@ -1446,11 +1443,6 @@ func (m *Machine) Run() (err error) {
 			newBase := ofp - numIn - 3 - 1 // below func slot
 			clear(mem[newBase:])
 			mem = mem[:newBase]
-			if top := len(m.captured) - 1; top >= 0 {
-				m.env = m.captured[top]
-				m.captured[top] = nil
-				m.captured = m.captured[:top]
-			}
 			continue
 		}
 		if ip == trapIP {
@@ -1507,8 +1499,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	savedIP := m.ip
 	savedFP := m.fp
 	savedEnv := m.env
-	savedCaptured := m.captured
-	savedFrameInfo := m.frameInfo
+	savedFrames := m.frames
 	savedPanicking := m.panicking
 	savedPanicVal := m.panicVal
 	savedCodeLen := len(m.code)
@@ -1518,8 +1509,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 		m.ip = savedIP
 		m.fp = savedFP
 		m.env = savedEnv
-		m.captured = savedCaptured
-		m.frameInfo = savedFrameInfo
+		m.frames = savedFrames
 		m.panicking = savedPanicking
 		m.panicVal = savedPanicVal
 		m.code = m.code[:savedCodeLen]
@@ -1527,8 +1517,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 
 	// Reset per-call state.
 	m.env = nil
-	m.captured = nil
-	m.frameInfo = nil
+	m.frames = nil
 	m.panicking = false
 	m.panicVal = Value{}
 

@@ -140,10 +140,10 @@ func (m *Machine) DumpCallStack(w io.Writer, di *DebugInfo) {
 		return
 	}
 
-	_, _ = fmt.Fprintf(w, "=== Call Stack (%d frames) ===\n\n", len(m.frameInfo))
+	_, _ = fmt.Fprintf(w, "=== Call Stack (%d frames) ===\n\n", len(m.frames))
 
-	for depth := len(m.frameInfo) - 1; depth >= 0; depth-- {
-		info := m.frameInfo[depth]
+	for depth := len(m.frames) - 1; depth >= 0; depth-- {
+		info := m.frames[depth].info
 		nret := info & 0xFFFF
 		narg := info >> 16
 
