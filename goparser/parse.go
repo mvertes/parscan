@@ -512,7 +512,11 @@ func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
 					rhsTyp = elemTyp
 				}
 			}
-			for _, ct := range decl.Split(lang.Comma) {
+			// Right-to-left so a trailing type applies to all names (Go grammar: "a, b int").
+			parts := decl.Split(lang.Comma)
+			var lastTyp *vm.Type
+			for i := len(parts) - 1; i >= 0; i-- {
+				ct := parts[i]
 				if len(ct) == 0 {
 					continue
 				}
@@ -527,10 +531,14 @@ func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
 				if _, _, ok := p.Symbols.Get(rawName, p.scope); !ok {
 					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
 				}
-				// Use explicit type annotation if present, otherwise RHS type.
-				typ := rhsTyp
 				if len(ct) > 1 {
-					typ, _, _ = p.parseTypeExpr(ct[1:])
+					if t, _, _ := p.parseTypeExpr(ct[1:]); t != nil {
+						lastTyp = t
+					}
+				}
+				typ := rhsTyp
+				if lastTyp != nil {
+					typ = lastTyp
 				}
 				if typ != nil {
 					p.Symbols[name].Type = typ
