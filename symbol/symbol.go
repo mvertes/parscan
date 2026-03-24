@@ -198,8 +198,8 @@ func (sm SymMap) Init() {
 
 	sm["nil"] = &Symbol{Name: "nil", Kind: Value, Index: UnsetAddr}
 	sm["iota"] = &Symbol{Name: "iota", Kind: Const, Index: UnsetAddr}
-	sm["true"] = &Symbol{Name: "true", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(true), Type: vm.TypeOf(true)}
-	sm["false"] = &Symbol{Name: "false", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(false), Type: vm.TypeOf(false)}
+	sm["true"] = &Symbol{Name: "true", Kind: Const, Index: UnsetAddr, Value: vm.ValueOf(true), Type: vm.TypeOf(true), Cval: constant.MakeBool(true)}
+	sm["false"] = &Symbol{Name: "false", Kind: Const, Index: UnsetAddr, Value: vm.ValueOf(false), Type: vm.TypeOf(false), Cval: constant.MakeBool(false)}
 
 	sm["print"] = &Symbol{Name: "print", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func(v ...any) { fmt.Print(v...) })}
 	sm["println"] = &Symbol{Name: "println", Kind: Value, Index: UnsetAddr, Value: vm.ValueOf(func(v ...any) { fmt.Println(v...) })}
