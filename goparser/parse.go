@@ -385,30 +385,66 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 	return false, nil
 }
 
-// registerFunc parses and registers a named function's signature.
+// registerFunc parses and registers a named function or method signature.
 // Uses SymTracker to undo parameter symbols added by parseTypeExpr.
 func (p *Parser) registerFunc(toks Tokens) error {
-	if len(toks) < 3 || toks[0].Tok != lang.Func || toks[1].Tok != lang.Ident {
+	if len(toks) < 3 || toks[0].Tok != lang.Func {
 		return nil
 	}
-	fname := toks[1].Str
+
+	var fname string
+	var sigToks Tokens // tokens to pass to parseTypeExpr (signature without receiver)
+
 	bi := toks.Index(lang.BraceBlock)
 	if bi < 0 {
 		return nil
 	}
+
+	switch {
+	case toks[1].Tok == lang.Ident:
+		// Plain function: func Name(params) rettype { ... }
+		fname = toks[1].Str
+		sigToks = toks[:bi]
+
+	case toks[1].Tok == lang.ParenBlock && len(toks) > 2 && toks[2].Tok == lang.Ident:
+		// Method or anonymous function. Disambiguate: if toks[2] is a known
+		// type, this is an anonymous func (e.g. func(int) T {...}), not a method.
+		if s, _, ok := p.Symbols.Get(toks[2].Str, p.scope); ok && s.IsType() {
+			return nil
+		}
+		// Method: func (recv) Name(params) rettype { ... }
+		// Extract receiver type name from the ParenBlock.
+		recvr, err := p.Scan(toks[1].Block(), false)
+		if err != nil {
+			return nil
+		}
+		typeName := recvTypeName(recvr)
+		if typeName == "" {
+			return nil
+		}
+		fname = typeName + "." + toks[2].Str
+		// Build signature tokens without receiver: [func, Name, params..., rettype].
+		sigToks = make(Tokens, 0, 1+bi-2)
+		sigToks = append(sigToks, toks[0])
+		sigToks = append(sigToks, toks[2:bi]...)
+
+	default:
+		return nil // Anonymous function.
+	}
+
 	s, _, ok := p.Symbols.Get(fname, p.scope)
 	if ok && s.Type != nil {
 		return nil
 	}
 	if !ok {
-		s = &symbol.Symbol{Used: true, Index: symbol.UnsetAddr}
+		s = &symbol.Symbol{Name: fname, Used: true, Index: symbol.UnsetAddr}
 		key := p.scopedName(fname)
 		p.SymSet(key, s)
 	}
 	// Track symbols added by parseTypeExpr so we can remove param names.
 	savedTracker := p.SymTracker
 	p.SymTracker = []string{}
-	typ, _, err := p.parseTypeExpr(toks[:bi])
+	typ, _, err := p.parseTypeExpr(sigToks)
 	fnKey := p.scopedName(fname)
 	for _, k := range p.SymTracker {
 		if k != fnKey {
@@ -425,6 +461,21 @@ func (p *Parser) registerFunc(toks Tokens) error {
 	s.Kind = symbol.Func
 	s.Type = typ
 	return nil
+}
+
+// recvTypeName extracts the receiver type name from scanned receiver tokens.
+// Returns e.g. "T" for (t T) or "*T" for (t *T). Returns "" on failure.
+func recvTypeName(recvr Tokens) string {
+	// Walk backwards: last Ident is the type name, preceded by * for pointer receivers.
+	for i := len(recvr) - 1; i >= 0; i-- {
+		if recvr[i].Tok == lang.Ident {
+			if i > 0 && recvr[i-1].Tok == lang.Mul {
+				return "*" + recvr[i].Str
+			}
+			return recvr[i].Str
+		}
+	}
+	return ""
 }
 
 // parseVarDecl registers var symbol names so other Phase 1 decls can see them.
@@ -936,8 +987,9 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	// TODO: handle parametric types (generics)
-	var fname string    // function name
-	var recvName string // receiver variable name (non-empty for methods)
+	var fname string                  // function name
+	var recvName string               // receiver variable name (non-empty for methods)
+	var savedRecvOuter *symbol.Symbol // global symbol clobbered by receiver registration
 
 	switch in[1].Tok {
 	case lang.Ident:
@@ -951,25 +1003,17 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 				break
 			}
 			// Parse receiver declaration: get type and variable name.
-			if recvr, err := p.Scan(in[1].Block(), false); err != nil {
-				return nil, err
-			} else if rtyp, vars, _, err := p.parseParamTypes(recvr, parseTypeRecv); err == nil {
-				// Extract the base type name from the receiver tokens (e.g. [t, *, T]).
-				// reflect.Type.Name() is empty for dynamically created structs, so we
-				// cannot rely on rtyp[0].Rtype.Elem().Name(); use the token stream instead.
-				typeName := rtyp[0].String()
-				isPtr := rtyp[0].IsPtr()
-				for i := len(recvr) - 1; i >= 0; i-- {
-					if recvr[i].Tok == lang.Ident {
-						if isPtr {
-							typeName = "*" + recvr[i].Str
-						} else {
-							typeName = recvr[i].Str
-						}
-						break
-					}
-				}
-				fname = typeName + "." + in[2].Str // Method name prefixed by receiver type.
+			recvr, scanErr := p.Scan(in[1].Block(), false)
+			if scanErr != nil {
+				return nil, scanErr
+			}
+			// Save any global symbol at the receiver name before parseParamTypes
+			// overwrites it with the receiver's LocalVar symbol.
+			if len(recvr) > 0 {
+				savedRecvOuter = p.Symbols[p.scopedName(recvr[0].Str)]
+			}
+			if _, vars, _, err := p.parseParamTypes(recvr, parseTypeRecv); err == nil {
+				fname = recvTypeName(recvr) + "." + in[2].Str
 				if len(vars) > 0 && vars[0] != "" {
 					recvName = path.Base(vars[0])
 				}
@@ -1011,12 +1055,18 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if recvName != "" {
 		recvScoped := p.scope + "/" + recvName
 		s.FreeVars = []string{recvScoped}
-		// Re-register receiver symbol at function scope so the compiler finds it
-		// with the correct type when resolving the scoped identifier inside the body.
-		// The outer-scoped key was set by addSymVar before pushScope.
+		// parseParamTypes registered the receiver at the outer scope (before
+		// pushScope). Copy it to the function scope, then restore any global
+		// symbol that was clobbered by the receiver registration.
 		outerKey := strings.TrimPrefix(funcScope+"/"+recvName, "/")
-		if outerSym := p.Symbols[outerKey]; outerSym != nil {
-			p.SymSet(recvScoped, outerSym)
+		if recvSym := p.Symbols[outerKey]; recvSym != nil {
+			p.SymSet(recvScoped, recvSym)
+		}
+		// Restore clobbered outer symbol or remove the receiver from outer scope.
+		if savedRecvOuter != nil {
+			p.Symbols[outerKey] = savedRecvOuter
+		} else {
+			delete(p.Symbols, outerKey)
 		}
 	}
 	defer func() {

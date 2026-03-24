@@ -51,25 +51,35 @@ a single immediate-operand instruction (e.g. `Push 1; AddInt` becomes
 
 `Compile` proceeds in two phases:
 
-1. **Declaration phase.** `ScanDecls` splits the source into top-level
-   declarations. Each is passed to `ParseDecl`, which handles `package`,
-   `import`, `const`, `type`, and `var` (type registration only -- no
-   initializers). For `func`, it calls `registerFunc` to record the
-   function signature without parsing the body. Declarations that fail
-   with `ErrUndefined` are retried in a fixpoint loop until either all
-   succeed or no progress is made. Unhandled declarations (func bodies,
-   var initializers) are collected for phase 2.
+1. **Phase 1 -- Declarations.** `ScanDecls` splits the source into
+   top-level declarations. Each is passed to `ParseDecl`, which handles
+   `package`, `import`, `const`, `type`, and `var` (type registration
+   only -- no initializers). For `func` (including methods), it calls
+   `registerFunc` to record the function signature without parsing the
+   body. Declarations that fail with `ErrUndefined` are retried in a
+   fixpoint loop until convergence. Rollback on failure is lightweight:
+   only `SymTracker` keys are deleted from the symbol table; there is no
+   code or data to revert since Phase 1 emits neither.
 
-2. **Code generation phase.** The remaining declarations are parsed
-   (`ParseOneStmt`) and compiled (`generate`) in a second fixpoint loop.
-   At this point all type and function symbols are resolved, so retries
-   are rare -- they only occur when a func body references a var whose
-   type is inferred from an initializer not yet compiled.
+2. **Phase 2 -- Code generation.** `SplitAndSortVarDecls` expands
+   `var(...)` blocks and topologically sorts var declarations by
+   dependency. `allocGlobalSlots` then pre-assigns data indices for
+   every `Var` and `Func` symbol, so code generation never encounters
+   an unresolved index. Code is generated in two passes:
+   - **Pass 1:** var initializers, so all global var types are concrete.
+   - **Pass 2:** func bodies and expression statements.
 
-This separation avoids interleaving declaration resolution with code
-generation, reducing rollback complexity. Rollback on failure uses
-`SymTracker` (for newly added symbols), `savedSlots` (for in-place data
-updates), and code/data length checkpoints.
+   Because all symbols have allocated slots, Phase 2 needs no retries or
+   rollback machinery.
+
+#### allocGlobalSlots
+
+After Phase 1, every `Func` and `Var` symbol has a signature or type but
+`Index == UnsetAddr`. `allocGlobalSlots` iterates the symbol table and
+assigns a `Data` slot to each, appending the symbol's `Value` (or a
+`NewValue` zero for uninitialized vars). Type and Value symbols are still
+allocated lazily in the `Ident` handler, since many built-in types may
+never be referenced.
 
 ### Variadic call-site packing
 

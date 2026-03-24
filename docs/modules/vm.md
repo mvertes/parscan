@@ -16,7 +16,14 @@ value representation) and `Type` (runtime type metadata).
 - **`Machine`** -- VM state: `code`, `mem`, `ip`, `fp`, closure `env`,
   a `frames []frame` stack (caller env + packed nret/narg per call),
   panic state (`panicking`, `panicVal`), a `funcFields` side-table for
-  parscan funcs stored in native struct fields, and debug state.
+  parscan funcs stored in native struct fields, a `Symbols` map for
+  name-to-mem-index lookup, and debug state.
+- **`frame`** -- per-call metadata saved on the caller side. Fields:
+  `env []*Value` (caller's closure env) and `info int` (packed
+  `nret | (narg << 16)`). Stored in `Machine.frames`.
+- **`Symbols map[string]int`** -- maps symbol names to global memory
+  indices. Populated by `interp.Eval` from the compiler symbol table
+  after each compilation. Used for REPL resolution and `main` dispatch.
 - **`Run() error`** -- main execution loop. Dispatches on `Op` via a
   switch statement.
 - **`Push(vals ...Value)`** / **`Pop() Value`** -- stack manipulation.

@@ -96,49 +96,30 @@ func (c *Compiler) Compile(name, src string) error {
 	}
 
 	// Phase 2: split var blocks, sort var declarations by dependency,
-	// then compile all declarations with a retry loop for forward references.
+	// then generate code in two passes. All symbols (including methods)
+	// are registered in Phase 1 with their signatures.
+	//
+	// Pass 1 compiles var initializers so that all var types are resolved.
+	// Pass 2 compiles func bodies and expression statements; by then every
+	// global var has a concrete type, eliminating forward-reference retries.
 	remaining = c.SplitAndSortVarDecls(remaining)
 	c.allocGlobalSlots()
-	pending = remaining
-	for len(pending) > 0 {
-		var retry []goparser.Tokens
-		var firstErr error
-		for _, decl := range pending {
-			c.SymTracker = nil
-			dataLen, codeLen := len(c.Data), len(c.Code)
+	var rest []goparser.Tokens
+	for _, decl := range remaining {
+		if len(decl) > 0 && decl[0].Tok == lang.Var {
 			if err := c.compileDecl(decl); err != nil {
-				var eu goparser.ErrUndefined
-				if errors.As(err, &eu) {
-					c.rollbackTo(dataLen, codeLen)
-					retry = append(retry, decl)
-					if firstErr == nil {
-						firstErr = err
-					}
-					continue
-				}
 				return err
 			}
+		} else {
+			rest = append(rest, decl)
 		}
-		if len(retry) == len(pending) {
-			return firstErr
+	}
+	for _, decl := range rest {
+		if err := c.compileDecl(decl); err != nil {
+			return err
 		}
-		pending = retry
 	}
 	return nil
-}
-
-func (c *Compiler) rollbackTo(dataLen, codeLen int) {
-	for _, k := range c.SymTracker {
-		delete(c.Symbols, k)
-	}
-	c.SymTracker = nil
-	for s, i := range c.strings {
-		if i >= dataLen {
-			delete(c.strings, s)
-		}
-	}
-	c.Data = c.Data[:dataLen]
-	c.Code = c.Code[:codeLen]
 }
 
 func (c *Compiler) compileDecl(decl goparser.Tokens) error {
@@ -1000,7 +981,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Get, vm.Local, s.Index)
 			} else {
 				if s.Index == symbol.UnsetAddr {
-					// Symbol created during Phase 2 (e.g. := define, anonymous type).
+					// Type or value symbol discovered during Phase 2 code generation.
 					s.Index = len(c.Data)
 					if s.Kind == symbol.Type {
 						c.Data = append(c.Data, vm.NewValue(s.Type.Rtype))

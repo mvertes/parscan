@@ -21,7 +21,7 @@ Parscan is an experimental Go interpreter built from a pipeline of composable pa
 - [ADR-001: Flat token stream instead of AST](decisions/ADR-001-flat-token-stream.md)
 - [ADR-002: Hybrid Value type](decisions/ADR-002-hybrid-value.md)
 - [ADR-003: Scope as slash-separated path](decisions/ADR-003-scope-as-path.md)
-- [ADR-004: Lazy fixpoint for out-of-order declarations](decisions/ADR-004-lazy-fixpoint.md)
+- [ADR-004: Two-phase compilation with pre-allocated slots](decisions/ADR-004-lazy-fixpoint.md)
 - [ADR-005: Per-type opcodes with immediate variants](decisions/ADR-005-per-type-opcodes.md)
 - [ADR-006: Native Go function interop (WrapFunc / ParscanFunc)](decisions/ADR-006-native-func-interop.md)
 

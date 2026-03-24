@@ -43,6 +43,7 @@ flowchart TD
         M[Machine] -->|executes| Code
         M -->|uses| Data
         M -->|manages| Mem["mem []Value\n(globals + stack)"]
+        M -->|name lookup| Syms["Symbols map\nname -> mem index"]
     end
 ```
 
@@ -91,11 +92,12 @@ env, nret/narg). See [vm](modules/vm.md#call-frame) for details.
    (e.g. `main/foo/for0`), making symbol lookup a prefix walk.
    See [ADR-003](decisions/ADR-003-scope-as-path.md).
 
-4. **Two-phase compilation with lazy fixpoint** -- compilation splits into
-   a declaration phase (const, type, var types, func signatures) and a code
-   generation phase (func bodies, var initializers). Each phase retries
-   failed declarations until no new progress is made.
-   See [ADR-004](decisions/ADR-004-lazy-fixpoint.md).
+4. **Two-phase compilation with pre-allocated slots** -- compilation splits
+   into a declaration phase (const, type, var types, func/method signatures)
+   and a code generation phase (var initializers first, then func bodies).
+   Phase 1 uses a retry loop for forward references; Phase 2 pre-allocates
+   data slots and uses topological sorting of var declarations to eliminate
+   retries entirely. See [ADR-004](decisions/ADR-004-lazy-fixpoint.md).
 
 5. **Per-type opcodes** -- 12 numeric type variants for arithmetic ops,
    plus immediate-operand variants that fold `Push+BinOp` into one instruction.

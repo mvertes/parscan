@@ -34,15 +34,20 @@ This allows the REPL to build up state across evaluations without
 recompiling everything. The entry point for the new code is
 `max(codeOffset, i.Entry)`, so module-level init code runs before `main`.
 
-### Lazy fixpoint (via compiler)
+### Symbol table bridge
 
-Out-of-order declarations are handled by the embedded `Compiler.Compile`,
-which retries failed declarations. See [comp](comp.md) for details.
+After compilation, `Eval` copies every symbol with a valid `Index` from
+`Compiler.Symbols` (the parser/compiler symbol table) into
+`Machine.Symbols` (a `map[string]int`). This gives the VM a lightweight
+name-to-mem-index lookup without depending on the compiler at runtime.
+The bridge runs on every `Eval` call, so incremental REPL compilations
+accumulate symbols in the VM map.
 
 ### Main function
 
-If a `main` function is defined, `Eval` emits a `Call` to it after pushing
-the compiled code. This mirrors `go run` behavior for standalone programs.
+If a `main` entry exists in `Machine.Symbols`, `Eval` emits a `Call` to it
+after pushing the compiled code. This mirrors `go run` behavior for
+standalone programs and avoids reaching back into the compiler symbol table.
 
 ### Lazy DebugInfo
 
