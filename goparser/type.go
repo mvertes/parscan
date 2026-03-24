@@ -342,5 +342,16 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 		return false
 	}
 	s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
-	return !ok || s.Kind != symbol.Type
+	if !ok || s.Kind != symbol.Type {
+		return true
+	}
+	// The first ident is a known type name. If followed by tokens that start
+	// a type expression, treat the ident as a field/param name (e.g. rune [N]T).
+	if len(in) > 1 {
+		switch in[1].Tok {
+		case lang.BracketBlock, lang.Mul, lang.Func, lang.Ident, lang.Struct, lang.Map, lang.Interface:
+			return true
+		}
+	}
+	return false
 }
