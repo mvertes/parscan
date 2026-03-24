@@ -855,6 +855,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			rhs := pop()
 			lhs := pop()
+			if lhs.Kind == symbol.Unset {
+				c.emit(t, vm.Pop, 1)
+				break
+			}
 			if lhs.Kind == symbol.LocalVar {
 				// Captured variable write inside closure body: use HSet.
 				if cf := curFunc(); cf != "" {
