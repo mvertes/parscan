@@ -80,7 +80,6 @@ func (c *Compiler) Compile(name, src string) error {
 			if parseErr != nil {
 				var eu goparser.ErrUndefined
 				if errors.As(parseErr, &eu) {
-					// Undo symbols added during this failed attempt.
 					for _, k := range c.SymTracker {
 						delete(c.Symbols, k)
 					}
@@ -103,60 +102,52 @@ func (c *Compiler) Compile(name, src string) error {
 		pending = retry
 	}
 
-	// Phase 2: parse and generate code for func bodies and var initializers.
-	// A retry loop is still needed because func bodies may reference vars
-	// whose types are inferred from initializers not yet compiled.
-	for len(remaining) > 0 {
+	// Phase 2: split var blocks, sort var declarations by dependency,
+	// then compile all declarations with a retry loop for forward references.
+	remaining = c.SplitAndSortVarDecls(remaining)
+	c.allocFuncSlots()
+	pending = remaining
+	for len(pending) > 0 {
 		var retry []goparser.Tokens
 		var firstErr error
-		for _, decl := range remaining {
+		for _, decl := range pending {
 			c.SymTracker = nil
 			c.savedSlots = c.savedSlots[:0]
 			dataLen, codeLen := len(c.Data), len(c.Code)
-			toks, parseErr := c.ParseOneStmt(decl)
-			if parseErr == nil {
-				parseErr = c.generate(toks)
-			}
-			if parseErr != nil {
+			if err := c.compileDecl(decl); err != nil {
 				var eu goparser.ErrUndefined
-				if errors.As(parseErr, &eu) {
-					c.rollback(dataLen, codeLen)
+				if errors.As(err, &eu) {
+					c.rollbackTo(dataLen, codeLen)
 					retry = append(retry, decl)
 					if firstErr == nil {
-						firstErr = parseErr
+						firstErr = err
 					}
 					continue
 				}
-				return parseErr
+				return err
 			}
 		}
-		if len(retry) == len(remaining) {
+		if len(retry) == len(pending) {
 			return firstErr
 		}
-		remaining = retry
+		pending = retry
 	}
 	return nil
 }
 
-func (c *Compiler) rollback(dataLen, codeLen int) {
+func (c *Compiler) rollbackTo(dataLen, codeLen int) {
 	for _, k := range c.SymTracker {
 		delete(c.Symbols, k)
 	}
 	c.SymTracker = nil
-	// Reset stale Index values: if a symbol's Index was allocated into the
-	// rolled-back region (>= dataLen), restore it to UnsetAddr so the next
-	// generate attempt re-allocates it correctly instead of clobbering an
-	// earlier symbol's slot.
 	for _, sym := range c.Symbols {
 		if sym.Index >= dataLen {
 			sym.Index = symbol.UnsetAddr
 		}
 	}
-	// Restore data slots that were updated in-place (pre-allocated before this attempt).
 	for _, s := range c.savedSlots {
 		c.Data[s.idx] = s.val
 	}
-	// Remove string cache entries whose data slot falls in the rolled-back region.
 	for s, i := range c.strings {
 		if i >= dataLen {
 			delete(c.strings, s)
@@ -165,6 +156,26 @@ func (c *Compiler) rollback(dataLen, codeLen int) {
 	c.Data = c.Data[:dataLen]
 	c.Code = c.Code[:codeLen]
 }
+
+func (c *Compiler) compileDecl(decl goparser.Tokens) error {
+	toks, err := c.ParseOneStmt(decl)
+	if err != nil {
+		return err
+	}
+	return c.generate(toks)
+}
+
+// allocFuncSlots pre-allocates data slots for all func symbols (including
+// methods) so that var initializers doing interface wrapping can reference them.
+func (c *Compiler) allocFuncSlots() {
+	for _, s := range c.Symbols {
+		if s.Kind == symbol.Func && s.Index == symbol.UnsetAddr {
+			s.Index = len(c.Data)
+			c.Data = append(c.Data, s.Value)
+		}
+	}
+}
+
 
 func (c *Compiler) methodID(name string) int {
 	if id, ok := c.methodIDs[name]; ok {
@@ -796,6 +807,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				for i, r := range rhs {
 					typ := r.Type
 					if typ == nil {
+						if !r.Value.Reflect().IsValid() {
+							return goparser.ErrUndefined{Name: lhs[i].Name}
+						}
 						typ = vm.TypeOf(r.Value.Interface())
 					}
 					lhs[i].Type = typ
@@ -812,6 +826,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				// Propage type of rhs to lhs.
 				typ := r.Type
 				if typ == nil {
+					if !r.Value.Reflect().IsValid() {
+						return goparser.ErrUndefined{Name: lhs[i].Name}
+					}
 					typ = vm.TypeOf(r.Value.Interface())
 				}
 				// If lhs has an interface type, keep it and wrap the concrete value.
@@ -1020,10 +1037,6 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						s.Index = len(c.Data)
 						c.Data = append(c.Data, s.Value)
 					} else {
-						// Slot was pre-allocated by an Ident reference before this Label:
-						// update in place so all Get Global N instructions already emitted
-						// load the correct code address at runtime.
-						// Save old value so rollback can restore it if this attempt fails.
 						c.savedSlots = append(c.savedSlots, savedSlot{s.Index, c.Data[s.Index]})
 						c.Data[s.Index] = s.Value
 					}
@@ -1041,6 +1054,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						}
 					}
 				} else {
+					c.savedSlots = append(c.savedSlots, savedSlot{s.Index, c.Data[s.Index]})
 					c.Data[s.Index] = s.Value
 				}
 			} else {

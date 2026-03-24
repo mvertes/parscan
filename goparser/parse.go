@@ -205,6 +205,147 @@ func (p *Parser) ScanDecls(src string) ([]Tokens, error) {
 	return decls, nil
 }
 
+// SplitAndSortVarDecls splits var(...) blocks into individual declarations,
+// topologically sorts them by dependency, and returns the reordered list.
+// Funcs and other statements keep their original relative positions; only
+// var declarations are extracted, sorted, and placed back into var slots.
+func (p *Parser) SplitAndSortVarDecls(decls []Tokens) []Tokens {
+	// Expand var blocks and identify var slot positions.
+	type slot struct {
+		pos  int    // position in expanded list
+		decl Tokens // the var declaration
+	}
+	var expanded []Tokens
+	var varSlots []slot
+	for _, decl := range decls {
+		if len(decl) == 0 {
+			continue
+		}
+		if decl[0].Tok == lang.Var && len(decl) >= 2 && decl[1].Tok == lang.ParenBlock {
+			for _, vd := range p.splitVarBlock(decl) {
+				varSlots = append(varSlots, slot{pos: len(expanded), decl: vd})
+				expanded = append(expanded, vd)
+			}
+		} else if decl[0].Tok == lang.Var {
+			varSlots = append(varSlots, slot{pos: len(expanded), decl: decl})
+			expanded = append(expanded, decl)
+		} else {
+			expanded = append(expanded, decl)
+		}
+	}
+	if len(varSlots) <= 1 {
+		return expanded
+	}
+
+	// Extract var declarations, sort by dependency, and place back.
+	vars := make([]Tokens, len(varSlots))
+	for i, s := range varSlots {
+		vars[i] = s.decl
+	}
+	vars = p.sortByDeps(vars)
+	for i, s := range varSlots {
+		expanded[s.pos] = vars[i]
+	}
+	return expanded
+}
+
+// splitVarBlock splits a var(...) block into individual var declarations.
+func (p *Parser) splitVarBlock(decl Tokens) []Tokens {
+	inner, err := p.Scan(decl[1].Block(), false)
+	if err != nil {
+		return []Tokens{decl}
+	}
+	lines := inner.Split(lang.Semicolon)
+	if len(lines) <= 1 {
+		return []Tokens{decl}
+	}
+	makeDecl := func(line Tokens) Tokens {
+		d := make(Tokens, 0, 1+len(line))
+		return append(append(d, decl[0]), line...)
+	}
+	var result []Tokens
+	for _, line := range lines {
+		if len(line) > 0 {
+			result = append(result, makeDecl(line))
+		}
+	}
+	return result
+}
+
+// sortByDeps topologically sorts var declarations by dependency order.
+func (p *Parser) sortByDeps(decls []Tokens) []Tokens {
+	if len(decls) <= 1 {
+		return decls
+	}
+	nameSet := map[string]int{} // var name -> index
+	for i, decl := range decls {
+		if len(decl) >= 2 && decl[1].Tok == lang.Ident {
+			nameSet[decl[1].Str] = i
+		}
+	}
+	if len(nameSet) == 0 {
+		return decls
+	}
+
+	deps := make([]map[int]bool, len(decls))
+	for i, decl := range decls {
+		deps[i] = map[int]bool{}
+		rhs := decl[1:] // skip "var" keyword
+		if j := rhs.Index(lang.Assign); j >= 0 {
+			rhs = rhs[j+1:]
+		}
+		p.collectIdents(rhs, nameSet, deps[i])
+	}
+
+	emitted := make([]bool, len(decls))
+	result := make([]Tokens, 0, len(decls))
+	for range decls {
+		progress := false
+		for i := range decls {
+			if emitted[i] {
+				continue
+			}
+			ready := true
+			for dep := range deps[i] {
+				if !emitted[dep] {
+					ready = false
+					break
+				}
+			}
+			if ready {
+				result = append(result, decls[i])
+				emitted[i] = true
+				progress = true
+			}
+		}
+		if !progress {
+			break
+		}
+	}
+	for i := range decls {
+		if !emitted[i] {
+			result = append(result, decls[i])
+		}
+	}
+	return result
+}
+
+// collectIdents finds idents in toks that match names in nameSet,
+// recursing into block tokens.
+func (p *Parser) collectIdents(toks Tokens, nameSet map[string]int, out map[int]bool) {
+	for _, t := range toks {
+		if t.Tok == lang.Ident {
+			if dep, ok := nameSet[t.Str]; ok {
+				out[dep] = true
+			}
+		} else if t.Tok.IsBlock() {
+			if inner, err := p.Scan(t.Block(), false); err == nil {
+				p.collectIdents(inner, nameSet, out)
+			}
+		}
+	}
+}
+
 // ParseOneStmt parses a single pre-scanned statement token slice.
 func (p *Parser) ParseOneStmt(toks Tokens) (Tokens, error) {
 	return p.parseStmt(toks)

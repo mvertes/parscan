@@ -198,11 +198,47 @@ const size = 3
 type Vec struct { data [size]int }
 len(Vec{}.data)`, res: "3"},
 
-		// TODO: var with initializer declared after the func that uses it.
-		{n: "var_init_after_func", skip: true, src: `
+		// var with initializer declared after the func that uses it.
+		{n: "var_init_after_func", src: `
 func get() int { return x }
 var x = 10
 get()`, res: "10"},
+
+		// Forward reference between vars in a var block.
+		{n: "var_block_fwd_ref", src: `
+var (
+	a = b
+	b = "hello"
+)
+a`, res: "hello"},
+
+		// Dependency chain with function calls in a var block.
+		{n: "var_block_dep_chain", src: `
+var (
+	a = concat("hello", b)
+	b = concat(" ", c, "!")
+	c = d
+	d = "world"
+)
+func concat(a ...string) string {
+	var s string
+	for _, ss := range a { s += ss }
+	return s
+}
+a`, res: "hello world!"},
+
+		// Dependency chain across separate var declarations.
+		{n: "separate_var_dep_chain", src: `
+var a = concat("hello", b)
+var b = concat(" ", c, "!")
+var c = d
+var d = "world"
+func concat(a ...string) string {
+	var s string
+	for _, ss := range a { s += ss }
+	return s
+}
+a`, res: "hello world!"},
 	})
 }
 

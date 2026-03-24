@@ -478,7 +478,9 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 				name := p.scopedName(rawName)
 				vars = append(vars, name)
 				if p.funcScope == "" {
-					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
+					if s, _, ok := p.Symbols.Get(lt[0].Str, p.scope); !ok || s.Index == symbol.UnsetAddr {
+						p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
+					}
 					continue
 				}
 				p.SymAdd(p.framelen[p.funcScope], name, nilValue, symbol.LocalVar, nil)
