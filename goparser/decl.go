@@ -412,16 +412,11 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 }
 
 func (p *Parser) parseVar(in Tokens) (out Tokens, err error) {
-	if len(in) < 2 {
-		return out, errors.New("missing expression")
-	}
-	if in[1].Tok != lang.ParenBlock {
-		return p.parseVarLine(in[1:])
-	}
-	if in, err = p.Scan(in[1].Block(), false); err != nil {
+	lines, err := p.varLines(in)
+	if err != nil {
 		return out, err
 	}
-	for _, lt := range in.Split(lang.Semicolon) {
+	for _, lt := range lines {
 		if lt, err = p.parseVarLine(lt); err != nil {
 			return out, err
 		}

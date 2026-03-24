@@ -221,15 +221,12 @@ func (p *Parser) SplitAndSortVarDecls(decls []Tokens) []Tokens {
 		if len(decl) == 0 {
 			continue
 		}
-		switch {
-		case decl[0].Tok == lang.Var && len(decl) >= 2 && decl[1].Tok == lang.ParenBlock:
+		switch decl[0].Tok {
+		case lang.Var:
 			for _, vd := range p.splitVarBlock(decl) {
 				varSlots = append(varSlots, slot{pos: len(expanded), decl: vd})
 				expanded = append(expanded, vd)
 			}
-		case decl[0].Tok == lang.Var:
-			varSlots = append(varSlots, slot{pos: len(expanded), decl: decl})
-			expanded = append(expanded, decl)
 		default:
 			expanded = append(expanded, decl)
 		}
@@ -250,30 +247,40 @@ func (p *Parser) SplitAndSortVarDecls(decls []Tokens) []Tokens {
 	return expanded
 }
 
+// varLines splits a var declaration (single or paren block) into component lines,
+// stripping the leading "var" token. Returns one element for a single declaration.
+func (p *Parser) varLines(toks Tokens) ([]Tokens, error) {
+	if len(toks) < 2 {
+		return nil, errors.New("missing expression")
+	}
+	if toks[1].Tok != lang.ParenBlock {
+		return []Tokens{toks[1:]}, nil
+	}
+	inner, err := p.Scan(toks[1].Block(), false)
+	if err != nil {
+		return nil, err
+	}
+	return inner.Split(lang.Semicolon), nil
+}
+
 // splitVarBlock splits a var(...) block into individual var declarations.
 func (p *Parser) splitVarBlock(decl Tokens) []Tokens {
-	inner, err := p.Scan(decl[1].Block(), false)
-	if err != nil {
+	lines, err := p.varLines(decl)
+	if err != nil || len(lines) <= 1 {
 		return []Tokens{decl}
 	}
-	lines := inner.Split(lang.Semicolon)
-	if len(lines) <= 1 {
-		return []Tokens{decl}
-	}
-	makeDecl := func(line Tokens) Tokens {
-		d := make(Tokens, 0, 1+len(line))
-		return append(append(d, decl[0]), line...)
-	}
-	var result []Tokens
+	result := make([]Tokens, 0, len(lines))
 	for _, line := range lines {
 		if len(line) > 0 {
-			result = append(result, makeDecl(line))
+			d := make(Tokens, 1, 1+len(line))
+			d[0] = decl[0]
+			result = append(result, append(d, line...))
 		}
 	}
 	return result
 }
 
-// sortByDeps topologically sorts var declarations by dependency order.
+// sortByDeps topologically sorts var declarations by dependency order (Kahn's algorithm).
 func (p *Parser) sortByDeps(decls []Tokens) []Tokens {
 	if len(decls) <= 1 {
 		return decls
@@ -288,43 +295,40 @@ func (p *Parser) sortByDeps(decls []Tokens) []Tokens {
 		return decls
 	}
 
-	deps := make([]map[int]bool, len(decls))
+	n := len(decls)
+	rdeps := make([][]int, n) // rdeps[i] = nodes that depend on i
+	inDeg := make([]int, n)
 	for i, decl := range decls {
-		deps[i] = map[int]bool{}
+		seen := map[int]bool{}
 		rhs := decl[1:] // skip "var" keyword
 		if j := rhs.Index(lang.Assign); j >= 0 {
 			rhs = rhs[j+1:]
 		}
-		p.collectIdents(rhs, nameSet, deps[i])
+		p.collectIdents(rhs, nameSet, seen)
+		for dep := range seen {
+			rdeps[dep] = append(rdeps[dep], i)
+			inDeg[i]++
+		}
 	}
 
-	emitted := make([]bool, len(decls))
-	result := make([]Tokens, 0, len(decls))
-	for range decls {
-		progress := false
-		for i := range decls {
-			if emitted[i] {
-				continue
-			}
-			ready := true
-			for dep := range deps[i] {
-				if !emitted[dep] {
-					ready = false
-					break
-				}
-			}
-			if ready {
-				result = append(result, decls[i])
-				emitted[i] = true
-				progress = true
-			}
-		}
-		if !progress {
-			break
+	queue := make([]int, 0, n)
+	for i, d := range inDeg {
+		if d == 0 {
+			queue = append(queue, i)
 		}
 	}
-	for i := range decls {
-		if !emitted[i] {
+	result := make([]Tokens, 0, n)
+	for head := 0; head < len(queue); head++ {
+		i := queue[head]
+		result = append(result, decls[i])
+		for _, j := range rdeps[i] {
+			if inDeg[j]--; inDeg[j] == 0 {
+				queue = append(queue, j)
+			}
+		}
+	}
+	for i, d := range inDeg {
+		if d > 0 {
 			result = append(result, decls[i])
 		}
 	}
@@ -479,16 +483,10 @@ func recvTypeName(recvr Tokens) string {
 // parseVarDecl registers var symbol names so other Phase 1 decls can see them.
 // Vars with initializers are deferred to Phase 2 for type inference and codegen.
 func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
-	if len(toks) < 2 {
-		return true, errors.New("missing expression")
+	lines, err := p.varLines(toks)
+	if err != nil {
+		return true, err
 	}
-	in := toks[1:]
-	if toks[1].Tok == lang.ParenBlock {
-		if in, err = p.Scan(toks[1].Block(), false); err != nil {
-			return true, err
-		}
-	}
-	lines := in.Split(lang.Semicolon)
 	hasInit := false
 	for _, lt := range lines {
 		if lt.Index(lang.Assign) >= 0 {
