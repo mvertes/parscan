@@ -30,7 +30,7 @@ type Parser struct {
 	breakLabel    string
 	continueLabel string
 	pendingLabel  string               // user label preceding the current for/switch statement
-	labeledJump   map[string][2]string // maps user label → [continueLabel, breakLabel]
+	labeledJump   map[string][2]string // maps user label to [continueLabel, breakLabel]
 	clonum        int                  // closure instance number
 	blankSeq      int                  // counter for unique blank identifier names
 	namedOut      []string             // scoped names of named return vars for current function

@@ -80,7 +80,7 @@ const (
 	HSet                   // v --    ; *State.Env[$1] = v
 	HPtr                   // -- &cell ; push State.Env[$1] itself (transitive capture)
 	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, env}
-	Convert                // v -- v' ; v' = convert(v, type at mem[$1])
+	Convert                // v -- v' ; v' = convert(v, type at mem[$1]); optional $2 = stack depth offset
 	IfaceWrap              // v -- iface ; wrap v in Iface{type at $1, v}
 	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
 	TypeAssert             // iface -- v [ok] ; assert iface holds type at mem[$1]; $2=0 panics, $2=1 ok form
@@ -445,7 +445,12 @@ func (m *Machine) Run() (err error) {
 					mem[sp-1] = boolVal(false)
 				}
 			case Convert:
-				v := mem[sp-1]
+				depth := 0
+				if len(c.Arg) > 1 {
+					depth = c.Arg[1]
+				}
+				idx := sp - 1 - depth
+				v := mem[idx]
 				dstType := mem[c.Arg[0]].ref.Type()
 				srcKind := v.ref.Type().Kind()
 				dstKind := dstType.Kind()
@@ -477,46 +482,46 @@ func (m *Machine) Run() (err error) {
 					// Truncate to target width for sub-word types.
 					switch dstKind {
 					case reflect.Int:
-						mem[sp-1] = Value{num: bits, ref: zint}
+						mem[idx] = Value{num: bits, ref: zint}
 					case reflect.Int8:
-						mem[sp-1] = Value{num: uint64(int8(bits)), ref: zint8} //nolint:gosec
+						mem[idx] = Value{num: uint64(int8(bits)), ref: zint8} //nolint:gosec
 					case reflect.Int16:
-						mem[sp-1] = Value{num: uint64(int16(bits)), ref: zint16} //nolint:gosec
+						mem[idx] = Value{num: uint64(int16(bits)), ref: zint16} //nolint:gosec
 					case reflect.Int32:
-						mem[sp-1] = Value{num: uint64(int32(bits)), ref: zint32} //nolint:gosec
+						mem[idx] = Value{num: uint64(int32(bits)), ref: zint32} //nolint:gosec
 					case reflect.Int64:
-						mem[sp-1] = Value{num: bits, ref: zint64}
+						mem[idx] = Value{num: bits, ref: zint64}
 					case reflect.Uint:
-						mem[sp-1] = Value{num: bits, ref: zuint}
+						mem[idx] = Value{num: bits, ref: zuint}
 					case reflect.Uint8:
-						mem[sp-1] = Value{num: uint64(uint8(bits)), ref: zuint8} //nolint:gosec
+						mem[idx] = Value{num: uint64(uint8(bits)), ref: zuint8} //nolint:gosec
 					case reflect.Uint16:
-						mem[sp-1] = Value{num: uint64(uint16(bits)), ref: zuint16} //nolint:gosec
+						mem[idx] = Value{num: uint64(uint16(bits)), ref: zuint16} //nolint:gosec
 					case reflect.Uint32:
-						mem[sp-1] = Value{num: uint64(uint32(bits)), ref: zuint32} //nolint:gosec
+						mem[idx] = Value{num: uint64(uint32(bits)), ref: zuint32} //nolint:gosec
 					case reflect.Uint64:
-						mem[sp-1] = Value{num: bits, ref: zuint64}
+						mem[idx] = Value{num: bits, ref: zuint64}
 					case reflect.Float32:
-						mem[sp-1] = Value{num: math.Float64bits(float64(float32(math.Float64frombits(bits)))), ref: zfloat32}
+						mem[idx] = Value{num: math.Float64bits(float64(float32(math.Float64frombits(bits)))), ref: zfloat32}
 					case reflect.Float64:
-						mem[sp-1] = Value{num: bits, ref: zfloat64}
+						mem[idx] = Value{num: bits, ref: zfloat64}
 					}
 
 				case isNum(srcKind) && dstKind == reflect.String:
 					// int/rune -> string (e.g. string(65) -> "A").
-					mem[sp-1] = Value{ref: reflect.ValueOf(string(rune(int64(v.num))))} //nolint:gosec
+					mem[idx] = Value{ref: reflect.ValueOf(string(rune(int64(v.num))))} //nolint:gosec
 
 				case srcKind == reflect.String && dstKind == reflect.Slice && dstType.Elem().Kind() == reflect.Uint8:
 					// string -> []byte.
-					mem[sp-1] = Value{ref: reflect.ValueOf([]byte(v.ref.String()))}
+					mem[idx] = Value{ref: reflect.ValueOf([]byte(v.ref.String()))}
 
 				case srcKind == reflect.Slice && v.ref.Type().Elem().Kind() == reflect.Uint8 && dstKind == reflect.String:
 					// []byte -> string.
-					mem[sp-1] = Value{ref: reflect.ValueOf(string(v.ref.Bytes()))}
+					mem[idx] = Value{ref: reflect.ValueOf(string(v.ref.Bytes()))}
 
 				default:
 					// Fallback: use reflect.
-					mem[sp-1] = fromReflect(v.Reflect().Convert(dstType))
+					mem[idx] = fromReflect(v.Reflect().Convert(dstType))
 				}
 
 			case IfaceWrap:

@@ -694,7 +694,18 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					} else {
 						ifaceTyp = &vm.Type{Rtype: typ.Rtype.In(k)}
 					}
-					c.emitIfaceWrapAt(t, ifaceTyp, argSym.Type, narg-1-k)
+					depth := narg - 1 - k
+					c.emitIfaceWrapAt(t, ifaceTyp, argSym.Type, depth)
+					if !ifaceTyp.IsInterface() && argSym.Kind == symbol.Const {
+						paramRtype := typ.Rtype.In(k)
+						argRtype := argSym.Type.Rtype
+						if argRtype != paramRtype {
+							sk, dk := argRtype.Kind(), paramRtype.Kind()
+							if sk >= reflect.Int && sk <= reflect.Float64 && dk >= reflect.Int && dk <= reflect.Float64 {
+								c.emit(t, vm.Convert, c.typeSym(&vm.Type{Rtype: paramRtype}).Index, depth)
+							}
+						}
+					}
 				}
 				// Pop function and input arg symbols, push return value symbols.
 				pop()
@@ -1384,8 +1395,15 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 	return err
 }
 
-func arithmeticOpType(s, _ *symbol.Symbol) *vm.Type { return symbol.Vtype(s) }
-func booleanOpType(_, _ *symbol.Symbol) *vm.Type    { return vm.TypeOf(true) }
+func arithmeticOpType(right, left *symbol.Symbol) *vm.Type {
+	// Untyped constants take their type from the other operand (Go spec Operators).
+	if right.Kind == symbol.Const && left.Kind != symbol.Const {
+		return symbol.Vtype(left)
+	}
+	return symbol.Vtype(right)
+}
+
+func booleanOpType(_, _ *symbol.Symbol) *vm.Type { return vm.TypeOf(true) }
 
 // retractPush removes the most recently emitted Push if s is a constant,
 // returning (immediate value, true). Used for immediate-operand peephole.

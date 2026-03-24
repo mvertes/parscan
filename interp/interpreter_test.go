@@ -890,6 +890,13 @@ func f() {
 }
 f()
 r`, res: "1"},
+
+		{n: "int64_return", src: `
+func f1(a int) interface{} { return a + 1 }
+func f2(a int64) interface{} { return a + 1 }
+v1 := f1(3).(int)
+v2 := f2(3).(int64)
+v1 + int(v2)`, res: "8"},
 	})
 }
 
