@@ -34,9 +34,8 @@ most complex stage in the pipeline.
 - **`registerFunc(toks Tokens) error`** -- register a function or method
   signature in the symbol table without parsing its body. For methods
   (`func (recv) Name(...)`), extracts the receiver type via
-  `recvTypeName` and registers under `TypeName.MethodName`. Uses
-  `SymTracker` to clean up parameter symbols that `parseTypeExpr` adds
-  as a side effect.
+  `recvTypeName` and registers under `TypeName.MethodName`. Parses the
+  signature in `typeOnly` mode to suppress parameter symbol registration.
 - **`SplitAndSortVarDecls(decls []Tokens) []Tokens`** -- expands
   `var(...)` blocks into individual declarations and topologically sorts
   them by dependency (references between var initializers). Non-var

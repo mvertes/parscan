@@ -299,6 +299,9 @@ func (p *Parser) parseParamTypes(in Tokens, flag typeFlag) (types []*vm.Type, va
 }
 
 func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag typeFlag) {
+	if p.typeOnly {
+		return
+	}
 	zv := vm.NewValue(typ.Rtype)
 	switch flag {
 	case parseTypeRecv:

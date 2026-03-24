@@ -36,6 +36,7 @@ type Parser struct {
 	blankSeq      int                  // counter for unique blank identifier names
 	namedOut      []string             // scoped names of named return vars for current function
 	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
+	typeOnly      bool                 // when true, addSymVar is a no-op (Phase 1 signature-only parse)
 }
 
 // SymSet inserts sym at key in the symbol table, recording the key for potential rollback.
@@ -377,8 +378,10 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 		_, err = p.parseType(toks)
 		return true, err
 	case lang.Func:
-		p.registerFunc(toks) // Best-effort; errors are not fatal.
-		return false, nil    // Body still needs full parse + generate.
+		if err := p.registerFunc(toks); err != nil {
+			return false, err
+		}
+		return false, nil // Body still needs full parse + generate.
 	case lang.Var:
 		return p.parseVarDecl(toks)
 	}
@@ -386,7 +389,6 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 }
 
 // registerFunc parses and registers a named function or method signature.
-// Uses SymTracker to undo parameter symbols added by parseTypeExpr.
 func (p *Parser) registerFunc(toks Tokens) error {
 	if len(toks) < 3 || toks[0].Tok != lang.Func {
 		return nil
@@ -395,7 +397,7 @@ func (p *Parser) registerFunc(toks Tokens) error {
 	var fname string
 	var sigToks Tokens // tokens to pass to parseTypeExpr (signature without receiver)
 
-	bi := toks.Index(lang.BraceBlock)
+	bi := toks.LastIndex(lang.BraceBlock)
 	if bi < 0 {
 		return nil
 	}
@@ -441,20 +443,12 @@ func (p *Parser) registerFunc(toks Tokens) error {
 		key := p.scopedName(fname)
 		p.SymSet(key, s)
 	}
-	// Track symbols added by parseTypeExpr so we can remove param names.
-	savedTracker := p.SymTracker
-	p.SymTracker = []string{}
+	p.typeOnly = true
 	typ, _, err := p.parseTypeExpr(sigToks)
-	fnKey := p.scopedName(fname)
-	for _, k := range p.SymTracker {
-		if k != fnKey {
-			delete(p.Symbols, k)
-		}
-	}
-	p.SymTracker = savedTracker
+	p.typeOnly = false
 	if err != nil {
 		if !ok {
-			delete(p.Symbols, fnKey)
+			delete(p.Symbols, p.scopedName(fname))
 		}
 		return err
 	}
@@ -1090,8 +1084,10 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if err != nil {
 		return out, err
 	}
-	s.Kind = symbol.Func
-	s.Type = typ
+	if s.Type == nil {
+		s.Kind = symbol.Func
+		s.Type = typ
+	}
 	p.function = s
 
 	toks, err := p.Parse(in[len(in)-1].Block())
