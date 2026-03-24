@@ -60,7 +60,7 @@ value representation) and `Type` (runtime type metadata).
     `Greater`, `Lower` (generic); per-type variants:
     `AddInt`...`AddFloat64`, `SubInt`...`SubFloat64`,
     `MulInt`...`MulFloat64`, `DivInt`...`DivFloat64`,
-    `RemInt`...`RemUint64`, `NegInt`...`NegFloat64`,
+    `RemInt`...`RemFloat64`, `NegInt`...`NegFloat64`,
     `GreaterInt`...`GreaterFloat64`, `LowerInt`...`LowerFloat64`.
   - Immediate: `AddIntImm`, `SubIntImm`, `MulIntImm`, `GreaterIntImm`,
     `GreaterUintImm`, `LowerIntImm`, `LowerUintImm`, `EqualIntImm`.
@@ -180,11 +180,9 @@ loop restores `ip` from `Machine.ip` to resume normal execution.
 
 **Debug fields on Machine:**
 
-- `debugInfo *DebugInfo` -- symbolic info (labels, globals, locals, source
-  registry). Built lazily on first trap via `debugInfoFn`.
 - `debugInfoFn func() *DebugInfo` -- builder registered by the interpreter.
-  Avoids paying the cost of building debug info unless a trap is actually
-  hit.
+  Called on demand inside `enterDebug` to produce symbolic info (labels,
+  globals, locals, source registry). Not cached on Machine.
 - `debugIn` / `debugOut` -- I/O overrides for the debug REPL (default:
   stdin/stderr). Tests inject buffers here.
 - `trapOrig int` -- the ip to resume after the debug session ends.

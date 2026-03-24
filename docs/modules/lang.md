@@ -32,7 +32,7 @@ Character property constants (`CharOp`, `CharNum`, `CharAlpha`, `CharStr`,
 ### lang/golang
 
 - **`GoSpec`** -- complete Go lexical specification. Maps all Go keywords,
-  operators, and block delimiters. Defines 9 precedence levels and
+  operators, and block delimiters. Defines precedence levels 0--8 and
   associativity for all operators. `default` is mapped to `lang.Case`.
 
 ## Dependencies

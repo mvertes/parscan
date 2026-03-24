@@ -20,7 +20,7 @@ most complex stage in the pipeline.
 - **`Tokens`** -- slice of `Token` with helper methods (`Index`, `Split`,
   `SplitStart`).
 - **`Parse(src string) (Tokens, error)`** -- full parse: scan, then
-  process declarations.
+  parse all statements into a postfix token stream.
 - **`ScanDecls(src string) ([]Tokens, error)`** -- scan and split source
   into top-level declaration token groups without parsing bodies.
 - **`ParseDecl(toks Tokens) (handled bool, err error)`** -- process a

@@ -18,7 +18,6 @@ to resolve addresses and types.
     `LocalVar`, `Func`, `Pkg`, `Builtin`. `Var` is for global data;
     `LocalVar` is for frame-relative locals.
   - `Index` -- address in the VM data segment or frame.
-  - `Local` -- whether the address is frame-relative.
   - `Type` -- `*vm.Type` for the symbol's runtime type.
   - `Captured` / `FreeVars` -- closure capture metadata.
 - **`Kind`** (int enum) -- symbol classification.

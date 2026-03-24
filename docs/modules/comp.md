@@ -6,9 +6,9 @@
 ## Overview
 
 The `comp` package bridges parsing and execution. Its `Compiler` embeds the
-parser and walks the flat token stream in a single pass, emitting
-`vm.Instruction` values into a `Code` slice and populating a `Data` slice
-(the global memory segment).
+parser and compiles source in two phases: first resolving all declarations,
+then generating bytecode. It emits `vm.Instruction` values into a `Code`
+slice and populates a `Data` slice (the global memory segment).
 
 ## Key types and functions
 
