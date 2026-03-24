@@ -191,6 +191,18 @@ type T struct{}
 func (t *T) Foo() bool { return t != nil }
 var obj = &T{}
 bar()`, res: "true"},
+
+		// Type declared after the const that uses it in an array size.
+		{n: "const_before_type", src: `
+const size = 3
+type Vec struct { data [size]int }
+len(Vec{}.data)`, res: "3"},
+
+		// TODO: var with initializer declared after the func that uses it.
+		{n: "var_init_after_func", skip: true, src: `
+func get() int { return x }
+var x = 10
+get()`, res: "10"},
 	})
 }
 
@@ -336,6 +348,18 @@ func TestConst(t *testing.T) {
 
 		{n: "#03", src: src0 + "c", res: "2"},
 		{n: "#04", src: `func f() string {return a}; const a = "hello"; f()`, res: "hello"},
+
+		// Forward references within a const block.
+		{n: "fwd_in_block", src: `const (a = 2; b = c + d; c = 4; d = 5); b`, res: "9"},
+		// Forward references across separate const blocks.
+		{n: "fwd_cross_block", src: `const b = c + 1; const c = 5; b`, res: "6"},
+		// Const used in array size, declared after the type.
+		{n: "fwd_array_size", src: `
+const maxN = 30
+const bufSize = maxN + 2
+type T struct { pos uint8; size uint8 }
+type buf struct { data [bufSize]T }
+len(buf{}.data)`, res: "32"},
 	})
 }
 
@@ -640,6 +664,12 @@ f()
 var t T
 t.X = 99
 t.X`, res: "99"},
+
+		// Struct field name shadows a builtin type (e.g. rune).
+		{n: "field_shadows_type", src: `
+type P struct { pos uint8; size uint8 }
+type buf struct { rune [3]P }
+len(buf{}.rune)`, res: "3"},
 	})
 }
 

@@ -24,23 +24,52 @@ func (p *Parser) parseConst(in Tokens) (out Tokens, err error) {
 	if in, err = p.Scan(in[1].Block(), false); err != nil {
 		return out, err
 	}
-	var cnt int64
-	p.Symbols["iota"].Cval = constant.Make(cnt)
-	var prev Tokens
-	for i, lt := range in.Split(lang.Semicolon) {
-		if i > 0 && len(lt) == 1 {
-			lt = append(Tokens{lt[0]}, prev...) // Handle implicit repetition of the previous expression.
-		}
-		ot, err := p.parseConstLine(lt)
-		if err != nil {
-			return out, err
-		}
-		out = append(out, ot...)
-		prev = lt[1:]
-		cnt++
-		p.Symbols["iota"].Cval = constant.Make(cnt)
+
+	lines := in.Split(lang.Semicolon)
+
+	// Build expanded lines (apply iota implicit repetition) and record iota values.
+	type constLine struct {
+		toks Tokens
+		iota int64
 	}
-	return out, err
+	pending := make([]constLine, 0, len(lines))
+	var prev Tokens
+	for i, lt := range lines {
+		if i > 0 && len(lt) == 1 {
+			lt = append(Tokens{lt[0]}, prev...)
+		}
+		pending = append(pending, constLine{toks: lt, iota: int64(i)})
+		if len(lt) > 1 {
+			prev = lt[1:]
+		}
+	}
+
+	// Retry until no undefined const remains, or no progress is made.
+	for len(pending) > 0 {
+		var retry []constLine
+		var firstErr error
+		for _, cl := range pending {
+			p.Symbols["iota"].Cval = constant.Make(cl.iota)
+			ot, err := p.parseConstLine(cl.toks)
+			if err != nil {
+				var eu ErrUndefined
+				if errors.As(err, &eu) {
+					retry = append(retry, cl)
+					if firstErr == nil {
+						firstErr = err
+					}
+					continue
+				}
+				return out, err
+			}
+			out = append(out, ot...)
+		}
+		if len(retry) == len(pending) {
+			return out, firstErr
+		}
+		pending = retry
+	}
+	return out, nil
 }
 
 func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {

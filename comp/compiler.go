@@ -53,6 +53,12 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 // Compile parses src and generates code and data, or returns a non-nil error.
 // Code and data are added incrementally in c.Code and C.Data.
 // name identifies the source ("m:<content>" for inline, "f:<path>" for file).
+//
+// Compilation proceeds in two phases:
+//  1. Declarations: resolve all const, type, var (types only) and func signatures
+//     with a retry loop so forward references between declarations are handled.
+//  2. Code generation: parse func bodies and var initializers, then generate
+//     bytecode in a single pass (no retries needed, all symbols are defined).
 func (c *Compiler) Compile(name, src string) error {
 	c.posBase = c.Sources.Add(name, src)
 
@@ -61,21 +67,49 @@ func (c *Compiler) Compile(name, src string) error {
 		return err
 	}
 
-	// Register function signatures in advance (fix mutually recursive funcs).
-	for _, decl := range decls {
-		c.SymTracker = nil
-		dataLen, codeLen := len(c.Data), len(c.Code)
-		if err = c.RegisterFunc(decl); err != nil {
-			c.rollback(dataLen, codeLen)
-		}
-	}
-
-	// Retry until no undefined declaration remains, or stale, or other error.
+	// Phase 1: resolve all declarations (no code generation).
+	// Retry until no undefined declaration remains, or no progress is made.
+	var remaining []goparser.Tokens // decls needing full parse + generate
 	pending := decls
 	for len(pending) > 0 {
 		var retry []goparser.Tokens
 		var firstErr error
 		for _, decl := range pending {
+			c.SymTracker = nil
+			handled, parseErr := c.ParseDecl(decl)
+			if parseErr != nil {
+				var eu goparser.ErrUndefined
+				if errors.As(parseErr, &eu) {
+					// Undo symbols added during this failed attempt.
+					for _, k := range c.SymTracker {
+						delete(c.Symbols, k)
+					}
+					c.SymTracker = nil
+					retry = append(retry, decl)
+					if firstErr == nil {
+						firstErr = parseErr
+					}
+					continue
+				}
+				return parseErr
+			}
+			if !handled {
+				remaining = append(remaining, decl)
+			}
+		}
+		if len(retry) == len(pending) {
+			return firstErr
+		}
+		pending = retry
+	}
+
+	// Phase 2: parse and generate code for func bodies and var initializers.
+	// A retry loop is still needed because func bodies may reference vars
+	// whose types are inferred from initializers not yet compiled.
+	for len(remaining) > 0 {
+		var retry []goparser.Tokens
+		var firstErr error
+		for _, decl := range remaining {
 			c.SymTracker = nil
 			c.savedSlots = c.savedSlots[:0]
 			dataLen, codeLen := len(c.Data), len(c.Code)
@@ -96,10 +130,10 @@ func (c *Compiler) Compile(name, src string) error {
 				return parseErr
 			}
 		}
-		if len(retry) == len(pending) {
+		if len(retry) == len(remaining) {
 			return firstErr
 		}
-		pending = retry
+		remaining = retry
 	}
 	return nil
 }

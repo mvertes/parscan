@@ -210,8 +210,43 @@ func (p *Parser) ParseOneStmt(toks Tokens) (Tokens, error) {
 	return p.parseStmt(toks)
 }
 
-// RegisterFunc parses and registers a named function's signature.
-func (p *Parser) RegisterFunc(toks Tokens) error {
+// ParseDecl resolves a declaration's symbols (Phase 1) without emitting code.
+// Returns handled=true if fully resolved, false if code generation is needed.
+func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
+	if len(toks) == 0 {
+		return true, nil
+	}
+	if toks[0].Tok != lang.Package && p.pkgName == "" {
+		if !p.noPkg {
+			return false, errors.New("no package defined")
+		}
+		p.pkgName = "main"
+	}
+	switch toks[0].Tok {
+	case lang.Package:
+		_, err = p.parsePackage(toks)
+		return true, err
+	case lang.Import:
+		_, err = p.parseImports(toks)
+		return true, err
+	case lang.Const:
+		_, err = p.parseConst(toks)
+		return true, err
+	case lang.Type:
+		_, err = p.parseType(toks)
+		return true, err
+	case lang.Func:
+		p.registerFunc(toks) // Best-effort; errors are not fatal.
+		return false, nil    // Body still needs full parse + generate.
+	case lang.Var:
+		return p.parseVarDecl(toks)
+	}
+	return false, nil
+}
+
+// registerFunc parses and registers a named function's signature.
+// Uses SymTracker to undo parameter symbols added by parseTypeExpr.
+func (p *Parser) registerFunc(toks Tokens) error {
 	if len(toks) < 3 || toks[0].Tok != lang.Func || toks[1].Tok != lang.Ident {
 		return nil
 	}
@@ -229,13 +264,76 @@ func (p *Parser) RegisterFunc(toks Tokens) error {
 		key := p.scopedName(fname)
 		p.SymSet(key, s)
 	}
+	// Track symbols added by parseTypeExpr so we can remove param names.
+	savedTracker := p.SymTracker
+	p.SymTracker = []string{}
 	typ, _, err := p.parseTypeExpr(toks[:bi])
+	fnKey := p.scopedName(fname)
+	for _, k := range p.SymTracker {
+		if k != fnKey {
+			delete(p.Symbols, k)
+		}
+	}
+	p.SymTracker = savedTracker
 	if err != nil {
+		if !ok {
+			delete(p.Symbols, fnKey)
+		}
 		return err
 	}
 	s.Kind = symbol.Func
 	s.Type = typ
 	return nil
+}
+
+// parseVarDecl registers var symbol names so other Phase 1 decls can see them.
+// Vars with initializers are deferred to Phase 2 for type inference and codegen.
+func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
+	if len(toks) < 2 {
+		return true, errors.New("missing expression")
+	}
+	in := toks[1:]
+	if toks[1].Tok == lang.ParenBlock {
+		if in, err = p.Scan(toks[1].Block(), false); err != nil {
+			return true, err
+		}
+	}
+	lines := in.Split(lang.Semicolon)
+	hasInit := false
+	for _, lt := range lines {
+		if lt.Index(lang.Assign) >= 0 {
+			hasInit = true
+			break
+		}
+	}
+	if hasInit {
+		for _, lt := range lines {
+			decl := lt
+			if i := decl.Index(lang.Assign); i >= 0 {
+				decl = decl[:i]
+			}
+			for _, ct := range decl.Split(lang.Comma) {
+				if len(ct) == 0 {
+					continue
+				}
+				if ct[0].Tok != lang.Ident {
+					continue
+				}
+				rawName := ct[0].Str
+				if rawName == "_" {
+					rawName = p.blankName()
+				}
+				name := p.scopedName(rawName)
+				if _, _, ok := p.Symbols.Get(rawName, p.scope); !ok {
+					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
+				}
+			}
+		}
+		return false, nil
+	}
+	// No initializer: full parse is just symbol registration.
+	_, err = p.parseVar(toks)
+	return true, err
 }
 
 func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
