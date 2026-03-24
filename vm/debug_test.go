@@ -103,8 +103,8 @@ func TestDumpCallStack(t *testing.T) {
 	}
 
 	m := &Machine{
-		mem:       mem,
-		fp:        11,
+		mem:    mem,
+		fp:     11,
 		frames: []frame{{info: 1 | (1 << 16)}, {info: 0 | (1 << 16)}}, // [nret=1,narg=1], [nret=0,narg=1]
 	}
 

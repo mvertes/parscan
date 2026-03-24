@@ -268,15 +268,17 @@ type frame struct {
 }
 
 type Machine struct {
-	code    Code    // code to execute
-	mem     []Value // memory, as a stack
-	ip, fp  int     // instruction pointer and frame pointer
-	dataLen int     // number of global data slots in mem (set by Push)
+	code    Code     // code to execute
+	mem     []Value  // memory, as a stack
+	ip, fp  int      // instruction pointer and frame pointer
+	dataLen int      // number of global data slots in mem (set by Push)
 	env     []*Value // active closure's captured cells (nil for plain functions)
 	frames  []frame  // saved caller frames (one per call depth)
 
 	panicking bool  // true while unwinding due to panic
 	panicVal  Value // value passed to panic()
+
+	Symbols map[string]int // symbol name -> mem index for global lookup
 
 	// funcFields maps struct func field addresses to parscan func values (int code addresses
 	// or Closures). Parscan funcs cannot be stored directly in typed Go func fields via reflect.

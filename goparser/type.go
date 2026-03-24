@@ -24,7 +24,7 @@ const (
 
 // Type parsing error definitions.
 var (
-	ErrEllipsisArray = errors.New("[...] array")
+	ErrEllipsisArray  = errors.New("[...] array")
 	ErrFuncType       = errors.New("invalid function type")
 	ErrInvalidType    = errors.New("invalid type")
 	ErrMissingType    = errors.New("missing type")
@@ -319,7 +319,13 @@ func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag t
 		}
 	case parseTypeVar:
 		if p.funcScope == "" {
-			p.SymAdd(symbol.UnsetAddr, name, zv, symbol.Var, typ)
+			if s, ok := p.Symbols[name]; ok && s.Index != symbol.UnsetAddr {
+				// Preserve pre-assigned index from allocGlobalSlots.
+				s.Type = typ
+				s.Value = zv
+			} else {
+				p.SymAdd(symbol.UnsetAddr, name, zv, symbol.Var, typ)
+			}
 			break
 		}
 		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.LocalVar, typ)

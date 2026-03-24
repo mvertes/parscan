@@ -19,7 +19,7 @@ type Interp struct {
 
 // NewInterpreter returns a new interpreter.
 func NewInterpreter(s *lang.Spec) *Interp {
-	return &Interp{comp.NewCompiler(s), &vm.Machine{}}
+	return &Interp{comp.NewCompiler(s), &vm.Machine{Symbols: map[string]int{}}}
 }
 
 // Eval evaluates code string and return the last produced value if any, or an error.
@@ -39,7 +39,13 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
-	if s, ok := i.Symbols["main"]; ok {
+	// Populate Machine.Symbols from compiler symbol table for REPL resolution.
+	for name, sym := range i.Compiler.Symbols {
+		if sym.Index >= 0 {
+			i.Machine.Symbols[name] = sym.Index //nolint:staticcheck // Machine qualifier needed: Symbols exists on both embedded types
+		}
+	}
+	if s, ok := i.Compiler.Symbols["main"]; ok {
 		i.PushCode(vm.Instruction{Op: vm.Push, Arg: []int{int(i.Data[s.Index].Int())}})
 		i.PushCode(vm.Instruction{Op: vm.Call, Arg: []int{0, 0}})
 	}

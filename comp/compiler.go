@@ -19,12 +19,6 @@ import (
 
 const debug = false
 
-// savedSlot records a data slot update to restore on rollback.
-type savedSlot struct {
-	idx int
-	val vm.Value
-}
-
 // Compiler represents the state of a compiler.
 type Compiler struct {
 	*goparser.Parser
@@ -32,11 +26,10 @@ type Compiler struct {
 	Data    []vm.Value // produced data, will be at the bottom of VM stack
 	Entry   int        // offset in Code to start execution from
 
-	strings    map[string]int   // locations of strings in Data
-	methodIDs  map[string]int   // global method ID by method name
-	typeIdxs   map[*vm.Type]int // dedup cache for typeIndex, keyed by parscan type pointer
-	posBase    int              // base offset for current source (from Sources.Add)
-	savedSlots []savedSlot      // data slot updates to restore on rollback
+	strings   map[string]int   // locations of strings in Data
+	methodIDs map[string]int   // global method ID by method name
+	typeIdxs  map[*vm.Type]int // dedup cache for typeIndex, keyed by parscan type pointer
+	posBase   int              // base offset for current source (from Sources.Add)
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
@@ -105,14 +98,13 @@ func (c *Compiler) Compile(name, src string) error {
 	// Phase 2: split var blocks, sort var declarations by dependency,
 	// then compile all declarations with a retry loop for forward references.
 	remaining = c.SplitAndSortVarDecls(remaining)
-	c.allocFuncSlots()
+	c.allocGlobalSlots()
 	pending = remaining
 	for len(pending) > 0 {
 		var retry []goparser.Tokens
 		var firstErr error
 		for _, decl := range pending {
 			c.SymTracker = nil
-			c.savedSlots = c.savedSlots[:0]
 			dataLen, codeLen := len(c.Data), len(c.Code)
 			if err := c.compileDecl(decl); err != nil {
 				var eu goparser.ErrUndefined
@@ -140,14 +132,6 @@ func (c *Compiler) rollbackTo(dataLen, codeLen int) {
 		delete(c.Symbols, k)
 	}
 	c.SymTracker = nil
-	for _, sym := range c.Symbols {
-		if sym.Index >= dataLen {
-			sym.Index = symbol.UnsetAddr
-		}
-	}
-	for _, s := range c.savedSlots {
-		c.Data[s.idx] = s.val
-	}
 	for s, i := range c.strings {
 		if i >= dataLen {
 			delete(c.strings, s)
@@ -165,17 +149,29 @@ func (c *Compiler) compileDecl(decl goparser.Tokens) error {
 	return c.generate(toks)
 }
 
-// allocFuncSlots pre-allocates data slots for all func symbols (including
-// methods) so that var initializers doing interface wrapping can reference them.
-func (c *Compiler) allocFuncSlots() {
+// allocGlobalSlots pre-assigns data slots for Var and Func symbols so that
+// Phase 2 code generation never encounters an unresolved index for them.
+// Type and Value symbols are still allocated on the fly in the Ident handler,
+// since many built-in types/values may never be referenced.
+func (c *Compiler) allocGlobalSlots() {
 	for _, s := range c.Symbols {
-		if s.Kind == symbol.Func && s.Index == symbol.UnsetAddr {
+		if s.Index != symbol.UnsetAddr {
+			continue
+		}
+		switch s.Kind {
+		case symbol.Func:
 			s.Index = len(c.Data)
 			c.Data = append(c.Data, s.Value)
+		case symbol.Var:
+			s.Index = len(c.Data)
+			v := s.Value
+			if !v.IsValid() && s.Type != nil {
+				v = vm.NewValue(s.Type.Rtype)
+			}
+			c.Data = append(c.Data, v)
 		}
 	}
 }
-
 
 func (c *Compiler) methodID(name string) int {
 	if id, ok := c.methodIDs[name]; ok {
@@ -900,9 +896,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				break
 			}
 			// TODO check source type against var type
-			if v := c.Data[lhs.Index]; !v.IsValid() {
+			if v := c.Data[lhs.Index]; !v.IsValid() && rhs.Type != nil {
 				c.Data[lhs.Index] = vm.NewValue(rhs.Type.Rtype)
-				c.Symbols[lhs.Name].Type = rhs.Type
+				if sym := c.Symbols[lhs.Name]; sym != nil {
+					sym.Type = rhs.Type
+				}
 			}
 			// Wrap concrete value in Iface when assigning to interface variable.
 			c.emitIfaceWrap(t, lhs.Type, rhs.Type)
@@ -1002,6 +1000,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Get, vm.Local, s.Index)
 			} else {
 				if s.Index == symbol.UnsetAddr {
+					// Symbol created during Phase 2 (e.g. := define, anonymous type).
 					s.Index = len(c.Data)
 					if s.Kind == symbol.Type {
 						c.Data = append(c.Data, vm.NewValue(s.Type.Rtype))
@@ -1031,13 +1030,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if s, ok := c.Symbols[t.Str]; ok {
 				s.Value = vm.ValueOf(lc)
 				if s.Kind == symbol.Func {
-					// Label is a function entry point, register its code address in data
-					// and save caller stack length.
+					// Label is a function entry point, update its code address in data.
 					if s.Index == symbol.UnsetAddr {
+						// Method registered during Phase 2 func body parsing.
 						s.Index = len(c.Data)
 						c.Data = append(c.Data, s.Value)
 					} else {
-						c.savedSlots = append(c.savedSlots, savedSlot{s.Index, c.Data[s.Index]})
 						c.Data[s.Index] = s.Value
 					}
 					flen = append(flen, len(stack))
@@ -1054,8 +1052,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						}
 					}
 				} else {
-					c.savedSlots = append(c.savedSlots, savedSlot{s.Index, c.Data[s.Index]})
-					c.Data[s.Index] = s.Value
+					if s.Index == symbol.UnsetAddr {
+						s.Index = len(c.Data)
+						c.Data = append(c.Data, s.Value)
+					} else {
+						c.Data[s.Index] = s.Value
+					}
 				}
 			} else {
 				if strings.HasSuffix(t.Str, "_end") {
