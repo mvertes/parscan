@@ -1641,7 +1641,15 @@ func (m *Machine) assignSlot(dst *Value, src Value) {
 			}
 		}
 	} else {
-		dst.ref.Set(src.ref)
+		if dst.ref.CanSet() {
+			s := src.ref
+			if !s.IsValid() {
+				s = reflect.Zero(dst.ref.Type())
+			}
+			dst.ref.Set(s)
+		} else {
+			dst.ref = src.ref
+		}
 	}
 }
 
