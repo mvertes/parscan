@@ -21,12 +21,17 @@ most complex stage in the pipeline.
   `SplitStart`).
 - **`Parse(src string) (Tokens, error)`** -- full parse: scan, then
   process declarations.
-- **`ScanDecls(src string) ([]Tokens, error)`** -- scan top-level
-  declarations without parsing bodies (used for forward reference
-  registration).
+- **`ScanDecls(src string) ([]Tokens, error)`** -- scan and split source
+  into top-level declaration token groups without parsing bodies.
+- **`ParseDecl(toks Tokens) (handled bool, err error)`** -- process a
+  single declaration during the compiler's phase 1. Handles `package`,
+  `import`, `const`, `type`, and `var` (types only). For `func`, registers
+  the signature via `registerFunc`. Returns `handled=false` when the
+  declaration still needs full parse + code generation (func bodies, var
+  initializers).
 - **`ParseOneStmt(toks Tokens) (Tokens, error)`** -- parse a single
-  statement (used during compilation).
-- **`RegisterFunc(toks Tokens) error`** -- register a function's
+  statement (used during compilation phase 2).
+- **`registerFunc(toks Tokens) error`** -- register a function's
   signature in the symbol table without parsing its body.
 
 ### Error types

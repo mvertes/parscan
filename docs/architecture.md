@@ -70,6 +70,9 @@ Each call frame is laid out as:
 `frameOverhead = 3` accounts for the three bookkeeping slots. `deferHead`
 holds the index of the topmost deferred-call record (0 = none).
 
+A separate `frames []frame` slice tracks per-call metadata (caller closure
+env, nret/narg). See [vm](modules/vm.md#call-frame) for details.
+
 - `Get Global N` reads `mem[N]`
 - `Get Local N` reads `mem[fp - 1 + N]`
 
@@ -88,7 +91,9 @@ holds the index of the topmost deferred-call record (0 = none).
    (e.g. `main/foo/for0`), making symbol lookup a prefix walk.
    See [ADR-003](decisions/ADR-003-scope-as-path.md).
 
-4. **Lazy fixpoint** -- out-of-order declarations are handled by retrying
+4. **Two-phase compilation with lazy fixpoint** -- compilation splits into
+   a declaration phase (const, type, var types, func signatures) and a code
+   generation phase (func bodies, var initializers). Each phase retries
    failed declarations until no new progress is made.
    See [ADR-004](decisions/ADR-004-lazy-fixpoint.md).
 

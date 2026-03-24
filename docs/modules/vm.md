@@ -14,9 +14,9 @@ value representation) and `Type` (runtime type metadata).
 ### Execution
 
 - **`Machine`** -- VM state: `code`, `mem`, `ip`, `fp`, closure `env`,
-  panic state (`panicking`, `panicVal`), per-frame metadata
-  (`frameInfo`, `captured`), a `funcFields` side-table for parscan funcs
-  stored in native struct fields, and debug state.
+  a `frames []frame` stack (caller env + packed nret/narg per call),
+  panic state (`panicking`, `panicVal`), a `funcFields` side-table for
+  parscan funcs stored in native struct fields, and debug state.
 - **`Run() error`** -- main execution loop. Dispatches on `Op` via a
   switch statement.
 - **`Push(vals ...Value)`** / **`Pop() Value`** -- stack manipulation.
@@ -98,15 +98,20 @@ mem[dataLen ..]        call stack (grows upward)
                                   fp  (frameOverhead = 3 slots)
 ```
 
-`Call` pushes `deferHead`, `retIP`, and `prevFP`, then sets `fp` past all
-three. `Return` inspects `deferHead` (at `mem[fp-3]`) for pending deferred
-calls before restoring `fp` and `ip`.
+`Call` pushes `deferHead`, `retIP`, and `prevFP` onto the stack, then sets
+`fp` past all three. It also pushes a `frame{env, info}` entry onto
+`Machine.frames` to save the caller's closure env and the packed
+`nret | (narg << 16)` value. `Return` inspects `deferHead` (at
+`mem[fp-3]`) for pending deferred calls, then pops `frames` to restore
+`env` and recover nret/narg.
 
 - `mem[fp-3]` -- `deferHead`: index of the topmost deferred-call record
   (0 = none). Updated by `DeferPush`.
 - `mem[fp-2]` -- `retIP`: return address (or `deferSentinelIP = -1` for
   a deferred frame).
 - `mem[fp-1]` -- `prevFP`: the caller's frame pointer.
+- `frames[top]` -- `frame{env, info}`: the caller's closure env and
+  packed nret/narg (side-channel, not on the value stack).
 
 ### Per-type numeric ops
 
@@ -146,9 +151,19 @@ runtime. Neither can be stored directly in a typed Go `func` field via
    `ParscanFunc` by calling `reflect.MakeFunc` with a trampoline that
    re-enters the VM via `Machine.CallFunc`. The resulting `GF`
    `reflect.Value` is assignable to any Go func field of the matching type.
-   `CallFunc` is safe for single-threaded synchronous callbacks; concurrent
-   goroutines calling different wrapped functions on the same `Machine` are
-   not safe.
+
+### Re-entrant execution (CallFunc)
+
+`CallFunc` provides re-entrant VM execution for native Go callbacks. It
+saves all volatile state (`mem`, `ip`, `fp`, `env`, `frames`, panic
+state, code length), resets per-call state, copies globals to a fresh
+stack, pushes the function value and arguments, appends a temporary
+`Call` + `Exit` sequence, and runs the inner loop. On return (including
+via `defer`), all saved state is restored.
+
+This is safe for single-threaded synchronous callbacks (e.g. an HTTP
+handler calling back into the interpreter). Concurrent goroutines
+calling different wrapped functions on the same `Machine` are not safe.
 
 ### Trap and interactive debug mode
 
