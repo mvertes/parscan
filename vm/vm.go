@@ -267,6 +267,7 @@ type frame struct {
 	info int      // nret | (narg << 16)
 }
 
+// Machine is a stack-based virtual machine that executes bytecode instructions.
 type Machine struct {
 	code    Code     // code to execute
 	mem     []Value  // memory, as a stack

@@ -45,6 +45,9 @@ type Symbol struct {
 	Used     bool           //
 	Captured bool           // true if this variable escapes to a heap cell
 	FreeVars []string       // closure: scoped names of captured outer-scope locals, in Env order
+	RecvName string         // for methods: raw receiver variable name
+	InNames  []string       // raw input param names, cached from Phase 1 for Phase 2
+	OutNames []string       // raw output param names, cached from Phase 1 for Phase 2
 }
 
 // FreeVarIndex returns the index of name in FreeVars, or -1 if not found.

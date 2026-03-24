@@ -195,24 +195,23 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 			rest = rest[:len(rest)-al]
 		}
 		if len(rest) == 0 || rest[len(rest)-1].Tok != lang.Ident {
-			return nil, 0, fmt.Errorf("unsupported constant call expression")
+			return nil, 0, errors.New("unsupported constant call expression")
 		}
 		fname := rest[len(rest)-1].Str
 		totalLen++
 		// Handle builtins before symbol lookup to avoid scope-walk overhead.
-		switch fname {
-		case "len":
+		if fname == "len" {
 			if narg != 1 {
-				return nil, 0, fmt.Errorf("len: wrong number of arguments")
+				return nil, 0, errors.New("len: wrong number of arguments")
 			}
 			if args[0] != nil && args[0].Kind() == constant.String {
 				return constant.MakeInt64(int64(len(constant.StringVal(args[0])))), totalLen, nil
 			}
-			return nil, 0, fmt.Errorf("len: unsupported constant argument type")
+			return nil, 0, errors.New("len: unsupported constant argument type")
 		}
 		if s, _, ok := p.Symbols.Get(fname, p.scope); ok && s.Kind == symbol.Type {
 			if narg != 1 {
-				return nil, 0, fmt.Errorf("type conversion requires exactly one argument")
+				return nil, 0, errors.New("type conversion requires exactly one argument")
 			}
 			return constConvert(args[0], s.Type), totalLen, nil
 		}
@@ -255,13 +254,13 @@ func constConvert(cv constant.Value, typ *vm.Type) constant.Value {
 		}
 		// go/constant has no ToUint; extract int64 bits for correct wraparound.
 		v, _ := constant.Int64Val(constant.ToInt(cv))
-		return constant.MakeUint64(uint64(v))
+		return constant.MakeUint64(uint64(v)) //nolint:gosec // intentional wraparound
 	case rt.Kind() == reflect.Float32 || rt.Kind() == reflect.Float64:
 		return constant.ToFloat(cv)
 	case rt.Kind() == reflect.String:
 		if cv.Kind() == constant.Int {
 			v, _ := constant.Int64Val(cv)
-			return constant.MakeString(string(rune(v)))
+			return constant.MakeString(string(rune(v))) //nolint:gosec // intentional int-to-rune conversion
 		}
 		return cv
 	}

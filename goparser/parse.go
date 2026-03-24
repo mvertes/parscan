@@ -4,7 +4,6 @@ package goparser
 import (
 	"errors"
 	"fmt"
-	"path"
 	"strconv"
 	"strings"
 
@@ -222,15 +221,16 @@ func (p *Parser) SplitAndSortVarDecls(decls []Tokens) []Tokens {
 		if len(decl) == 0 {
 			continue
 		}
-		if decl[0].Tok == lang.Var && len(decl) >= 2 && decl[1].Tok == lang.ParenBlock {
+		switch {
+		case decl[0].Tok == lang.Var && len(decl) >= 2 && decl[1].Tok == lang.ParenBlock:
 			for _, vd := range p.splitVarBlock(decl) {
 				varSlots = append(varSlots, slot{pos: len(expanded), decl: vd})
 				expanded = append(expanded, vd)
 			}
-		} else if decl[0].Tok == lang.Var {
+		case decl[0].Tok == lang.Var:
 			varSlots = append(varSlots, slot{pos: len(expanded), decl: decl})
 			expanded = append(expanded, decl)
-		} else {
+		default:
 			expanded = append(expanded, decl)
 		}
 	}
@@ -395,7 +395,8 @@ func (p *Parser) registerFunc(toks Tokens) error {
 	}
 
 	var fname string
-	var sigToks Tokens // tokens to pass to parseTypeExpr (signature without receiver)
+	var recvVarName string // raw receiver variable name (for methods)
+	var sigToks Tokens     // tokens to pass to parseTypeExpr (signature without receiver)
 
 	bi := toks.LastIndex(lang.BraceBlock)
 	if bi < 0 {
@@ -415,7 +416,6 @@ func (p *Parser) registerFunc(toks Tokens) error {
 			return nil
 		}
 		// Method: func (recv) Name(params) rettype { ... }
-		// Extract receiver type name from the ParenBlock.
 		recvr, err := p.Scan(toks[1].Block(), false)
 		if err != nil {
 			return nil
@@ -425,6 +425,9 @@ func (p *Parser) registerFunc(toks Tokens) error {
 			return nil
 		}
 		fname = typeName + "." + toks[2].Str
+		if len(recvr) >= 2 && recvr[0].Tok == lang.Ident {
+			recvVarName = recvr[0].Str
+		}
 		// Build signature tokens without receiver: [func, Name, params..., rettype].
 		sigToks = make(Tokens, 0, 1+bi-2)
 		sigToks = append(sigToks, toks[0])
@@ -443,9 +446,7 @@ func (p *Parser) registerFunc(toks Tokens) error {
 		key := p.scopedName(fname)
 		p.SymSet(key, s)
 	}
-	p.typeOnly = true
-	typ, _, err := p.parseTypeExpr(sigToks)
-	p.typeOnly = false
+	typ, inNames, outNames, err := p.parseFuncSig(sigToks)
 	if err != nil {
 		if !ok {
 			delete(p.Symbols, p.scopedName(fname))
@@ -454,6 +455,9 @@ func (p *Parser) registerFunc(toks Tokens) error {
 	}
 	s.Kind = symbol.Func
 	s.Type = typ
+	s.RecvName = recvVarName
+	s.InNames = inNames
+	s.OutNames = outNames
 	return nil
 }
 
@@ -979,11 +983,27 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
+func (p *Parser) registerParamsFromSym(s *symbol.Symbol) {
+	nparams := len(s.Type.Params)
+	for i, name := range s.InNames {
+		if name == "" {
+			continue
+		}
+		p.addSymVar(i, nparams, p.scopedName(name), s.Type.Params[i], parseTypeIn)
+	}
+	// Reverse order to match frame slot assignment in parseParamTypes.
+	for i := len(s.OutNames) - 1; i >= 0; i-- {
+		name := s.OutNames[i]
+		if name == "" {
+			continue
+		}
+		p.addSymVar(i, len(s.OutNames), p.scopedName(name), &vm.Type{Rtype: s.Type.Rtype.Out(i)}, parseTypeOut)
+	}
+}
+
 func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	// TODO: handle parametric types (generics)
-	var fname string                  // function name
-	var recvName string               // receiver variable name (non-empty for methods)
-	var savedRecvOuter *symbol.Symbol // global symbol clobbered by receiver registration
+	var fname string
 
 	switch in[1].Tok {
 	case lang.Ident:
@@ -996,24 +1016,12 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 				p.clonum++
 				break
 			}
-			// Parse receiver declaration: get type and variable name.
+			// Method: derive fname from receiver type name.
 			recvr, scanErr := p.Scan(in[1].Block(), false)
 			if scanErr != nil {
 				return nil, scanErr
 			}
-			// Save any global symbol at the receiver name before parseParamTypes
-			// overwrites it with the receiver's LocalVar symbol.
-			if len(recvr) > 0 {
-				savedRecvOuter = p.Symbols[p.scopedName(recvr[0].Str)]
-			}
-			if _, vars, _, err := p.parseParamTypes(recvr, parseTypeRecv); err == nil {
-				fname = recvTypeName(recvr) + "." + in[2].Str
-				if len(vars) > 0 && vars[0] != "" {
-					recvName = path.Base(vars[0])
-				}
-			} else {
-				return nil, err
-			}
+			fname = recvTypeName(recvr) + "." + in[2].Str
 		}
 		if fname == "" {
 			// Anonymous function whose return type starts with a keyword (e.g. func() func() int {}).
@@ -1044,25 +1052,23 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	p.funcScope = p.scope
 	// Local variable indices start at 1; index 0 is the frame header (prevFP).
 	p.framelen[p.funcScope] = 1
-	// For methods, the receiver is Env[0] of the method closure.
-	// Register it so the compiler emits HGet 0 for the receiver inside the body.
-	if recvName != "" {
-		recvScoped := p.scope + "/" + recvName
+
+	// For methods, register the receiver directly at the function scope
+	// using cached info from Phase 1.
+	if s.RecvName != "" {
+		recvScoped := p.scope + "/" + s.RecvName
 		s.FreeVars = []string{recvScoped}
-		// parseParamTypes registered the receiver at the outer scope (before
-		// pushScope). Copy it to the function scope, then restore any global
-		// symbol that was clobbered by the receiver registration.
-		outerKey := strings.TrimPrefix(funcScope+"/"+recvName, "/")
-		if recvSym := p.Symbols[outerKey]; recvSym != nil {
-			p.SymSet(recvScoped, recvSym)
-		}
-		// Restore clobbered outer symbol or remove the receiver from outer scope.
-		if savedRecvOuter != nil {
-			p.Symbols[outerKey] = savedRecvOuter
-		} else {
-			delete(p.Symbols, outerKey)
+		recvTypName, _, _ := strings.Cut(fname, ".")
+		lookupName := strings.TrimPrefix(recvTypName, "*")
+		if recvTypSym, _, ok := p.Symbols.Get(lookupName, p.scope); ok && recvTypSym.IsType() {
+			recvTyp := recvTypSym.Type
+			if strings.HasPrefix(recvTypName, "*") {
+				recvTyp = vm.PointerTo(recvTyp)
+			}
+			p.addSymVar(0, 1, recvScoped, recvTyp, parseTypeRecv)
 		}
 	}
+
 	defer func() {
 		p.fname = ofname // TODO remove in favor of function.
 		p.function = ofunc
@@ -1080,11 +1086,14 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if bi < 0 {
 		return out, ErrBody
 	}
-	typ, _, err := p.parseTypeExpr(in[:bi])
-	if err != nil {
-		return out, err
-	}
-	if s.Type == nil {
+
+	if s.Type != nil {
+		p.registerParamsFromSym(s)
+	} else {
+		typ, _, err := p.parseTypeExpr(in[:bi])
+		if err != nil {
+			return out, err
+		}
 		s.Kind = symbol.Func
 		s.Type = typ
 	}

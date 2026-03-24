@@ -121,25 +121,11 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				return nil, 0, err
 			}
 		}
-		iargs, err := p.Scan(in[indexArgs].Block(), false)
+		typ, _, _, err := p.parseFuncParams(in[indexArgs], out)
 		if err != nil {
 			return nil, 0, err
 		}
-		arg, _, isVariadic, err := p.parseParamTypes(iargs, parseTypeIn)
-		if err != nil {
-			return nil, 0, err
-		}
-		// Output parameters may be empty, or enclosed or not by parenthesis.
-		if len(out) == 1 && out[0].Tok == lang.ParenBlock {
-			if out, err = p.Scan(out[0].Block(), false); err != nil {
-				return nil, 0, err
-			}
-		}
-		ret, _, _, err := p.parseParamTypes(out, parseTypeOut)
-		if err != nil {
-			return nil, 0, err
-		}
-		return vm.FuncOf(arg, ret, isVariadic), 1 + indexArgs, nil
+		return typ, 1 + indexArgs, nil
 
 	case lang.Ident:
 		// TODO: selector expression (pkg.type)
@@ -334,6 +320,74 @@ func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag t
 		p.SymAdd(p.framelen[p.funcScope], name, zv, symbol.LocalVar, typ)
 		p.framelen[p.funcScope]++
 	}
+}
+
+// parseFuncParams parses function input and output parameter lists.
+// argBlock is the ParenBlock token containing input params; out contains
+// output param tokens (may be empty, a single ParenBlock, or bare tokens).
+// Returns the function type and raw parameter names.
+func (p *Parser) parseFuncParams(argBlock Token, out Tokens) (typ *vm.Type, inNames, outNames []string, err error) {
+	iargs, err := p.Scan(argBlock.Block(), false)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	arg, argNames, isVariadic, err := p.parseParamTypes(iargs, parseTypeIn)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(out) == 1 && out[0].Tok == lang.ParenBlock {
+		if out, err = p.Scan(out[0].Block(), false); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	ret, retNames, _, err := p.parseParamTypes(out, parseTypeOut)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return vm.FuncOf(arg, ret, isVariadic), baseNames(argNames), baseNames(retNames), nil
+}
+
+// parseFuncSig parses a named function signature (receiver must be pre-stripped)
+// and returns its type along with raw parameter names. Suppresses addSymVar
+// so Phase 1 does not register param symbols.
+func (p *Parser) parseFuncSig(in Tokens) (typ *vm.Type, inNames, outNames []string, err error) {
+	if len(in) == 0 || in[0].Tok != lang.Func {
+		return nil, nil, nil, ErrFuncType
+	}
+	var out Tokens
+	var indexArgs int
+	switch l, in1 := len(in), in[1]; {
+	case l >= 3 && in1.Tok == lang.Ident:
+		indexArgs, out = 2, in[3:]
+	case l >= 2 && in1.Tok == lang.ParenBlock:
+		indexArgs, out = 1, in[2:]
+	default:
+		return nil, nil, nil, ErrFuncType
+	}
+	p.typeOnly = true
+	typ, inNames, outNames, err = p.parseFuncParams(in[indexArgs], out)
+	p.typeOnly = false
+	return
+}
+
+// baseNames extracts raw (unscoped) names from scoped parameter names.
+// Returns nil if all names are empty (unnamed parameters).
+func baseNames(scoped []string) []string {
+	var raw []string
+	for i, s := range scoped {
+		if s == "" {
+			continue
+		}
+		if raw == nil {
+			raw = make([]string, len(scoped))
+		}
+		if j := strings.LastIndex(s, "/"); j >= 0 {
+			raw[i] = s[j+1:]
+		} else {
+			raw[i] = s
+		}
+	}
+	return raw
 }
 
 // parseEmbeddedField checks if lt matches an embedded (anonymous) struct field pattern
