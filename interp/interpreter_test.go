@@ -371,6 +371,10 @@ len(buf{}.data)`, res: "32"},
 		{n: "conv_int", src: `const a = int(3.0); a`, res: "3"},
 		{n: "conv_float", src: `const a = float64(3) + 0.5; a`, res: "3.5"},
 		{n: "conv_string", src: `const a = string(65); a`, res: "A"},
+
+		// len/cap on array-typed variables in const expressions.
+		{n: "len_array_var", src: `var a = [3]int{1,2,3}; const n = len(a); n`, res: "3"},
+		{n: "cap_array_var", src: `var a = [...]int{1,2,3}; const n = cap(a); n`, res: "3"},
 	})
 }
 
@@ -380,6 +384,9 @@ func TestArray(t *testing.T) {
 		{n: "#01", src: "type T [3]int; var t T; t", res: "[0 0 0]"},
 		{n: "#02", src: "type T [3]int; var t T; t[1]", res: "0"},
 		{n: "#03", src: "type T [3]int; var t T; t[1] = 2; t", res: "[0 2 0]"},
+
+		// [...] array syntax.
+		{n: "ellipsis", src: `a := [...]int{10, 20, 30}; len(a)`, res: "3"},
 	})
 }
 

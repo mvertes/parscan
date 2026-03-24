@@ -24,6 +24,7 @@ const (
 
 // Type parsing error definitions.
 var (
+	ErrEllipsisArray = errors.New("[...] array")
 	ErrFuncType       = errors.New("invalid function type")
 	ErrInvalidType    = errors.New("invalid type")
 	ErrMissingType    = errors.New("missing type")
@@ -39,6 +40,15 @@ type ErrUndefined struct{ Name string }
 
 func (e ErrUndefined) Error() string { return "undefined: " + e.Name }
 
+// resolveEllipsisArray resolves [...]T by counting elements in the following BraceBlock.
+func (p *Parser) resolveEllipsisArray(elemTyp *vm.Type, toks Tokens, braceIdx int) (*vm.Type, error) {
+	if braceIdx >= len(toks) || toks[braceIdx].Tok != lang.BraceBlock {
+		return nil, errors.New("[...] requires a composite literal")
+	}
+	size := p.numItems(toks[braceIdx].Block(), lang.Comma)
+	return vm.ArrayOf(size, elemTyp), nil
+}
+
 // parseTypeExpr returns the expression type from its tokens, the number of consumed tokens
 // for the type and the parse error.
 func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
@@ -52,6 +62,10 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			x, err := p.Scan(b, false)
 			if err != nil {
 				return nil, 0, err
+			}
+			// [...]T syntax: size is resolved by the caller from the composite literal.
+			if len(x) == 1 && x[0].Tok == lang.Ellipsis {
+				return typ, 1 + i, ErrEllipsisArray
 			}
 			if x, err = p.parseExpr(x, ""); err != nil {
 				return nil, 0, err

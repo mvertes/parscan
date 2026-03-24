@@ -170,12 +170,15 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 		case lang.BracketBlock:
 			if i == 0 || in[i-1].Tok.IsOperator() {
 				// Array or slice type expression.
-				typ, n, err := p.parseTypeExpr(in[i:])
+				elemTyp, n, err := p.parseTypeExpr(in[i:])
+				if errors.Is(err, ErrEllipsisArray) {
+					elemTyp, err = p.resolveEllipsisArray(elemTyp, in, i+n)
+				}
 				if err != nil {
 					return out, err
 				}
-				ctype = typ.String()
-				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
+				ctype = elemTyp.String()
+				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(elemTyp.Rtype), symbol.Type, elemTyp)
 				out = append(out, newIdent(ctype, t.Pos))
 				i += n - 1
 				break

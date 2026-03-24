@@ -309,8 +309,20 @@ func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
 	if hasInit {
 		for _, lt := range lines {
 			decl := lt
+			var rhs Tokens
 			if i := decl.Index(lang.Assign); i >= 0 {
+				rhs = decl[i+1:]
 				decl = decl[:i]
+			}
+			// Resolve type once for all names sharing this declaration.
+			var rhsTyp *vm.Type
+			if len(rhs) > 0 && rhs[0].Tok == lang.BracketBlock {
+				elemTyp, n, err := p.parseTypeExpr(rhs)
+				if errors.Is(err, ErrEllipsisArray) {
+					rhsTyp, _ = p.resolveEllipsisArray(elemTyp, rhs, n)
+				} else if err == nil {
+					rhsTyp = elemTyp
+				}
 			}
 			for _, ct := range decl.Split(lang.Comma) {
 				if len(ct) == 0 {
@@ -326,6 +338,14 @@ func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
 				name := p.scopedName(rawName)
 				if _, _, ok := p.Symbols.Get(rawName, p.scope); !ok {
 					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
+				}
+				// Use explicit type annotation if present, otherwise RHS type.
+				typ := rhsTyp
+				if len(ct) > 1 {
+					typ, _, _ = p.parseTypeExpr(ct[1:])
+				}
+				if typ != nil {
+					p.Symbols[name].Type = typ
 				}
 			}
 		}
