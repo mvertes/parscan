@@ -351,6 +351,8 @@ func TestConst(t *testing.T) {
 
 		// Forward references within a const block.
 		{n: "fwd_in_block", src: `const (a = 2; b = c + d; c = 4; d = 5); b`, res: "9"},
+		// Deep forward reference chain within a const block.
+		{n: "fwd_deep_chain", src: `const (a = 2; b = c + d; c = a + d; d = e + f; e = 3; f = 4); b`, res: "16"},
 		// Forward references across separate const blocks.
 		{n: "fwd_cross_block", src: `const b = c + 1; const c = 5; b`, res: "6"},
 		// Const used in array size, declared after the type.

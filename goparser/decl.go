@@ -165,6 +165,9 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 		if s.Kind != symbol.Const {
 			return nil, 0, errors.New("symbol is not a constant")
 		}
+		if s.Cval == nil {
+			return nil, 0, ErrUndefined{t.Str}
+		}
 		return s.Cval, 1, err
 	case id == lang.Call:
 		// TODO: implement support for type conversions and builtin calls.
