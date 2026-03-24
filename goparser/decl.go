@@ -6,6 +6,7 @@ import (
 	"go/constant"
 	"go/token"
 	"path"
+	"reflect"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/symbol"
@@ -170,8 +171,42 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 		}
 		return s.Cval, 1, err
 	case id == lang.Call:
-		// TODO: implement support for type conversions and builtin calls.
-		panic("not implemented yet")
+		narg := t.Arg[0].(int)
+		args := make([]constant.Value, narg)
+		rest := in[:l]
+		totalLen := 1 // Call token
+		for i := narg - 1; i >= 0; i-- {
+			av, al, err := p.evalConstExpr(rest)
+			if err != nil {
+				return nil, 0, err
+			}
+			args[i] = av
+			totalLen += al
+			rest = rest[:len(rest)-al]
+		}
+		if len(rest) == 0 || rest[len(rest)-1].Tok != lang.Ident {
+			return nil, 0, fmt.Errorf("unsupported constant call expression")
+		}
+		fname := rest[len(rest)-1].Str
+		totalLen++
+		// Handle builtins before symbol lookup to avoid scope-walk overhead.
+		switch fname {
+		case "len":
+			if narg != 1 {
+				return nil, 0, fmt.Errorf("len: wrong number of arguments")
+			}
+			if args[0] != nil && args[0].Kind() == constant.String {
+				return constant.MakeInt64(int64(len(constant.StringVal(args[0])))), totalLen, nil
+			}
+			return nil, 0, fmt.Errorf("len: unsupported constant argument type")
+		}
+		if s, _, ok := p.Symbols.Get(fname, p.scope); ok && s.Kind == symbol.Type {
+			if narg != 1 {
+				return nil, 0, fmt.Errorf("type conversion requires exactly one argument")
+			}
+			return constConvert(args[0], s.Type), totalLen, nil
+		}
+		return nil, 0, fmt.Errorf("unsupported constant call: %s", fname)
 	default:
 		return nil, 0, errors.New("invalid constant expression")
 	}
@@ -191,6 +226,36 @@ func constValue(c constant.Value) any {
 		return v
 	}
 	return nil
+}
+
+// constConvert converts a constant value to the target type, as in Go type conversions.
+func constConvert(cv constant.Value, typ *vm.Type) constant.Value {
+	rt := typ.Rtype
+	switch {
+	case rt.Kind() >= reflect.Int && rt.Kind() <= reflect.Int64:
+		if cv.Kind() == constant.Float {
+			f, _ := constant.Float64Val(cv)
+			return constant.MakeInt64(int64(f))
+		}
+		return constant.ToInt(cv)
+	case rt.Kind() >= reflect.Uint && rt.Kind() <= reflect.Uintptr:
+		if cv.Kind() == constant.Float {
+			f, _ := constant.Float64Val(cv)
+			return constant.MakeUint64(uint64(f))
+		}
+		// go/constant has no ToUint; extract int64 bits for correct wraparound.
+		v, _ := constant.Int64Val(constant.ToInt(cv))
+		return constant.MakeUint64(uint64(v))
+	case rt.Kind() == reflect.Float32 || rt.Kind() == reflect.Float64:
+		return constant.ToFloat(cv)
+	case rt.Kind() == reflect.String:
+		if cv.Kind() == constant.Int {
+			v, _ := constant.Int64Val(cv)
+			return constant.MakeString(string(rune(v)))
+		}
+		return cv
+	}
+	return cv
 }
 
 // Correspondence between language independent parscan tokens and Go stdlib tokens,

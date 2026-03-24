@@ -362,6 +362,15 @@ const bufSize = maxN + 2
 type T struct { pos uint8; size uint8 }
 type buf struct { data [bufSize]T }
 len(buf{}.data)`, res: "32"},
+
+		// Builtin len in const expression.
+		{n: "len_string", src: `const n = len("hello"); n`, res: "5"},
+		{n: "len_string_expr", src: `const n = len("hello") + 1; n`, res: "6"},
+
+		// Type conversions in const expressions.
+		{n: "conv_int", src: `const a = int(3.0); a`, res: "3"},
+		{n: "conv_float", src: `const a = float64(3) + 0.5; a`, res: "3.5"},
+		{n: "conv_string", src: `const a = string(65); a`, res: "A"},
 	})
 }
 
