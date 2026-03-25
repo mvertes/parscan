@@ -828,6 +828,13 @@ f(a).(int)`, res: "3"},
 func f(x int) (interface{}, int) { return x, x + 1 }
 a, b := f(5)
 a.(int) + b`, res: "11"},
+
+		// nil error interface: short-circuit prevents call on nil receiver
+		{n: "error_nil_shortcircuit", src: `
+var a error = nil
+r := ""
+if a == nil || a.Error() == "nil" { r = "nil" }
+r`, res: "nil"},
 	})
 }
 

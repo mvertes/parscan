@@ -1214,7 +1214,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						}
 					}
 					if methodSym == nil {
-						return goparser.ErrUndefined{Name: methodName}
+						// For interface types, Method.Type does not include the receiver.
+						rm, ok := s.Type.Rtype.MethodByName(methodName)
+						if !ok {
+							return goparser.ErrUndefined{Name: methodName}
+						}
+						methodSym = &symbol.Symbol{Kind: symbol.Func, Type: &vm.Type{Rtype: rm.Type}}
 					}
 					push(methodSym)
 					c.emit(t, vm.IfaceCall, c.methodID(methodName))
