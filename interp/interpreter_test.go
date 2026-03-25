@@ -319,6 +319,9 @@ func TestFor(t *testing.T) {
 		{n: "#22", src: `for range []struct{}{} {}; true`, res: "true"},
 		{n: "#23", src: `func f() bool { for range []struct{}{} {}; return true }; f()`, res: "true"},
 		{n: "#24", src: `n := 0; for range 4 { n++ }; n`, res: "4"},
+		{n: "#25", src: `n := 0; for range map[string]int{"a": 1, "b": 2} { n++ }; n`, res: "2"},
+		{n: "#26", src: `m := map[string]int{"a": 1, "b": 2}; n := 0; for k := range m { n += len(k) }; n`, res: "2"},
+		{n: "#27", src: `m := map[string]int{"a": 1, "b": 2}; n := 0; for _, v := range m { n += v }; n`, res: "3"},
 		{n: "#18", src: `m := map[string]int{"a": 1}; v, ok := m["a"]; ok && v == 1`, res: "true"},
 		{n: "#19", src: `m := map[string]int{"a": 1}; v, ok := m["b"]; !ok && v == 0`, res: "true"},
 		{n: "#20", src: `

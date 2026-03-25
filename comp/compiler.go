@@ -1359,7 +1359,19 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emit(t, vm.Pull2)
 				}
 			case reflect.Map:
-				// FIXME: handle map
+				keyType := vt.Key()
+				switch n {
+				case 0:
+					c.emit(t, vm.Pull)
+				case 1:
+					initRangeVar(stack[len(stack)-2], keyType)
+					c.emit(t, vm.Pull)
+				case 2:
+					k, v := stack[len(stack)-3], stack[len(stack)-2]
+					initRangeVar(k, keyType)
+					initRangeVar(v, vt.Elem())
+					c.emit(t, vm.Pull2)
+				}
 			default:
 				// Unhandled range type (e.g. struct element type from empty composite literal).
 				if n == 0 {

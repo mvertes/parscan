@@ -89,6 +89,12 @@ func (t *Type) Elem() *Type {
 	return &Type{Name: e.Name(), Rtype: e}
 }
 
+// Key returns a map type's key type.
+func (t *Type) Key() *Type {
+	k := t.Rtype.Key()
+	return &Type{Name: k.Name(), Rtype: k}
+}
+
 // Out returns the type's i'th output parameter.
 func (t *Type) Out(i int) *Type {
 	o := t.Rtype.Out(i)
