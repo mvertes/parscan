@@ -656,7 +656,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			pop()         // shift amount
 			left := pop() // left operand
-			push(&symbol.Symbol{Kind: symbol.Value, Type: symbol.Vtype(left)})
+			leftTyp := shiftLeftType(left, c.Symbols["int"].Type)
+			c.emitConstConvert(t, left, leftTyp, 1)
+			push(&symbol.Symbol{Kind: symbol.Value, Type: leftTyp})
 			c.emit(t, vm.BitShl)
 
 		case lang.Shr:
@@ -665,7 +667,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			pop()         // shift amount
 			left := pop() // left operand
-			push(&symbol.Symbol{Kind: symbol.Value, Type: symbol.Vtype(left)})
+			leftTyp := shiftLeftType(left, c.Symbols["int"].Type)
+			c.emitConstConvert(t, left, leftTyp, 1)
+			push(&symbol.Symbol{Kind: symbol.Value, Type: leftTyp})
 			c.emit(t, vm.BitShr)
 
 		case lang.BitComp:
@@ -1451,6 +1455,18 @@ func (c *Compiler) emitConstConvert(t goparser.Token, s *symbol.Symbol, typ *vm.
 }
 
 func booleanOpType(_, _ *symbol.Symbol) *vm.Type { return vm.TypeOf(true) }
+
+// shiftLeftType returns the type for the left operand of a shift. Per Go spec, an untyped float
+// constant used as the left operand of a shift is treated as int.
+func shiftLeftType(left *symbol.Symbol, intTyp *vm.Type) *vm.Type {
+	vt := symbol.Vtype(left)
+	if left.Kind == symbol.Const && vt != nil {
+		if k := vt.Rtype.Kind(); k == reflect.Float32 || k == reflect.Float64 {
+			return intTyp
+		}
+	}
+	return vt
+}
 
 // retractPush removes the most recently emitted Push if s is a constant,
 // returning (immediate value, true). Used for immediate-operand peephole.

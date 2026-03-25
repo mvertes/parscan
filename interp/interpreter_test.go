@@ -1181,6 +1181,11 @@ func TestBitwiseInt(t *testing.T) {
 		{n: "shl_assign", src: "a := 1; a <<= 4; a", res: "16"},
 		{n: "shr_assign", src: "a := 16; a >>= 4; a", res: "1"},
 
+		// Untyped float constant as left operand of shift (Go spec: treated as int).
+		{n: "shl_float_const", src: "const a = 1.0; a << 2", res: "4"},
+		{n: "shl_float_const_expr", src: "const a = 1.0; const b = a + 3; b << 1", res: "8"},
+		{n: "shr_float_const", src: "const a = 8.0; a >> 1", res: "4"},
+
 		{n: "and_assign", src: "a := 0xff; a &= 0x0f; a", res: "15"},
 		{n: "or_assign", src: "a := 0xf0; a |= 0x0f; a", res: "255"},
 		{n: "xor_assign", src: "a := 0xff; a ^= 0x0f; a", res: "240"},
