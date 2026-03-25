@@ -360,6 +360,16 @@ func (v Value) IfaceVal() Iface {
 	return v.ref.Interface().(Iface)
 }
 
+// nilEqual reports whether v equals an untyped nil: true if v is a nil nilable
+// type, or if v is itself invalid (nil == nil).
+func nilEqual(v Value) bool {
+	switch v.ref.Kind() {
+	case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Chan, reflect.Func, reflect.Interface:
+		return v.ref.IsNil()
+	}
+	return !v.ref.IsValid()
+}
+
 // Equal reports whether v is equal to u.
 func (v Value) Equal(u Value) bool {
 	if v.IsIface() {
@@ -373,6 +383,13 @@ func (v Value) Equal(u Value) bool {
 	}
 	if isNum(v.ref.Kind()) && isNum(u.ref.Kind()) {
 		return v.num == u.num
+	}
+	// Untyped nil is stored as an invalid ref.
+	if !u.ref.IsValid() {
+		return nilEqual(v)
+	}
+	if !v.ref.IsValid() {
+		return nilEqual(u)
 	}
 	return v.ref.Equal(u.ref)
 }

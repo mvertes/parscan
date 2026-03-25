@@ -114,6 +114,18 @@ func TestAssign(t *testing.T) {
 func TestCompare(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "a := 1; a < 2", res: "true"},
+		// nil comparisons for nilable composite types
+		{n: "nil_map_decl", src: "var m map[string]string; m == nil", res: "true"},
+		{n: "nil_map_explicit", src: "var m map[string]string = nil; m == nil", res: "true"},
+		{n: "nil_map_nonnnil", src: "m := map[string]string{}; m == nil", res: "false"},
+		{n: "nil_slice_decl", src: "var s []int; s == nil", res: "true"},
+		{n: "nil_slice_explicit", src: "var s []int = nil; s == nil", res: "true"},
+		{n: "nil_slice_nonnil", src: "s := []int{}; s == nil", res: "false"},
+		{n: "nil_ptr_decl", src: "var p *int; p == nil", res: "true"},
+		{n: "nil_ptr_nonnil", src: "a := 1; p := &a; p == nil", res: "false"},
+		{n: "nil_lhs", src: "var m map[string]int; nil == m", res: "true"},
+		{n: "nil_neq_map", src: "var m map[string]string; m != nil", res: "false"},
+		{n: "nil_neq_slice", src: "s := []int{1}; s != nil", res: "true"},
 	})
 }
 
