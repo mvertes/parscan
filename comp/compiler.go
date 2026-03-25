@@ -645,17 +645,18 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if err := checkTopN(2); err != nil {
 				return err
 			}
-			pop() // shift amount
-			// Result type is the type of the left operand.
-			push(&symbol.Symbol{Kind: symbol.Value, Type: symbol.Vtype(top())})
+			pop()         // shift amount
+			left := pop() // left operand
+			push(&symbol.Symbol{Kind: symbol.Value, Type: symbol.Vtype(left)})
 			c.emit(t, vm.BitShl)
 
 		case lang.Shr:
 			if err := checkTopN(2); err != nil {
 				return err
 			}
-			pop() // shift amount
-			push(&symbol.Symbol{Kind: symbol.Value, Type: symbol.Vtype(top())})
+			pop()         // shift amount
+			left := pop() // left operand
+			push(&symbol.Symbol{Kind: symbol.Value, Type: symbol.Vtype(left)})
 			c.emit(t, vm.BitShr)
 
 		case lang.BitComp:

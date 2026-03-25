@@ -1115,6 +1115,8 @@ func TestBitwiseInt(t *testing.T) {
 		{n: "shr", src: "1024 >> 3", res: "128"},
 		{n: "shr_neg", src: "-8 >> 1", res: "-4"},
 
+		{n: "shl_var", src: "var u uint64 = 1; var v uint32 = 10; u << v", res: "1024"},
+		{n: "shr_var", src: "var u uint64 = 1024; var v uint32 = 3; u >> v", res: "128"},
 		{n: "shl_assign", src: "a := 1; a <<= 4; a", res: "16"},
 		{n: "shr_assign", src: "a := 16; a >>= 4; a", res: "1"},
 
