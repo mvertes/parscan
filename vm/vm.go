@@ -1500,6 +1500,14 @@ func (m *Machine) Push(v ...Value) (l int) {
 	return l
 }
 
+// TrimStack removes leftover stack values from a previous Run, restoring mem
+// to the global data boundary. Call before pushing new global data on re-entry.
+func (m *Machine) TrimStack() {
+	if len(m.mem) > m.dataLen {
+		m.mem = m.mem[:m.dataLen]
+	}
+}
+
 // CallFunc executes a parscan function value with the given arguments and returns the results.
 // It saves and restores all execution state so it can be called from native Go callbacks
 // (reflect.MakeFunc wrappers) even while Run is in progress (single-threaded re-entrancy).

@@ -1087,6 +1087,9 @@ func TestArithInt(t *testing.T) {
 		{n: "mul_assign", src: "a := 5; a *= 3; a", res: "15"},
 		{n: "div_assign", src: "a := 12; a /= 4; a", res: "3"},
 		{n: "rem_assign", src: "a := 10; a %= 3; a", res: "1"},
+
+		{n: "rem_float_const", src: "i := 102; i % -1e2", res: "2"},
+		{n: "add_assign_float_const", src: "a := 4; a += 13/4.0; a", res: "7"},
 	})
 }
 
@@ -1188,6 +1191,8 @@ func TestArithFloat(t *testing.T) {
 		{n: "lit_mul", src: "2.5 * 4.0", res: "10"},
 		{n: "lit_div", src: "7.0 / 2.0", res: "3.5"},
 		{n: "lit_neg", src: "-3.14", res: "-3.14"},
+
+		{n: "int_div_float_const", src: "13/4.0", res: "3.25"},
 
 		{n: "f32_add", src: "var a, b float32 = 1.5, 2.5; a + b", res: "4"},
 
@@ -1460,5 +1465,25 @@ func TestBuiltin(t *testing.T) {
 		{n: "delete_map", src: `m := map[string]int{"a": 1, "b": 2}; delete(m, "a"); len(m)`, res: "1"},
 		{n: "new_int", src: `p := new(int); *p`, res: "0"},
 		{n: "new_string", src: `p := new(string); *p`, res: ""},
+	})
+}
+
+// TestRepl exercises the re-entrant interpreter (REPL mode), where a single
+// Interp is used across multiple sequential Eval calls.
+func TestRepl(t *testing.T) {
+	// Global data from a prior Eval must not occupy the same slots as new
+	// constants from subsequent Evals.
+	t.Run("stale_data", func(t *testing.T) {
+		intp := interp.NewInterpreter(golang.GoSpec)
+		if _, err := intp.Eval("m:1", "12/5.1"); err != nil {
+			t.Fatal(err)
+		}
+		r, err := intp.Eval("m:2", "13/4.0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fmt.Sprintf("%v", r); got != "3.25" {
+			t.Errorf("got %v, want 3.25", got)
+		}
 	})
 }

@@ -37,6 +37,7 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 		return res, err
 	}
 
+	i.TrimStack()
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
 	if s, ok := i.Symbols["main"]; ok {

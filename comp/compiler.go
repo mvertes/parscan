@@ -350,7 +350,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			right, left := pop(), pop()
 			typ := arithmeticOpType(right, left)
-			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emitConstConvert(t, right, typ, 0)
+			c.emitConstConvert(t, left, typ, 1)
+			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
 			if isInt64Kind(typ) || isUint64Kind(typ) {
 				if n, ok := c.retractPush(right); ok {
 					c.emit(t, vm.AddIntImm, n)
@@ -365,7 +367,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			right, left := pop(), pop()
 			typ := arithmeticOpType(right, left)
-			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emitConstConvert(t, right, typ, 0)
+			c.emitConstConvert(t, left, typ, 1)
+			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
 			if isInt64Kind(typ) || isUint64Kind(typ) {
 				if n, ok := c.retractPush(right); ok {
 					c.emit(t, vm.MulIntImm, n)
@@ -380,7 +384,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			right, left := pop(), pop()
 			typ := arithmeticOpType(right, left)
-			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			c.emitConstConvert(t, right, typ, 0)
+			c.emitConstConvert(t, left, typ, 1)
+			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
 			if isInt64Kind(typ) || isUint64Kind(typ) {
 				if n, ok := c.retractPush(right); ok {
 					c.emit(t, vm.SubIntImm, n)
@@ -393,16 +399,22 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if err := checkTopN(2); err != nil {
 				return err
 			}
-			typ := arithmeticOpType(pop(), pop())
-			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			right, left := pop(), pop()
+			typ := arithmeticOpType(right, left)
+			c.emitConstConvert(t, right, typ, 0)
+			c.emitConstConvert(t, left, typ, 1)
+			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
 			c.emit(t, numericOp(vm.DivInt, vm.DivInt, typ))
 
 		case lang.Rem:
 			if err := checkTopN(2); err != nil {
 				return err
 			}
-			typ := arithmeticOpType(pop(), pop())
-			push(&symbol.Symbol{Kind: symbol.Value, Type: typ})
+			right, left := pop(), pop()
+			typ := arithmeticOpType(right, left)
+			c.emitConstConvert(t, right, typ, 0)
+			c.emitConstConvert(t, left, typ, 1)
+			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
 			c.emit(t, numericOp(vm.RemInt, vm.RemInt, typ))
 
 		case lang.Minus:
@@ -696,15 +708,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					depth := narg - 1 - k
 					c.emitIfaceWrapAt(t, ifaceTyp, argSym.Type, depth)
-					if !ifaceTyp.IsInterface() && argSym.Kind == symbol.Const {
-						paramRtype := typ.Rtype.In(k)
-						argRtype := argSym.Type.Rtype
-						if argRtype != paramRtype {
-							sk, dk := argRtype.Kind(), paramRtype.Kind()
-							if sk >= reflect.Int && sk <= reflect.Float64 && dk >= reflect.Int && dk <= reflect.Float64 {
-								c.emit(t, vm.Convert, c.typeSym(&vm.Type{Rtype: paramRtype}).Index, depth)
-							}
-						}
+					if !ifaceTyp.IsInterface() {
+						c.emitConstConvert(t, argSym, ifaceTyp, depth)
 					}
 				}
 				// Pop function and input arg symbols, push return value symbols.
@@ -1401,6 +1406,32 @@ func arithmeticOpType(right, left *symbol.Symbol) *vm.Type {
 		return symbol.Vtype(left)
 	}
 	return symbol.Vtype(right)
+}
+
+// constKind returns Const if both operands are constants, otherwise Value.
+// Used so that constant-folded arithmetic results remain constants for subsequent type inference.
+func constKind(right, left *symbol.Symbol) symbol.Kind {
+	if right.Kind == symbol.Const && left.Kind == symbol.Const {
+		return symbol.Const
+	}
+	return symbol.Value
+}
+
+// emitConstConvert emits a Convert instruction if s is a numeric constant whose
+// stored type differs from typ (e.g. float constant 1e2 used in an int expression).
+// depth is the stack slot to convert (0 = top of stack).
+func (c *Compiler) emitConstConvert(t goparser.Token, s *symbol.Symbol, typ *vm.Type, depth int) {
+	if s.Kind != symbol.Const || typ == nil {
+		return
+	}
+	styp := symbol.Vtype(s)
+	if styp == nil || styp.Rtype == typ.Rtype {
+		return
+	}
+	sk, dk := styp.Rtype.Kind(), typ.Rtype.Kind()
+	if sk >= reflect.Int && sk <= reflect.Float64 && dk >= reflect.Int && dk <= reflect.Float64 {
+		c.emit(t, vm.Convert, c.typeSym(typ).Index, depth)
+	}
 }
 
 func booleanOpType(_, _ *symbol.Symbol) *vm.Type { return vm.TypeOf(true) }
