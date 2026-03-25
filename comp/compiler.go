@@ -807,7 +807,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emit(t, vm.MapSet)
 				}
 			case symbol.Unset:
-				j := top().Type.FieldIndex(ks.Name)
+				j := ts.Type.FieldIndex(ks.Name)
 				// Wrap parscan func in a real Go func for native callbacks.
 				if ft := ts.Type.FieldType(ks.Name); ft != nil && ft.Rtype.Kind() == reflect.Func {
 					c.emit(t, vm.WrapFunc, c.typeIndex(ft))

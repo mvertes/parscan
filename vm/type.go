@@ -4,6 +4,7 @@ import (
 	"iter"
 	"math"
 	"reflect"
+	"unicode"
 )
 
 // Runtime type and value representations (based on reflect).
@@ -438,7 +439,18 @@ func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 		rf[i].Name = f.Name
 		rf[i].PkgPath = f.PkgPath
 		rf[i].Type = f.Rtype
-		rf[i].Anonymous = embSet[i]
+		// reflect.StructOf panics if Anonymous=true and PkgPath is non-empty, or if
+		// Anonymous=false and the name is lowercase with empty PkgPath. For embedded
+		// built-in types (e.g. bool, int) the name is lowercase with no PkgPath; we
+		// must not set Anonymous and must set a non-empty PkgPath so reflect treats
+		// the field as unexported. Parscan tracks embedded info via EmbeddedField.
+		if embSet[i] && len(f.Name) > 0 && unicode.IsLower(rune(f.Name[0])) {
+			if rf[i].PkgPath == "" {
+				rf[i].PkgPath = "builtin"
+			}
+		} else {
+			rf[i].Anonymous = embSet[i]
+		}
 	}
 	return &Type{Rtype: reflect.StructOf(rf), Embedded: embedded, Fields: fields}
 }

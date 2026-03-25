@@ -372,18 +372,7 @@ func (m *Machine) Run() (err error) {
 				mem = mem[:sp-1]
 			case Call:
 				narg := c.Arg[0]
-				fval := mem[sp-1-narg]
-				// If fval is a struct func field, look up the parscan func for fast dispatch.
-				if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
-					if pf, ok := m.funcFields[fval.ref.UnsafeAddr()]; ok {
-						fval = pf
-					} else if !fval.ref.IsNil() {
-						// struct was copied (e.g. via append): fall back to funcValue-ptr lookup.
-						if pf, ok := m.funcFieldsByFuncPtr[funcValuePtr(fval.ref)]; ok {
-							fval = pf
-						}
-					}
-				}
+				fval := m.resolveFuncField(mem[sp-1-narg])
 				prevEnv := m.env
 				var nip int
 				if isNum(fval.ref.Kind()) {
@@ -1686,6 +1675,22 @@ func forceSettable(fv reflect.Value) reflect.Value {
 	return fv
 }
 
+// resolveFuncField returns the parscan Value for v if v is an addressable struct func
+// field registered in funcFields or funcFieldsByFuncPtr; otherwise returns v unchanged.
+func (m *Machine) resolveFuncField(v Value) Value {
+	if v.ref.Kind() == reflect.Func && v.ref.CanAddr() {
+		if pf, ok := m.funcFields[v.ref.UnsafeAddr()]; ok {
+			return pf
+		}
+		if !v.ref.IsNil() && m.funcFieldsByFuncPtr != nil {
+			if pf, ok := m.funcFieldsByFuncPtr[funcValuePtr(v.ref)]; ok {
+				return pf
+			}
+		}
+	}
+	return v
+}
+
 // setFuncField stores val into a settable struct field fv.
 // If val is a ParscanFunc (from WrapFunc), the original parscan func goes into the
 // funcFields side table (for in-VM dispatch) and the Go func is set on the field
@@ -1725,6 +1730,12 @@ func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 // assignSlot writes src into the memory slot dst, updating both num and ref
 // for numeric types to maintain the dual-storage invariant.
 func (m *Machine) assignSlot(dst *Value, src Value) {
+	// Struct func field → func var: resolve to the parscan value so Call can dispatch
+	// it directly (interface{} slots are transparent to the Func/CanAddr check in Call).
+	if pf := m.resolveFuncField(src); pf != src {
+		*dst = pf
+		return
+	}
 	// Struct func fields can't hold parscan func values (int code addresses or Closures)
 	// via reflect.Set. Store them in a side table keyed by the field's memory address.
 	// funcFieldsByFuncPtr is not updated here: src is a raw Closure/int (not a ParscanFunc),
