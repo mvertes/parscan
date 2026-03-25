@@ -1002,6 +1002,19 @@ func TestClosure(t *testing.T) {
 		// Per-iteration capture: each closure in a loop captures its own snapshot of the loop
 		// variable (no aliasing to the shared frame slot).
 		{n: "#08", src: `func f() int { var fns []func() int; for i := 0; i < 3; i++ { a := i; fns = append(fns, func() int { return i*10 + a }) }; return fns[0]() + fns[1]() + fns[2]() }; f()`, res: "33"},
+		// Closure in struct func field appended to slice: funcFields keyed by address must
+		// survive the struct copy that append does. All three closures must see their own i/a.
+		{n: "#09", src: `
+type T struct{ F func() int }
+func f() int {
+	var foos []T
+	for i := 0; i < 3; i++ {
+		a := i
+		foos = append(foos, T{func() int { return i*10 + a }})
+	}
+	return foos[0].F() + foos[1].F() + foos[2].F()
+}
+f()`, res: "33"},
 	})
 }
 
@@ -1452,6 +1465,19 @@ type S struct { F func(int) int }
 var s S
 s.F = func(n int) int { return n * 3 }
 s.F(5)`, res: "15"},
+
+		// Closure in struct func field survives append (struct copy to new backing array).
+		{n: "append_copy", src: `
+type T struct{ F func() int }
+func g() int {
+	var foos []T
+	for i := 0; i < 3; i++ {
+		a := i
+		foos = append(foos, T{func() int { return a }})
+	}
+	return foos[0].F() + foos[1].F()*10 + foos[2].F()*100
+}
+g()`, res: "210"},
 	})
 }
 

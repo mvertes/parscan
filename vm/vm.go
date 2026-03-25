@@ -282,6 +282,12 @@ type Machine struct {
 	// funcFields maps struct func field addresses to parscan func values (int code addresses
 	// or Closures). Parscan funcs cannot be stored directly in typed Go func fields via reflect.
 	funcFields map[uintptr]Value
+	// funcFieldsByFuncPtr is a stable fallback for funcFields when a struct containing func
+	// fields is copied (e.g. via append). Keyed by the funcValue struct pointer, obtained by
+	// dereferencing the field's memory address — unique per closure and stable across copies.
+	// (reflect.Value.Pointer() on a Func returns only the code pointer, which reflect.MakeFunc
+	// reuses for all closures, so it is not a suitable key.)
+	funcFieldsByFuncPtr map[uintptr]Value
 
 	debugInfoFn func() *DebugInfo // builds DebugInfo on demand (breaks vm->comp cycle)
 	debugIn     io.Reader         // debug command input (nil = os.Stdin)
@@ -368,6 +374,11 @@ func (m *Machine) Run() (err error) {
 				if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
 					if pf, ok := m.funcFields[fval.ref.UnsafeAddr()]; ok {
 						fval = pf
+					} else if !fval.ref.IsNil() {
+						// struct was copied (e.g. via append): fall back to funcValue-ptr lookup.
+						if pf, ok := m.funcFieldsByFuncPtr[funcValuePtr(fval.ref)]; ok {
+							fval = pf
+						}
 					}
 				}
 				prevEnv := m.env
@@ -930,8 +941,12 @@ func (m *Machine) Run() (err error) {
 				*cell = mem[sp-1] // initialise cell with top-of-stack value
 				// Detach addressable refs to prevent aliasing: numeric values may share
 				// the underlying memory of the source frame slot via their ref field.
+				// Allocate a fresh reflect.Value (not reflect.Zero) so that Reflect() returns
+				// the correct captured value via cell.ref.
 				if isNum(cell.ref.Kind()) && cell.ref.CanAddr() {
-					cell.ref = reflect.Zero(cell.ref.Type())
+					rv := reflect.New(cell.ref.Type()).Elem()
+					setNumReflect(rv, cell.num)
+					cell.ref = rv
 				}
 				mem[sp-1] = ValueOf(cell) // replace value with cell pointer
 			case HGet:
@@ -1634,6 +1649,13 @@ func Vstring(lv []Value) string {
 	return sb.String()
 }
 
+// funcValuePtr returns the funcValue struct pointer stored in an addressable func field fv.
+// reflect.MakeFunc reuses the same code pointer for all closures, so Pointer() is not unique;
+// the funcValue struct pointer obtained by dereferencing the field address is.
+func funcValuePtr(fv reflect.Value) uintptr {
+	return *(*uintptr)(fv.Addr().UnsafePointer()) //nolint:gosec
+}
+
 // forceSettable returns fv as-is if settable, or makes it settable via unsafe.
 // Use it only on unexported struct fields. If the value is not addressable,
 // it is returned as-is (e.g. field of a temporary struct is readable but not settable).
@@ -1655,6 +1677,13 @@ func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 		}
 		m.funcFields[fv.UnsafeAddr()] = pf.Val
 		fv.Set(pf.GF)
+		// Also register by funcValue ptr so Call can find it after a struct copy (e.g. append).
+		if ptr := funcValuePtr(fv); ptr != 0 {
+			if m.funcFieldsByFuncPtr == nil {
+				m.funcFieldsByFuncPtr = make(map[uintptr]Value)
+			}
+			m.funcFieldsByFuncPtr[ptr] = pf.Val
+		}
 	} else if fv.Kind() == reflect.Func && fv.CanAddr() {
 		if m.funcFields == nil {
 			m.funcFields = make(map[uintptr]Value)
@@ -1670,6 +1699,8 @@ func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 func (m *Machine) assignSlot(dst *Value, src Value) {
 	// Struct func fields can't hold parscan func values (int code addresses or Closures)
 	// via reflect.Set. Store them in a side table keyed by the field's memory address.
+	// funcFieldsByFuncPtr is not updated here: src is a raw Closure/int (not a ParscanFunc),
+	// so no Go func is stored in the field and the funcValuePtr fallback is not applicable.
 	if dst.ref.Kind() == reflect.Func && dst.ref.CanAddr() {
 		if m.funcFields == nil {
 			m.funcFields = make(map[uintptr]Value)
