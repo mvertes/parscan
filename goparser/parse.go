@@ -946,8 +946,13 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 				return nil, err
 			}
 			out = init
-			cond = Tokens{newNext(p.breakLabel, in[1].Pos, out[len(out)-1].Arg[0].(int))}
-			final = Tokens{newStop(in[1].Pos)}
+			last := &out[len(out)-1]
+			if len(last.Arg) == 0 {
+				last.Arg = []any{0}
+			}
+			n := last.Arg[0].(int)
+			cond = Tokens{newNext(p.breakLabel, in[1].Pos, n)}
+			final = Tokens{newToken(lang.Stop, "", in[1].Pos, n)}
 		} else {
 			cond = pre[0]
 		}

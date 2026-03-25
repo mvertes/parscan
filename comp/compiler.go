@@ -1296,21 +1296,22 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			} else {
 				i = int(s.Value.Int()) - len(c.Code)
 			}
-			if n == 2 {
+			lf := func(s *symbol.Symbol) int {
+				if s.Kind == symbol.LocalVar {
+					return vm.Local
+				}
+				return vm.Global
+			}
+			switch n {
+			case 0:
+				c.emit(t, vm.Next0, i)
+			case 1:
+				k := stack[len(stack)-2]
+				c.emit(t, vm.Next, i, lf(k), k.Index)
+			case 2:
 				v := stack[len(stack)-2]
 				k := stack[len(stack)-3]
-				localFlag := vm.Global
-				if k.Kind == symbol.LocalVar {
-					localFlag = vm.Local
-				}
-				c.emit(t, vm.Next2, i, localFlag, k.Index, v.Index)
-			} else {
-				k := stack[len(stack)-2]
-				localFlag := vm.Global
-				if k.Kind == symbol.LocalVar {
-					localFlag = vm.Local
-				}
-				c.emit(t, vm.Next, i, localFlag, k.Index)
+				c.emit(t, vm.Next2, i, lf(k), k.Index, v.Index)
 			}
 
 		case lang.Range:
@@ -1334,7 +1335,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			switch rangeKind {
 			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-				initRangeVar(stack[len(stack)-2], c.Symbols["int"].Type)
+				if n > 0 {
+					initRangeVar(stack[len(stack)-2], c.Symbols["int"].Type)
+				}
 				c.emit(t, vm.Pull)
 			case reflect.Array, reflect.Slice, reflect.String:
 				var vType *vm.Type
@@ -1344,6 +1347,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					vType = vt.Elem()
 				}
 				switch n {
+				case 0:
+					c.emit(t, vm.Pull)
 				case 1:
 					initRangeVar(stack[len(stack)-2], c.Symbols["int"].Type)
 					c.emit(t, vm.Pull)
@@ -1352,14 +1357,24 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					initRangeVar(k, c.Symbols["int"].Type)
 					initRangeVar(v, vType)
 					c.emit(t, vm.Pull2)
-				default:
 				}
 			case reflect.Map:
 				// FIXME: handle map
+			default:
+				// Unhandled range type (e.g. struct element type from empty composite literal).
+				if n == 0 {
+					c.emit(t, vm.Pop, 1)
+					c.emit(t, vm.Push, 0)
+					c.emit(t, vm.Pull)
+				}
 			}
 
 		case lang.Stop:
-			c.emit(t, vm.Stop)
+			if t.Arg[0].(int) == 0 {
+				c.emit(t, vm.Stop0)
+			} else {
+				c.emit(t, vm.Stop)
+			}
 
 		case lang.Defer:
 			narg := t.Arg[0].(int)

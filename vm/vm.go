@@ -62,6 +62,7 @@ const (
 	New                    // -- x; mem[fp+$1] = new mem[$2]
 	Neg                    // -- ; - mem[fp]
 	Next                   // -- ; iterator next, set K
+	Next0                  // -- ; iterator next, no variable
 	Next2                  // -- ; iterator next, set K V
 	Not                    // c -- r ; r = !c
 	Pop                    // v --
@@ -74,6 +75,7 @@ const (
 	Slice                  // a l h -- a; a = a [l:h]
 	Slice3                 // a l h m -- a; a = a[l:h:m]
 	Stop                   // -- iterator stop
+	Stop0                  // -- iterator stop, no variable
 	Sub                    // n1 n2 -- diff ; diff = n1 - n2
 	Swap                   // --
 	HAlloc                 // -- &cell ; cell = new(Value), push its pointer
@@ -716,6 +718,11 @@ func (m *Machine) Run() (err error) {
 					ip += c.Arg[0]
 					continue
 				}
+			case Next0:
+				if _, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); !ok {
+					ip += c.Arg[0]
+					continue
+				}
 			case Next2:
 				if k, v, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
 					base := 0
@@ -891,6 +898,9 @@ func (m *Machine) Run() (err error) {
 			case Stop:
 				mem[sp-1].ref.Interface().(func())()
 				mem = mem[:sp-4]
+			case Stop0:
+				mem[sp-1].ref.Interface().(func())()
+				mem = mem[:sp-3]
 			case Sub:
 				if isFloat(mem[sp-2].ref.Kind()) {
 					mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) - math.Float64frombits(mem[sp-1].num))
