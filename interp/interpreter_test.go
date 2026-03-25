@@ -315,6 +315,22 @@ func TestFor(t *testing.T) {
 		{n: "#15", src: `s := "a1b"; n := 0; for i, r := range s { if r == '1' { n = i } }; n`, res: "1"},
 		{n: "#16", src: `b := 0; for i := range 4 { b += i }; b`, res: "6"},
 		{n: "#17", src: `func f() int { b := 0; for i := range 4 { b += i }; return b }; f()`, res: "6"},
+		{n: "#18", src: `m := map[string]int{"a": 1}; v, ok := m["a"]; ok && v == 1`, res: "true"},
+		{n: "#19", src: `m := map[string]int{"a": 1}; v, ok := m["b"]; !ok && v == 0`, res: "true"},
+		{n: "#20", src: `
+func f() string {
+	s := make([]map[string]string, 0)
+	m := make(map[string]string)
+	m["m1"] = "m1"
+	s = append(s, m)
+	tmpStr := "start"
+	for _, v := range s {
+		tmpStr, _ := v["m1"]
+		_ = tmpStr
+	}
+	return tmpStr
+}
+f()`, res: "start"},
 	})
 }
 

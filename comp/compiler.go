@@ -495,6 +495,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if err := checkTopN(2); err != nil {
 				return err
 			}
+			okForm := len(t.Arg) > 0 && t.Arg[0].(int) == 1
 			pop()
 			s := pop()
 			vt := symbol.Vtype(s)
@@ -504,16 +505,24 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			var elemType *vm.Type
 			switch vt.Rtype.Kind() {
 			case reflect.Map:
-				c.emit(t, vm.MapIndex)
 				elemType = vt.Elem()
+				if okForm {
+					c.emit(t, vm.MapIndexOk)
+					push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
+					push(&symbol.Symbol{Kind: symbol.Value, Type: c.Symbols["bool"].Type})
+				} else {
+					c.emit(t, vm.MapIndex)
+					push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
+				}
 			case reflect.String:
 				c.emit(t, vm.Index)
 				elemType = c.Symbols["uint8"].Type
+				push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
 			default:
 				c.emit(t, vm.Index)
 				elemType = vt.Elem()
+				push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
 			}
-			push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
 
 		case lang.Greater:
 			if err := checkTopN(2); err != nil {

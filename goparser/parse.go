@@ -658,9 +658,13 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 			out = append(out, toks...)
 			out = append(out, newToken(lang.DerefAssign, "", in[aindex].Pos, len(lhs)))
 		default:
-			// Mark TypeAssert as ok form when LHS has exactly 2 targets.
-			if len(lhs) == 2 && len(toks) > 0 && toks[len(toks)-1].Tok == lang.TypeAssert {
-				toks[len(toks)-1].Arg[0] = 1
+			if len(lhs) == 2 && len(toks) > 0 {
+				switch toks[len(toks)-1].Tok {
+				case lang.TypeAssert:
+					toks[len(toks)-1].Arg[0] = 1
+				case lang.Index:
+					toks[len(toks)-1].Arg = []any{1}
+				}
 			}
 			out = append(out, toks...)
 			if out[len(out)-1].Tok == lang.Range {

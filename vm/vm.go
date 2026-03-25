@@ -56,6 +56,7 @@ const (
 	Len                    // -- x; x = mem[sp-$1]
 	Lower                  // n1 n2 -- cond ; cond = n1 < n2
 	MapIndex               // a i -- a[i]
+	MapIndexOk             // a i -- v ok ; v, ok = a[i]
 	MapSet                 // a i v -- a; a[i] = v
 	Mul                    // n1 n2 -- prod ; prod = n1*n2
 	New                    // -- x; mem[fp+$1] = new mem[$2]
@@ -1041,6 +1042,15 @@ func (m *Machine) Run() (err error) {
 				rv := mem[sp-2].ref.MapIndex(mem[sp-1].Reflect())
 				mem[sp-2] = fromReflect(rv)
 				mem = mem[:sp-1]
+			case MapIndexOk:
+				mapVal := mem[sp-2].ref
+				rv := mapVal.MapIndex(mem[sp-1].Reflect())
+				ok := rv.IsValid()
+				if !ok {
+					rv = reflect.Zero(mapVal.Type().Elem())
+				}
+				mem[sp-2] = fromReflect(rv)
+				mem[sp-1] = boolVal(ok)
 			case MapSet:
 				mapVal := mem[sp-3].ref
 				mt := mapVal.Type()
