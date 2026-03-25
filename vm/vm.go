@@ -425,7 +425,7 @@ func (m *Machine) Run() (err error) {
 			case DerefSet:
 				ptr := mem[sp-2]
 				val := mem[sp-1]
-				ptr.ref.Elem().Set(val.Reflect())
+				numSet(ptr.ref.Elem(), val)
 				mem = mem[:sp-2]
 			case Get:
 				if c.Arg[0] == Local {
@@ -988,7 +988,7 @@ func (m *Machine) Run() (err error) {
 				default:
 					slice := reflect.MakeSlice(sliceType, n, n)
 					for i := range n {
-						slice.Index(i).Set(mem[sp-n+i].Reflect())
+						numSet(slice.Index(i), mem[sp-n+i])
 					}
 					mem[sp-n] = Value{ref: slice}
 					mem = mem[:sp-n+1]
@@ -1043,7 +1043,8 @@ func (m *Machine) Run() (err error) {
 				mem = mem[:sp-1]
 			case MapSet:
 				mapVal := mem[sp-3].ref
-				mapVal.SetMapIndex(mem[sp-2].Reflect(), m.wrapForFunc(mem[sp-1], mapVal.Type().Elem()))
+				mt := mapVal.Type()
+				mapVal.SetMapIndex(numReflect(mt.Key(), mem[sp-2]), m.wrapForFunc(mem[sp-1], mt.Elem()))
 				mem = mem[:sp-2]
 			case SetS:
 				n := c.Arg[0]
@@ -1517,12 +1518,11 @@ func (m *Machine) Push(v ...Value) (l int) {
 }
 
 // wrapForFunc returns a reflect.Value suitable for storing into a Go container
-// of the given func type. Non-func types are returned via val.Reflect(). Already-wrapped
-// ParscanFunc values yield their inner Go func. Anything else (Closure, code address)
-// is wrapped via reflect.MakeFunc so native Go can call it.
+// of the given type. For func types, parscan func values are wrapped as proper Go funcs.
+// For non-func types, numeric type mismatches are resolved via raw-bits reinterpretation.
 func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 	if funcType.Kind() != reflect.Func {
-		return val.Reflect()
+		return numReflect(funcType, val)
 	}
 	rv := val.Reflect()
 	if !rv.IsValid() {
@@ -1684,14 +1684,22 @@ func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 			}
 			m.funcFieldsByFuncPtr[ptr] = pf.Val
 		}
-	} else if fv.Kind() == reflect.Func && fv.CanAddr() {
+		return
+	}
+	if fv.Kind() == reflect.Func && fv.CanAddr() {
 		if m.funcFields == nil {
 			m.funcFields = make(map[uintptr]Value)
 		}
 		m.funcFields[fv.UnsafeAddr()] = val
-	} else {
-		fv.Set(val.Reflect())
+		return
 	}
+	if isNum(fv.Kind()) && isNum(val.ref.Kind()) {
+		// Avoid reflect.Set type-mismatch when field and value are different numeric kinds
+		// (e.g. uint field, int value from untyped const).
+		setNumReflect(fv, val.num)
+		return
+	}
+	fv.Set(val.Reflect())
 }
 
 // assignSlot writes src into the memory slot dst, updating both num and ref
@@ -1744,4 +1752,25 @@ func setNumReflect(rv reflect.Value, num uint64) {
 	case reflect.Float32, reflect.Float64:
 		rv.SetFloat(math.Float64frombits(num))
 	}
+}
+
+// numSet assigns src into the settable reflect.Value dst, handling different-kind numeric pairs
+// (e.g. int value into uint slot from untyped const) that reflect.Set would reject.
+func numSet(dst reflect.Value, src Value) {
+	if isNum(dst.Kind()) && isNum(src.ref.Kind()) {
+		setNumReflect(dst, src.num)
+	} else {
+		dst.Set(src.Reflect())
+	}
+}
+
+// numReflect returns src as a reflect.Value of type t, handling different-kind numeric pairs
+// (e.g. int value for uint map key) that reflect.SetMapIndex would reject.
+func numReflect(t reflect.Type, src Value) reflect.Value {
+	if isNum(t.Kind()) && isNum(src.ref.Kind()) {
+		r := reflect.New(t).Elem()
+		setNumReflect(r, src.num)
+		return r
+	}
+	return src.Reflect()
 }
