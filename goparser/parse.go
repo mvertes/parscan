@@ -1117,7 +1117,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	}
 	p.function = s
 
-	toks, err := p.Parse(in[len(in)-1].Block())
+	toks, err := p.Parse(in[bi].Block())
 	if err != nil {
 		return out, err
 	}

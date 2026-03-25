@@ -527,6 +527,9 @@ pp := &p
 		// Pointer inc/dec: *p++ and *p--.
 		{n: "deref_inc", src: "a := 2; p := &a; *p++; a", res: "3"},
 		{n: "deref_dec", src: "a := 2; p := &a; *p--; a", res: "1"},
+
+		// IIFE (immediately invoked function expression) returning a pointer.
+		{n: "iife_ptr", src: `var a = func() *bool { b := true; return &b }(); *a && true`, res: "true"},
 	})
 }
 
