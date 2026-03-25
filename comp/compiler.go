@@ -1305,7 +1305,19 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if vt != nil {
 				rangeKind = vt.Rtype.Kind()
 			}
+			initRangeVar := func(s *symbol.Symbol, typ *vm.Type) {
+				s.Type = typ
+				if s.Kind == symbol.LocalVar {
+					c.emit(t, vm.New, s.Index, c.typeSym(s.Type).Index)
+				} else {
+					c.Data[s.Index] = vm.NewValue(s.Type.Rtype)
+				}
+			}
 			switch rangeKind {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+				initRangeVar(stack[len(stack)-2], c.Symbols["int"].Type)
+				c.emit(t, vm.Pull)
 			case reflect.Array, reflect.Slice, reflect.String:
 				var vType *vm.Type
 				if rangeKind == reflect.String {
@@ -1315,25 +1327,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				switch n {
 				case 1:
-					k := stack[len(stack)-2]
-					k.Type = c.Symbols["int"].Type
-					if k.Kind == symbol.LocalVar {
-						c.emit(t, vm.New, k.Index, c.typeSym(k.Type).Index)
-					} else {
-						c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
-					}
+					initRangeVar(stack[len(stack)-2], c.Symbols["int"].Type)
 					c.emit(t, vm.Pull)
 				case 2:
 					k, v := stack[len(stack)-3], stack[len(stack)-2]
-					k.Type = c.Symbols["int"].Type
-					v.Type = vType
-					if k.Kind == symbol.LocalVar {
-						c.emit(t, vm.New, k.Index, c.typeSym(k.Type).Index)
-						c.emit(t, vm.New, v.Index, c.typeSym(v.Type).Index)
-					} else {
-						c.Data[k.Index] = vm.NewValue(k.Type.Rtype)
-						c.Data[v.Index] = vm.NewValue(v.Type.Rtype)
-					}
+					initRangeVar(k, c.Symbols["int"].Type)
+					initRangeVar(v, vType)
 					c.emit(t, vm.Pull2)
 				default:
 				}

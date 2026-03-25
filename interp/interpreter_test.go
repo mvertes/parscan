@@ -301,6 +301,8 @@ func TestFor(t *testing.T) {
 		{n: "#13", src: `s := "abc"; n := 0; for _, r := range s { n += int(r) }; n`, res: "294"},
 		{n: "#14", src: `const s = "ab"; b := 0; for i, r := range s { b += i + int(r) }; b`, res: "196"},
 		{n: "#15", src: `s := "a1b"; n := 0; for i, r := range s { if r == '1' { n = i } }; n`, res: "1"},
+		{n: "#16", src: `b := 0; for i := range 4 { b += i }; b`, res: "6"},
+		{n: "#17", src: `func f() int { b := 0; for i := range 4 { b += i }; return b }; f()`, res: "6"},
 	})
 }
 
@@ -1013,6 +1015,17 @@ func f() int {
 		foos = append(foos, T{func() int { return i*10 + a }})
 	}
 	return foos[0].F() + foos[1].F() + foos[2].F()
+}
+f()`, res: "33"},
+		// Closures in for-range-int loop each capture their own snapshot.
+		{n: "#10", src: `
+func f() int {
+	var foos []func() int
+	for i := range 3 {
+		a := i
+		foos = append(foos, func() int { return i*10 + a })
+	}
+	return foos[0]() + foos[1]() + foos[2]()
 }
 f()`, res: "33"},
 	})

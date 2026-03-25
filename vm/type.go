@@ -314,7 +314,7 @@ func (v Value) Slice(i, j int) reflect.Value { return v.ref.Slice(i, j) }
 func (v Value) Slice3(i, j, k int) reflect.Value { return v.ref.Slice3(i, j, k) }
 
 // Seq returns a range-over iterator for the value v.
-func (v Value) Seq() iter.Seq[reflect.Value] { return v.ref.Seq() }
+func (v Value) Seq() iter.Seq[reflect.Value] { return v.Reflect().Seq() }
 
 // Seq2 returns a range-over-2 iterator for the value v.
 func (v Value) Seq2() iter.Seq2[reflect.Value, reflect.Value] { return v.ref.Seq2() }
