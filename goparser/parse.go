@@ -604,6 +604,9 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		if op, i := indexCompoundAssign(in); i > 0 {
 			return p.parseCompoundAssign(in, i, op)
 		}
+		if l := len(in); l >= 2 && (in[l-1].Tok == lang.Inc || in[l-1].Tok == lang.Dec) {
+			return p.parseIncDec(in)
+		}
 		return p.parseExpr(in, "")
 	case lang.Ident:
 		if in.Index(lang.Colon) == 1 {

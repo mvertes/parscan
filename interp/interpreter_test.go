@@ -516,6 +516,10 @@ pp := &p
 
 		// DerefAssign with new().
 		{n: "deref_assign_new", src: "p := new(int); *p = 5; *p", res: "5"},
+
+		// Pointer inc/dec: *p++ and *p--.
+		{n: "deref_inc", src: "a := 2; p := &a; *p++; a", res: "3"},
+		{n: "deref_dec", src: "a := 2; p := &a; *p--; a", res: "1"},
 	})
 }
 
