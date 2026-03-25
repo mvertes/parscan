@@ -760,14 +760,7 @@ func (m *Machine) Run() (err error) {
 				// calls to different wrapped functions on the same Machine are NOT safe.
 				typ := mem[c.Arg[0]].ref.Interface().(*Type)
 				fval := mem[sp-1]
-				goFunc := reflect.MakeFunc(typ.Rtype, func(args []reflect.Value) []reflect.Value {
-					out, err := m.CallFunc(fval, typ.Rtype, args)
-					if err != nil {
-						panic(err)
-					}
-					return out
-				})
-				mem[sp-1] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: goFunc})}
+				mem[sp-1] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: m.wrapForFunc(fval, typ.Rtype)})}
 
 			case Trap:
 				m.trapOrig = ip + 1 // resume ip after Trap instruction
@@ -934,7 +927,12 @@ func (m *Machine) Run() (err error) {
 				mem[a], mem[b] = mem[b], mem[a]
 			case HAlloc:
 				cell := new(Value)
-				*cell = mem[sp-1]         // initialise cell with top-of-stack value
+				*cell = mem[sp-1] // initialise cell with top-of-stack value
+				// Detach addressable refs to prevent aliasing: numeric values may share
+				// the underlying memory of the source frame slot via their ref field.
+				if isNum(cell.ref.Kind()) && cell.ref.CanAddr() {
+					cell.ref = reflect.Zero(cell.ref.Type())
+				}
 				mem[sp-1] = ValueOf(cell) // replace value with cell pointer
 			case HGet:
 				mem = append(mem, *m.env[c.Arg[0]])
@@ -989,8 +987,9 @@ func (m *Machine) Run() (err error) {
 				n := c.Arg[0]
 				sp = len(mem) - 1
 				result := mem[sp-n].ref
+				elemType := result.Type().Elem()
 				for i := range n {
-					result = reflect.Append(result, mem[sp-n+1+i].Reflect())
+					result = reflect.Append(result, m.wrapForFunc(mem[sp-n+1+i], elemType))
 				}
 				mem[sp-n] = Value{ref: result}
 				mem = mem[:sp-n+1]
@@ -1020,14 +1019,16 @@ func (m *Machine) Run() (err error) {
 				mem = mem[:sp-1]
 			case IndexSet:
 				idx := int(mem[sp-2].num) //nolint:gosec
-				mem[sp-3].ref.Index(idx).Set(mem[sp-1].Reflect())
+				slot := mem[sp-3].ref.Index(idx)
+				slot.Set(m.wrapForFunc(mem[sp-1], slot.Type()))
 				mem = mem[:sp-2]
 			case MapIndex:
 				rv := mem[sp-2].ref.MapIndex(mem[sp-1].Reflect())
 				mem[sp-2] = fromReflect(rv)
 				mem = mem[:sp-1]
 			case MapSet:
-				mem[sp-3].ref.SetMapIndex(mem[sp-2].Reflect(), mem[sp-1].Reflect())
+				mapVal := mem[sp-3].ref
+				mapVal.SetMapIndex(mem[sp-2].Reflect(), m.wrapForFunc(mem[sp-1], mapVal.Type().Elem()))
 				mem = mem[:sp-2]
 			case SetS:
 				n := c.Arg[0]
@@ -1498,6 +1499,35 @@ func (m *Machine) Push(v ...Value) (l int) {
 	m.mem = append(m.mem, v...)
 	m.dataLen = len(m.mem)
 	return l
+}
+
+// wrapForFunc returns a reflect.Value suitable for storing into a Go container
+// of the given func type. Non-func types are returned via val.Reflect(). Already-wrapped
+// ParscanFunc values yield their inner Go func. Anything else (Closure, code address)
+// is wrapped via reflect.MakeFunc so native Go can call it.
+func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
+	if funcType.Kind() != reflect.Func {
+		return val.Reflect()
+	}
+	rv := val.Reflect()
+	if !rv.IsValid() {
+		return rv
+	}
+	if rv.Kind() == reflect.Func {
+		if pf, ok := rv.Interface().(ParscanFunc); ok {
+			return pf.GF
+		}
+		return rv // already a proper Go func
+	}
+	// Closure, code address, or other parscan func value.
+	fv := val
+	return reflect.MakeFunc(funcType, func(args []reflect.Value) []reflect.Value {
+		out, err := m.CallFunc(fv, funcType, args)
+		if err != nil {
+			panic(err)
+		}
+		return out
+	})
 }
 
 // TrimStack removes leftover stack values from a previous Run, restoring mem

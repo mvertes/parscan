@@ -999,6 +999,9 @@ func TestClosure(t *testing.T) {
 		{n: "#06", src: `func makeAdder(x int) func(int) int { return func(n int) int { return x + n } }; add5 := makeAdder(5); add5(3)`, res: "8"},
 		// Counter pattern: closure captures and mutates enclosing local.
 		{n: "#07", src: `func makeCounter() func() int { n := 0; return func() int { n = n+1; return n } }; c := makeCounter(); c(); c()`, res: "2"},
+		// Per-iteration capture: each closure in a loop captures its own snapshot of the loop
+		// variable (no aliasing to the shared frame slot).
+		{n: "#08", src: `func f() int { var fns []func() int; for i := 0; i < 3; i++ { a := i; fns = append(fns, func() int { return i*10 + a }) }; return fns[0]() + fns[1]() + fns[2]() }; f()`, res: "33"},
 	})
 }
 
