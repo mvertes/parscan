@@ -940,22 +940,35 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				stack = stack[:len(stack)-n]
 				// Process from top of stack (rhs[n-1]) down to rhs[0].
 				// Blank idents (Kind=Unset) have no slot on the VM stack; just discard their rhs.
-				slotCount := 0
+				slotCount, namedAbove := 0, 0
 				for i := n - 1; i >= 0; i-- {
 					if lhss[i].Kind == symbol.Unset {
 						c.emit(t, vm.Pop, 1) // discard rhs for blank ident
 						continue
 					}
 					c.emitIfaceWrap(t, lhss[i].Type, rhss[i].Type)
-					if lhss[i].Kind == symbol.LocalVar {
+					switch {
+					case lhss[i].Kind == symbol.LocalVar:
 						c.emit(t, vm.Set, vm.Local, lhss[i].Index)
-					} else {
+						slotCount++
+						namedAbove++
+					case lhss[i].Index != symbol.UnsetAddr:
 						c.emit(t, vm.Set, vm.Global, lhss[i].Index)
+						slotCount++
+						namedAbove++
+					default:
+						// Struct-field lhs (Index==UnsetAddr): field reflect.Value is on the VM
+						// stack at depth D = namedAbove + i + 1 below the rhs at the top.
+						// Bubble it to sp-2 via D-1 Swaps, then SetS(1) assigns and pops both.
+						d := namedAbove + i + 1
+						for j := 0; j < d-1; j++ {
+							c.emit(t, vm.Swap, d-j, d-j-1)
+						}
+						c.emit(t, vm.SetS, 1)
 					}
-					slotCount++
 				}
 				if slotCount > 0 {
-					c.emit(t, vm.Pop, slotCount) // pop the lhs slot copies for non-blank vars
+					c.emit(t, vm.Pop, slotCount) // pop lhs copies for local/global vars
 				}
 				break
 			}
@@ -987,10 +1000,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				break
 			}
 			// TODO check source type against var type
-			if v := c.Data[lhs.Index]; !v.IsValid() && rhs.Type != nil {
-				c.Data[lhs.Index] = vm.NewValue(rhs.Type.Rtype)
-				if sym := c.Symbols[lhs.Name]; sym != nil {
-					sym.Type = rhs.Type
+			if lhs.Index != symbol.UnsetAddr {
+				if v := c.Data[lhs.Index]; !v.IsValid() && rhs.Type != nil {
+					c.Data[lhs.Index] = vm.NewValue(rhs.Type.Rtype)
+					if sym := c.Symbols[lhs.Name]; sym != nil {
+						sym.Type = rhs.Type
+					}
 				}
 			}
 			// Wrap concrete value in Iface when assigning to interface variable.
@@ -1335,7 +1350,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 							structType = s.Type
 						}
 					}
-					push(&symbol.Symbol{Kind: symbol.Var, Type: structType.FieldType(t.Str[1:])})
+					push(&symbol.Symbol{Kind: symbol.Var, Index: symbol.UnsetAddr, Type: structType.FieldType(t.Str[1:])})
 					c.emit(t, vm.Field, f.Index...)
 					break
 				}

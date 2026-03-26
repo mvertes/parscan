@@ -109,6 +109,11 @@ func TestAssign(t *testing.T) {
 		{n: "#14", src: "_ = 1+1; 42", res: "42"},
 		{n: "#15", src: "func f() (int, int) {return 2, 3}; var a, b int = f(); a+b", res: "5"},
 		{n: "#16", src: "func f() (int, int) {return 2, 3}; func g(i, j int) int {return i+j}; g(f())", res: "5"},
+		// multi-assign to struct fields
+		{n: "#17", src: "type T struct{v int}; func f() (int,error) {return 2,nil}; t:=&T{}; t.v,_=f(); t.v", res: "2"},
+		{n: "#18", src: "type T struct{v,w int}; func f() (int,int) {return 1,2}; t:=&T{}; t.v,t.w=f(); 10*t.v+t.w", res: "12"},
+		{n: "#19", src: "type T struct{v interface{}}; func f() (int64,error) {return 2,nil}; t:=&T{}; t.v,_=f(); t.v.(int64)", res: "2"},
+		{n: "#20", src: "type T struct{v int}; func f() (int,int) {return 1,2}; t:=&T{}; var a int; a,t.v=f(); 10*a+t.v", res: "12"},
 	})
 }
 
