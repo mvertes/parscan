@@ -950,6 +950,18 @@ var a error = nil
 r := ""
 if a == nil || a.Error() == "nil" { r = "nil" }
 r`, res: "nil"},
+
+		// explicit interface type conversion T(x) where T is an interface type
+		{n: "explicit_iface_conv", src: `
+type myInterface interface { myFunc() string }
+type V struct{}
+func (v *V) myFunc() string { return "hello" }
+type U struct { v myInterface }
+func (u *U) myFunc() string { return u.v.myFunc() }
+x := V{}
+y := myInterface(&x)
+y = &U{y}
+y.myFunc()`, res: "hello"},
 	})
 }
 

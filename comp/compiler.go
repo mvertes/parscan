@@ -702,10 +702,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					return errorf("type conversion requires exactly one argument")
 				}
 				c.removeFnew(s.Index)
-				pop() // type symbol
-				pop() // argument
+				arg := pop() // argument (top of stack)
+				pop()        // type symbol
 				push(&symbol.Symbol{Kind: symbol.Value, Type: s.Type})
-				c.emit(t, vm.Convert, s.Index)
+				if s.Type.IsInterface() {
+					c.emitIfaceWrap(t, s.Type, arg.Type)
+				} else {
+					c.emit(t, vm.Convert, s.Index)
+				}
 				break
 			}
 			if s.Kind != symbol.Value {
