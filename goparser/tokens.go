@@ -91,7 +91,7 @@ func newEqualSet(pos int) Token                       { return newToken(lang.Equ
 func newReturn(pos int) Token                         { return newToken(lang.Return, "", pos) }
 func newJumpSetFalse(label string, pos int) Token     { return newToken(lang.JumpSetFalse, label, pos) }
 func newJumpSetTrue(label string, pos int) Token      { return newToken(lang.JumpSetTrue, label, pos) }
-func newComposite(pos int) Token                      { return newToken(lang.Composite, "", pos) }
+func newComposite(ctype string, pos int) Token        { return newToken(lang.Composite, ctype, pos) }
 func newIndex(pos int) Token                          { return newToken(lang.Index, "", pos) }
 func newInt(i, pos int) Token                         { return newToken(lang.Int, strconv.Itoa(i), pos) }
 func newColon(pos int) Token                          { return newToken(lang.Colon, "", pos) }

@@ -500,6 +500,28 @@ f(&T{1, 2, 3})`, res: "6"},
 type T [3]int
 t := &T{10, 20, 30}
 s := 0; for i := range t { s += i }; s`, res: "3"},
+
+		// len(v.Field) where Field is an array type is a compile-time constant,
+		// usable as an array size. Test both package-level and local variables,
+		// and both [N]T and *[N]T field types.
+		{n: "len_field_const_local", src: `
+type T struct{ Path [12]int8 }
+t := &T{}
+b := [12]byte{}
+p := (*[len(t.Path)]byte)(&b)
+len(p)`, res: "12"},
+		{n: "len_field_const_pkgvar", src: `
+type T struct{ Path [12]int8 }
+var t = &T{}
+b := [12]byte{}
+p := (*[len(t.Path)]byte)(&b)
+len(p)`, res: "12"},
+		{n: "len_field_const_ptr_field", src: `
+type T struct{ Path *[12]int8 }
+t := &T{}
+b := [12]byte{}
+p := (*[len(t.Path)]byte)(&b)
+len(p)`, res: "12"},
 	})
 }
 
@@ -1509,6 +1531,14 @@ func TestConvert(t *testing.T) {
 		{n: "float64_to_float32", src: "var a float64 = 1.5; float32(a)", res: "1.5"},
 
 		{n: "conv_in_expr", src: "var a float64 = 3.14; int(a) + 1", res: "4"},
+
+		// Pointer-to-array type conversion: (*[N]T)(ptr).
+		{n: "ptr_array_conv", src: `b := [4]byte{1, 2, 3, 4}; p := (*[4]byte)(&b); p[2]`, res: "3"},
+		{n: "ptr_array_conv_named", src: `
+type MyInt int
+var x MyInt = 7
+p := (*MyInt)(&x)
+*p`, res: "7"},
 	})
 }
 

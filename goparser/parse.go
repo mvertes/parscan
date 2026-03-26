@@ -90,6 +90,38 @@ func (p *Parser) addLocalVar(name string) string {
 	return scoped
 }
 
+// inferDefineType infers the type of a := variable from simple RHS composite
+// patterns (&T{} → *T, T{} → T) and sets it in the symbol table so that
+// later array-size constant expressions like len(v.Field) can be evaluated.
+func (p *Parser) inferDefineType(rhs Tokens, scopedName string) {
+	sym := p.Symbols[scopedName]
+	if sym == nil || sym.Type != nil {
+		return // not found, or type already set
+	}
+	n := len(rhs)
+	if n == 0 {
+		return
+	}
+	// Check for &T{} (Addr at end, Composite before it) or T{} (Composite at end).
+	hasAddr := rhs[n-1].Tok == lang.Addr
+	compositeIdx := n - 1
+	if hasAddr {
+		compositeIdx = n - 2
+	}
+	if compositeIdx < 0 || rhs[compositeIdx].Tok != lang.Composite || rhs[compositeIdx].Str == "" {
+		return
+	}
+	s, _, ok := p.Symbols.Get(rhs[compositeIdx].Str, p.scope)
+	if !ok || s.Kind != symbol.Type || s.Type == nil {
+		return
+	}
+	if hasAddr {
+		sym.Type = vm.PointerTo(s.Type)
+	} else {
+		sym.Type = s.Type
+	}
+}
+
 // addGlobalVar registers a new global variable in the current scope
 // and returns its scoped name for token fixup.
 func (p *Parser) addGlobalVar(name string) string {
@@ -698,6 +730,9 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 				} else {
 					out[lhsPositions[i]].Str = p.addGlobalVar(e[0].Str)
 				}
+			}
+			if p.funcScope != "" && len(lhs) == 1 {
+				p.inferDefineType(toks, out[lhsPositions[0]].Str)
 			}
 		}
 		return out, err

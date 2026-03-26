@@ -172,13 +172,35 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 		return s.Cval, 1, err
 	case id == lang.Call:
 		narg := t.Arg[0].(int)
-		// len/cap on array-typed identifiers are constant per Go spec.
-		if narg == 1 && l >= 2 && in[l-1].Tok == lang.Ident && in[l-2].Tok == lang.Ident {
-			fname := in[l-2].Str
-			if fname == "len" || fname == "cap" {
-				s, _, ok := p.Symbols.Get(in[l-1].Str, p.scope)
-				if ok && s.Type != nil && s.Type.Rtype.Kind() == reflect.Array {
-					return constant.MakeInt64(int64(s.Type.Rtype.Len())), 3, nil
+		// len/cap of an array or *array variable (bare or field access) is constant per Go spec.
+		if narg == 1 {
+			var fname string
+			var rt reflect.Type
+			var n int
+			switch {
+			case l >= 2 && in[l-1].Tok == lang.Ident && in[l-2].Tok == lang.Ident:
+				if s, _, ok := p.Symbols.Get(in[l-1].Str, p.scope); ok && s.Type != nil {
+					fname, rt, n = in[l-2].Str, s.Type.Rtype, 3
+				}
+			case l >= 3 && in[l-1].Tok == lang.Period && in[l-2].Tok == lang.Ident && in[l-3].Tok == lang.Ident:
+				if s, _, ok := p.Symbols.Get(in[l-2].Str, p.scope); ok && s.Type != nil {
+					bt := s.Type.Rtype
+					if bt.Kind() == reflect.Ptr {
+						bt = bt.Elem()
+					}
+					if bt.Kind() == reflect.Struct {
+						if f, ok2 := bt.FieldByName(in[l-1].Str[1:]); ok2 {
+							fname, rt, n = in[l-3].Str, f.Type, 4
+						}
+					}
+				}
+			}
+			if rt != nil && (fname == "len" || fname == "cap") {
+				if rt.Kind() == reflect.Ptr {
+					rt = rt.Elem()
+				}
+				if rt.Kind() == reflect.Array {
+					return constant.MakeInt64(int64(rt.Len())), n, nil
 				}
 			}
 		}

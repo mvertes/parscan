@@ -93,7 +93,31 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			t.Str = typeStr
 			addop(t)
 
-		case lang.Add, lang.And, lang.AndNot, lang.Equal, lang.Greater, lang.GreaterEqual, lang.Less, lang.LessEqual, lang.Mul, lang.Not, lang.NotEqual, lang.Or, lang.Quo, lang.Rem, lang.Sub, lang.Shl, lang.Shr, lang.Xor:
+		case lang.Mul:
+			if i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Colon {
+				// Known non-type identifier after * is a dereference — avoids a
+				// speculative parseTypeExpr call (and its error allocation) on *ptr.
+				if i+1 < lin && in[i+1].Tok == lang.Ident {
+					if s, _, ok := p.Symbols.Get(in[i+1].Str, p.scope); ok && s.Kind != symbol.Type {
+						t.Tok = lang.Deref
+						addop(t)
+						break
+					}
+				}
+				if typ, n, err2 := p.parseTypeExpr(in[i:]); err2 == nil {
+					ctype = typ.String()
+					p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
+					out = append(out, newIdent(ctype, t.Pos))
+					i += n - 1
+					break
+				}
+				t.Tok = lang.Deref
+				addop(t)
+			} else {
+				addop(t)
+			}
+
+		case lang.Add, lang.And, lang.AndNot, lang.Equal, lang.Greater, lang.GreaterEqual, lang.Less, lang.LessEqual, lang.Not, lang.NotEqual, lang.Or, lang.Quo, lang.Rem, lang.Sub, lang.Shl, lang.Shr, lang.Xor:
 			if i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Colon {
 				t.Tok = lang.UnaryOp[t.Tok]
 			}
@@ -182,7 +206,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if err != nil {
 				return out, err
 			}
-			ops = append(ops, newComposite(t.Pos))
+			ops = append(ops, newComposite(ctype, t.Pos))
 
 		case lang.BracketBlock:
 			if i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Range {
