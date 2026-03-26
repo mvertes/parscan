@@ -798,29 +798,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Call, callNarg, nret)
 				break
 			}
-			fallthrough // A symValue must be called through callX.
-
-		case lang.CallX:
-			narg := t.Arg[0].(int)
-			if err := checkTopN(narg); err != nil {
-				return err
-			}
-			s := stack[len(stack)-1-narg]
-			if s.Kind == symbol.Value && !isCallable(s) {
-				for i := narg + 1; i < len(stack); i++ {
-					if candidate := stack[len(stack)-1-i]; isCallable(candidate) {
-						s = candidate
-						narg = i
-						break
-					}
-				}
-			}
-			if ok, err := c.compileBuiltin(s, narg, t, &stack, push, pop, top); ok {
-				if err != nil {
-					return err
-				}
-				break
-			}
+			// s.Kind == symbol.Value: call a Go native function value via reflect.
 			var rtyp reflect.Type
 			if rv := s.Value.Reflect(); rv.IsValid() {
 				rtyp = rv.Type()

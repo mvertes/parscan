@@ -94,28 +94,27 @@ func _() {
 	_ = x[Type-83]
 	_ = x[Var-84]
 	_ = x[Call-85]
-	_ = x[CallX-86]
-	_ = x[Composite-87]
-	_ = x[EqualSet-88]
-	_ = x[Grow-89]
-	_ = x[Index-90]
-	_ = x[JumpFalse-91]
-	_ = x[JumpSetFalse-92]
-	_ = x[JumpSetTrue-93]
-	_ = x[Label-94]
-	_ = x[Len-95]
-	_ = x[New-96]
-	_ = x[Next-97]
-	_ = x[Slice-98]
-	_ = x[Stop-99]
-	_ = x[TypeAssert-100]
-	_ = x[TypeSwitchJump-101]
-	_ = x[MaxTok-102]
+	_ = x[Composite-86]
+	_ = x[EqualSet-87]
+	_ = x[Grow-88]
+	_ = x[Index-89]
+	_ = x[JumpFalse-90]
+	_ = x[JumpSetFalse-91]
+	_ = x[JumpSetTrue-92]
+	_ = x[Label-93]
+	_ = x[Len-94]
+	_ = x[New-95]
+	_ = x[Next-96]
+	_ = x[Slice-97]
+	_ = x[Stop-98]
+	_ = x[TypeAssert-99]
+	_ = x[TypeSwitchJump-100]
+	_ = x[MaxTok-101]
 }
 
-const _Token_name = "IllegalCommentIdentCharFloatImagIntStringAddSubMulQuoRemAndOrXorShlShrAndNotPeriodEqualGreaterGreaterEqualLandLessLessEqualLorNotEqualDefineAssignAddAssignSubAssignMulAssignQuoAssignRemAssignAndAssignOrAssignXorAssignShlAssignShrAssignAndNotAssignIncDecIndexAssignDerefAssignPlusMinusAddrDerefBitCompArrowEllipsisNotTildeCommaSemicolonColonParenBlockBracketBlockBraceBlockBreakCaseChanConstContinueDefaultDeferElseFallthroughForFuncGoGotoIfImportInterfaceMapPackageRangeReturnSelectStructSwitchTypeVarCallCallXCompositeEqualSetGrowIndexJumpFalseJumpSetFalseJumpSetTrueLabelLenNewNextSliceStopTypeAssertTypeSwitchJumpMaxTok"
+const _Token_name = "IllegalCommentIdentCharFloatImagIntStringAddSubMulQuoRemAndOrXorShlShrAndNotPeriodEqualGreaterGreaterEqualLandLessLessEqualLorNotEqualDefineAssignAddAssignSubAssignMulAssignQuoAssignRemAssignAndAssignOrAssignXorAssignShlAssignShrAssignAndNotAssignIncDecIndexAssignDerefAssignPlusMinusAddrDerefBitCompArrowEllipsisNotTildeCommaSemicolonColonParenBlockBracketBlockBraceBlockBreakCaseChanConstContinueDefaultDeferElseFallthroughForFuncGoGotoIfImportInterfaceMapPackageRangeReturnSelectStructSwitchTypeVarCallCompositeEqualSetGrowIndexJumpFalseJumpSetFalseJumpSetTrueLabelLenNewNextSliceStopTypeAssertTypeSwitchJumpMaxTok"
 
-var _Token_index = [...]uint16{0, 7, 14, 19, 23, 28, 32, 35, 41, 44, 47, 50, 53, 56, 59, 61, 64, 67, 70, 76, 82, 87, 94, 106, 110, 114, 123, 126, 134, 140, 146, 155, 164, 173, 182, 191, 200, 208, 217, 226, 235, 247, 250, 253, 264, 275, 279, 284, 288, 293, 300, 305, 313, 316, 321, 326, 335, 340, 350, 362, 372, 377, 381, 385, 390, 398, 405, 410, 414, 425, 428, 432, 434, 438, 440, 446, 455, 458, 465, 470, 476, 482, 488, 494, 498, 501, 505, 510, 519, 527, 531, 536, 545, 557, 568, 573, 576, 579, 583, 588, 592, 602, 616, 622}
+var _Token_index = [...]uint16{0, 7, 14, 19, 23, 28, 32, 35, 41, 44, 47, 50, 53, 56, 59, 61, 64, 67, 70, 76, 82, 87, 94, 106, 110, 114, 123, 126, 134, 140, 146, 155, 164, 173, 182, 191, 200, 208, 217, 226, 235, 247, 250, 253, 264, 275, 279, 284, 288, 293, 300, 305, 313, 316, 321, 326, 335, 340, 350, 362, 372, 377, 381, 385, 390, 398, 405, 410, 414, 425, 428, 432, 434, 438, 440, 446, 455, 458, 465, 470, 476, 482, 488, 494, 498, 501, 505, 514, 522, 526, 531, 540, 552, 563, 568, 571, 574, 578, 583, 587, 597, 611, 617}
 
 func (i Token) String() string {
 	idx := int(i) - 0
