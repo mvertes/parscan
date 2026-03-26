@@ -470,6 +470,18 @@ func TestArray(t *testing.T) {
 
 		// [...] array syntax.
 		{n: "ellipsis", src: `a := [...]int{10, 20, 30}; len(a)`, res: "3"},
+
+		// Pointer-to-array: Go allows indexing and ranging directly over *[N]T.
+		{n: "ptr_index", src: `type T [2]int; func f(t *T) int { return t[0] }; f(&T{1, 2})`, res: "1"},
+		{n: "ptr_index_set", src: `type T [2]int; t := &T{1, 2}; t[1] = 9; t[1]`, res: "9"},
+		{n: "ptr_range2", src: `
+type T [3]int
+func f(t *T) int { s := 0; for _, v := range t { s += v }; return s }
+f(&T{1, 2, 3})`, res: "6"},
+		{n: "ptr_range1", src: `
+type T [3]int
+t := &T{10, 20, 30}
+s := 0; for i := range t { s += i }; s`, res: "3"},
 	})
 }
 

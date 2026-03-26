@@ -1026,15 +1026,16 @@ func (m *Machine) Run() (err error) {
 				mem = append(mem, Value{ref: reflect.New(typ)})
 			case Index:
 				idx := int(mem[sp-1].num) //nolint:gosec
-				if mem[sp-2].ref.Kind() == reflect.String {
-					mem[sp-2] = Value{num: uint64(mem[sp-2].ref.String()[idx]), ref: zuint8}
+				ref := reflect.Indirect(mem[sp-2].ref)
+				if ref.Kind() == reflect.String {
+					mem[sp-2] = Value{num: uint64(ref.String()[idx]), ref: zuint8}
 				} else {
-					mem[sp-2] = fromReflect(mem[sp-2].ref.Index(idx))
+					mem[sp-2] = fromReflect(ref.Index(idx))
 				}
 				mem = mem[:sp-1]
 			case IndexSet:
 				idx := int(mem[sp-2].num) //nolint:gosec
-				slot := mem[sp-3].ref.Index(idx)
+				slot := reflect.Indirect(mem[sp-3].ref).Index(idx)
 				slot.Set(m.wrapForFunc(mem[sp-1], slot.Type()))
 				mem = mem[:sp-2]
 			case MapIndex:

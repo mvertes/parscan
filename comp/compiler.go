@@ -502,6 +502,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if vt == nil {
 				return goparser.ErrUndefined{Name: s.Name}
 			}
+			if vt.IsPtr() {
+				vt = vt.Elem()
+			}
 			var elemType *vm.Type
 			switch vt.Rtype.Kind() {
 			case reflect.Map:
@@ -958,7 +961,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			s := stack[len(stack)-3]
-			switch s.Type.Rtype.Kind() {
+			typ := s.Type
+			if typ.IsPtr() {
+				typ = typ.Elem()
+			}
+			switch typ.Rtype.Kind() {
 			case reflect.Array, reflect.Slice:
 				c.emit(t, vm.IndexSet)
 			case reflect.Map:
@@ -1323,6 +1330,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			var rangeKind reflect.Kind
 			if vt != nil {
 				rangeKind = vt.Rtype.Kind()
+			}
+			if rangeKind == reflect.Pointer {
+				vt = vt.Elem()
+				rangeKind = vt.Rtype.Kind()
+				c.emit(t, vm.Deref)
 			}
 			initRangeVar := func(s *symbol.Symbol, typ *vm.Type) {
 				s.Type = typ
