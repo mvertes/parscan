@@ -144,7 +144,19 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			} else {
 				flushops(p.precedence(newCall(0)))
 				// func call: ensure that the func token in on the top of the stack, after args.
-				ops = append(ops, newCall(t.Pos, p.numItems(t.Block(), lang.Comma)))
+				bToks, _ := p.Scan(t.Block(), false)
+				spread := len(bToks) > 0 && bToks[len(bToks)-1].Tok == lang.Ellipsis
+				narg := 0
+				for _, sub := range bToks.Split(lang.Comma) {
+					if len(sub) > 0 {
+						narg++
+					}
+				}
+				if spread {
+					ops = append(ops, newCall(t.Pos, narg, 1))
+				} else {
+					ops = append(ops, newCall(t.Pos, narg))
+				}
 				out = append(out, toks...)
 			}
 
@@ -222,6 +234,8 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			i += n - 1
 
 		case lang.Comment:
+
+		case lang.Ellipsis:
 
 		default:
 			log.Println("unexpected token:", t)

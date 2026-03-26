@@ -272,6 +272,10 @@ func TestVariadic(t *testing.T) {
 		{n: "#04", src: "func add(x int, rest ...int) int { s := x; for _, v := range rest { s = s + v }; return s }; add(10)", res: "10"},
 		// Variadic void function.
 		{n: "#05", src: "var r int; func f(a ...int) { for _, v := range a { r = r + v } }; f(1, 2, 3); r", res: "6"},
+		// Spread: pass existing slice as variadic arg.
+		{n: "spread", src: `func sum(a ...int) int { s := 0; for _, v := range a { s += v }; return s }; x := []int{1, 2, 3}; sum(x...)`, res: "6"},
+		// Spread with fixed params before variadic.
+		{n: "spread_fixed", src: `func add(x int, rest ...int) int { s := x; for _, v := range rest { s += v }; return s }; r := []int{1, 2}; add(10, r...)`, res: "13"},
 	})
 }
 
@@ -1125,6 +1129,34 @@ func f(params ...interface{}) int {
 	switch params[0].(type) { case string: return 1; default: return 2 }
 }
 f(99)`, res: "2"},
+
+		// Interface slice composite literal: element stored as vm.Iface, callable via IfaceCall.
+		{n: "iface_slice_index", src: `
+type Option interface { val() int }
+type T struct{ v int }
+func (t *T) val() int { return t.v }
+opt := []Option{&T{v: 7}}
+opt[0].val()`, res: "7"},
+
+		// Variadic interface spread: pass []Option directly with opt...
+		{n: "iface_spread", src: `
+type Option interface { val() int }
+type T struct{ v int }
+func (t *T) val() int { return t.v }
+func f(opts ...Option) int { return opts[0].val() }
+opt := []Option{&T{v: 42}}
+f(opt...)`, res: "42"},
+
+		// Variadic interface spread: both indexed element and spread (yaegi-issue-1205 scenario).
+		{n: "iface_slice_spread_both", src: `
+type Option interface { val() int }
+type T struct{ v int }
+func (t *T) val() int { return t.v }
+func f(opts ...Option) int { return opts[0].val() }
+opt := []Option{&T{v: 21}}
+a := f(opt[0])
+b := f(opt...)
+a + b`, res: "42"},
 	})
 }
 

@@ -698,6 +698,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 
 		case lang.Call:
 			narg := t.Arg[0].(int)
+			spread := len(t.Arg) > 1 && t.Arg[1].(int) != 0
 			if err := checkTopN(narg); err != nil {
 				return err
 			}
@@ -762,7 +763,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 				}
 				// Type switches on variadic slice elements require Iface wrapping at the call site.
-				if typ.Rtype.IsVariadic() {
+				// For spread calls (f(s...)), the slice is pre-built; skip per-element wrapping.
+				if typ.Rtype.IsVariadic() && !spread {
 					nFixed := typ.Rtype.NumIn() - 1
 					elemType := typ.Rtype.In(nFixed).Elem()
 					if elemType.Kind() == reflect.Interface {
@@ -787,12 +789,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				callNarg := narg
 				if typ.Rtype.IsVariadic() {
-					// Pack trailing arguments into a slice for the variadic parameter.
 					nFixed := typ.Rtype.NumIn() - 1
-					nExtra := narg - nFixed
-					elemType := typ.Rtype.In(nFixed).Elem()
-					elemIdx := c.typeSym(&vm.Type{Rtype: elemType}).Index
-					c.emit(t, vm.MkSlice, nExtra, elemIdx)
+					if !spread {
+						// Pack trailing arguments into a slice for the variadic parameter.
+						nExtra := narg - nFixed
+						elemType := typ.Rtype.In(nFixed).Elem()
+						elemIdx := c.typeSym(&vm.Type{Rtype: elemType}).Index
+						c.emit(t, vm.MkSlice, nExtra, elemIdx)
+					}
 					callNarg = nFixed + 1
 				}
 				c.emit(t, vm.Call, callNarg, nret)
@@ -842,6 +846,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					if ts.Type.Elem().IsPtr() && vs.Kind == symbol.Type {
 						c.emit(t, vm.Addr)
 					}
+					c.emitIfaceWrap(t, ts.Type.Elem(), vs.Type)
 					c.emit(t, vm.IndexSet)
 				case reflect.Map:
 					elemTyp := ts.Type.Elem()
