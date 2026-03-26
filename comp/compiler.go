@@ -807,6 +807,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					c.emit(t, vm.IndexSet)
 				case reflect.Map:
+					if ts.Type.Elem().IsPtr() && vs.Kind == symbol.Type {
+						c.emit(t, vm.Addr)
+					}
 					c.emit(t, vm.MapSet)
 				}
 			case symbol.Unset:

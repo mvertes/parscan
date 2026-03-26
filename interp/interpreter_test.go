@@ -126,6 +126,7 @@ func TestCompare(t *testing.T) {
 		{n: "nil_lhs", src: "var m map[string]int; nil == m", res: "true"},
 		{n: "nil_neq_map", src: "var m map[string]string; m != nil", res: "false"},
 		{n: "nil_neq_slice", src: "s := []int{1}; s != nil", res: "true"},
+		{n: "nil_iface_conv", src: "err := error(nil); err == nil", res: "true"},
 	})
 }
 
@@ -724,6 +725,7 @@ func TestMap(t *testing.T) {
 		{n: "#03", src: src0 + `var m = M{"xx": true}; m`, res: `map[xx:true]`},
 		{n: "#04", src: src0 + `var m = M{"xx": true}; m["xx"] = false`, res: `map[xx:false]`},
 		{n: "#05", src: "var m map[string]int64; func f() {m = make(map[string]int64)}; f(); len(m)", res: "0"},
+		{n: "ptr_elem", src: `type T struct{v int}; m := map[int]*T{0: {v: 2}}; m[0].v`, res: "2"},
 	})
 }
 

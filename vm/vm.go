@@ -455,8 +455,15 @@ func (m *Machine) Run() (err error) {
 				idx := sp - 1 - depth
 				v := mem[idx]
 				dstType := mem[c.Arg[0]].ref.Type()
-				srcKind := v.ref.Type().Kind()
 				dstKind := dstType.Kind()
+				if !v.ref.IsValid() {
+					// nil source: zero value of destination type.
+					if dstKind != reflect.Interface {
+						mem[idx] = fromReflect(reflect.Zero(dstType))
+					}
+					break
+				}
+				srcKind := v.ref.Type().Kind()
 
 				switch {
 				case isNum(srcKind) && isNum(dstKind):

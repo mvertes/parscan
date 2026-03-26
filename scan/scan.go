@@ -123,7 +123,8 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 			// Check for automatic semi-colon insertion after newline.
 			last := tokens[len(tokens)-1]
 			if last.Tok.IsKeyword() && sc.TokenProps[last.Tok].SkipSemi ||
-				last.Tok.IsOperator() && !sc.TokenProps[last.Tok].SkipSemi {
+				last.Tok.IsOperator() && !sc.TokenProps[last.Tok].SkipSemi ||
+				last.Tok == lang.Comma {
 				skip = true
 			} else {
 				t.Tok = lang.Semicolon
