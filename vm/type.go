@@ -30,6 +30,7 @@ type Type struct {
 	Methods      []Method        // concrete types: methods[methodID] = code location + receiver path
 	Embedded     []EmbeddedField // parscan types of anonymous (embedded) fields, for promoted method lookup
 	Params       []*Type         // parscan-level parameter types for func types (nil for non-func or if unknown)
+	Returns      []*Type         // parscan-level return types for func types (nil for non-func or if unknown)
 	Fields       []*Type         // parscan-level field types for struct types, parallel to reflect visible fields
 }
 
@@ -431,7 +432,7 @@ func FuncOf(arg, ret []*Type, variadic bool) *Type {
 	for i, e := range ret {
 		r[i] = e.Rtype
 	}
-	return &Type{Rtype: reflect.FuncOf(a, r, variadic), Params: arg}
+	return &Type{Rtype: reflect.FuncOf(a, r, variadic), Params: arg, Returns: ret}
 }
 
 // StructOf returns the struct type with the given field types and embedded field info.

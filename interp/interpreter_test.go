@@ -841,6 +841,15 @@ func f(x int) (interface{}, int) { return x, x + 1 }
 a, b := f(5)
 a.(int) + b`, res: "11"},
 
+		// return concrete value from named interface func, then call method
+		{n: "iface_return_method", src: `
+type I interface { A() string }
+type s struct{}
+func NewS() (I, error) { return &s{}, nil }
+func (c *s) A() string { return "a" }
+v, _ := NewS()
+v.A()`, res: "a"},
+
 		// nil error interface: short-circuit prevents call on nil receiver
 		{n: "error_nil_shortcircuit", src: `
 var a error = nil
