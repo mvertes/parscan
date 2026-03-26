@@ -302,6 +302,17 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		}
 		return ""
 	}
+	// isCallable reports whether sym can be the target of a function call.
+	isCallable := func(sym *symbol.Symbol) bool {
+		if sym.Kind == symbol.Func || sym.Kind == symbol.Builtin {
+			return true
+		}
+		if sym.Type != nil {
+			return sym.Type.Rtype.Kind() == reflect.Func
+		}
+		rv := sym.Value.Reflect()
+		return rv.IsValid() && rv.Kind() == reflect.Func
+	}
 
 	for _, t := range tokens {
 		switch t.Tok {
@@ -691,13 +702,13 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			s := stack[len(stack)-1-narg]
-			// If the symbol at the expected position is a plain non-callable value,
-			// arguments may have been expanded from a multi-return call (e.g. g(f())
-			// where f returns 2 values). Search backward for the real function symbol.
-			if s.Kind == symbol.Value && (s.Type == nil || s.Type.Rtype.Kind() != reflect.Func) {
+			// If s is a non-callable plain Value, arguments may have been expanded
+			// from a multi-return call (e.g. g(f()) where f returns 2 values).
+			// Only Value symbols (not Type, Func, etc.) indicate expansion.
+			// Search backward for the real function symbol.
+			if s.Kind == symbol.Value && !isCallable(s) {
 				for i := narg + 1; i < len(stack); i++ {
-					candidate := stack[len(stack)-1-i]
-					if candidate.Kind != symbol.Value || (candidate.Type != nil && candidate.Type.Rtype.Kind() == reflect.Func) {
+					if candidate := stack[len(stack)-1-i]; isCallable(candidate) {
 						s = candidate
 						narg = i
 						break
@@ -795,6 +806,15 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			s := stack[len(stack)-1-narg]
+			if s.Kind == symbol.Value && !isCallable(s) {
+				for i := narg + 1; i < len(stack); i++ {
+					if candidate := stack[len(stack)-1-i]; isCallable(candidate) {
+						s = candidate
+						narg = i
+						break
+					}
+				}
+			}
 			if ok, err := c.compileBuiltin(s, narg, t, &stack, push, pop, top); ok {
 				if err != nil {
 					return err
@@ -807,7 +827,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			} else if s.Type != nil {
 				rtyp = s.Type.Rtype
 			}
-			// TODO: pop input types (careful with variadic function).
+			// Pop function and input arg symbols, push return value symbols.
+			for i := 0; i < narg+1; i++ {
+				pop()
+			}
 			if rtyp != nil {
 				for i := 0; i < rtyp.NumOut(); i++ {
 					push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtyp.Out(i)}})
