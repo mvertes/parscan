@@ -62,6 +62,9 @@ func (toks Tokens) Split(tok lang.Token) (result []Tokens) {
 // SplitStart is similar to Split, except the first token in toks is skipped.
 func (toks Tokens) SplitStart(tok lang.Token) (result []Tokens) {
 	for {
+		if len(toks) == 0 {
+			return
+		}
 		i := toks[1:].Index(tok)
 		if i < 0 {
 			return append(result, toks)

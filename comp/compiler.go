@@ -729,6 +729,21 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						c.emitConstConvert(t, argSym, ifaceTyp, depth)
 					}
 				}
+				// Type switches on variadic slice elements require Iface wrapping at the call site.
+				if typ.Rtype.IsVariadic() {
+					nFixed := typ.Rtype.NumIn() - 1
+					elemType := typ.Rtype.In(nFixed).Elem()
+					if elemType.Kind() == reflect.Interface {
+						elemTyp := &vm.Type{Rtype: elemType}
+						for k := nFixed; k < narg; k++ {
+							argSym := stack[len(stack)-narg+k]
+							if argSym.Type == nil || argSym.Type.IsInterface() {
+								continue
+							}
+							c.emitIfaceWrapAt(t, elemTyp, argSym.Type, narg-1-k)
+						}
+					}
+				}
 				// Pop function and input arg symbols, push return value symbols.
 				pop()
 				for i := 0; i < narg; i++ {

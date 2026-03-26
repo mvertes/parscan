@@ -415,6 +415,8 @@ func TestSwitch(t *testing.T) {
 		{n: "#12", src: src3 + "f(2)", res: "99"},
 		{n: "#13", src: src3 + "f(3)", res: "99"},
 		{n: "#14", src: src3 + "f(4)", res: "0"},
+
+		{n: "empty", src: `switch {}; 1`, res: "1"},
 	})
 }
 
@@ -1037,6 +1039,38 @@ type S struct { n int }
 func (s S) Get() int { return s.n }
 var g Getter = S{7}
 switch v := g.(type) { case S: v.Get() }`, res: "7"},
+
+		{n: "ptr_type", src: `
+type T struct{ N int }
+func f(t interface{}) int {
+	switch t.(type) { case *T: return 1; default: return 2 }
+}
+f(&T{})`, res: "1"},
+
+		{n: "ptr_bind", src: `
+type T struct{ N int }
+func f(t interface{}) int {
+	switch v := t.(type) { case *T: return v.N; default: return -1 }
+}
+f(&T{42})`, res: "42"},
+
+		{n: "variadic_iface_str", src: `
+func f(params ...interface{}) int {
+	switch params[0].(type) { case string: return 1; default: return 2 }
+}
+f("hello")`, res: "1"},
+
+		{n: "variadic_iface_bind", src: `
+func f(params ...interface{}) string {
+	switch v := params[0].(type) { case string: return v; default: return "no" }
+}
+f("world")`, res: "world"},
+
+		{n: "variadic_iface_default", src: `
+func f(params ...interface{}) int {
+	switch params[0].(type) { case string: return 1; default: return 2 }
+}
+f(99)`, res: "2"},
 	})
 }
 

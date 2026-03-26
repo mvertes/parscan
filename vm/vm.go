@@ -582,7 +582,7 @@ func (m *Machine) Run() (err error) {
 				if dstIsIface {
 					matched = concrete.Typ.Implements(dstTyp)
 				} else {
-					matched = concrete.Typ.Rtype == dstTyp.Rtype && concrete.Typ.Name == dstTyp.Name
+					matched = concrete.Typ.SameAs(dstTyp)
 				}
 				if matched {
 					// For interface targets, keep the Iface wrapping so IfaceCall still works.
@@ -615,7 +615,13 @@ func (m *Machine) Run() (err error) {
 				if c.Arg[1] == -1 {
 					matched = !ifc.IsIface()
 				} else if ifc.IsIface() {
-					matched = ifc.IfaceVal().Typ == mem[c.Arg[1]].ref.Interface().(*Type)
+					ctyp := ifc.IfaceVal().Typ
+					dtyp := mem[c.Arg[1]].ref.Interface().(*Type)
+					if dtyp.IsInterface() {
+						matched = ctyp.Implements(dtyp)
+					} else {
+						matched = ctyp.SameAs(dtyp)
+					}
 				}
 				if !matched {
 					ip += c.Arg[0]

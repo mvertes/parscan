@@ -63,6 +63,11 @@ func (t *Type) IsInterface() bool {
 	return t != nil && t.Rtype.Kind() == reflect.Interface
 }
 
+// SameAs reports whether t and u represent the same concrete type.
+func (t *Type) SameAs(u *Type) bool {
+	return t.Rtype == u.Rtype && t.Name == u.Name
+}
+
 // Implements reports whether the concrete type t satisfies interface iface.
 // iface.IfaceMethods must have IDs populated (by the compiler) before calling this.
 func (t *Type) Implements(iface *Type) bool {
