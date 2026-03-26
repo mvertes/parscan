@@ -33,7 +33,12 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 	}
 
 	addop := func(t Token) {
-		flushops(p.precedence(t) + 1)
+		// Binary operators are left-associative; unary are right-associative.
+		if t.Tok.IsUnaryOp() {
+			flushops(p.precedence(t) + 1)
+		} else {
+			flushops(p.precedence(t))
+		}
 		ops = append(ops, t)
 	}
 

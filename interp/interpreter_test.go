@@ -461,6 +461,11 @@ len(buf{}.data)`, res: "32"},
 		// len/cap on array-typed variables in const expressions.
 		{n: "len_array_var", src: `var a = [3]int{1,2,3}; const n = len(a); n`, res: "3"},
 		{n: "cap_array_var", src: `var a = [...]int{1,2,3}; const n = cap(a); n`, res: "3"},
+
+		// Const expressions are also left-associative.
+		{n: "sub_add_chain", src: `const (a = 2; b = 10; c = b - a + 1); c`, res: "9"}, // right-assoc: 10-(2+1)=7
+		// Typed const: reproduces yaegi-issue-1175 (typed int8 constants in array size).
+		{n: "typed_sub_add", src: `type L int8; const (a L = -1; b L = 5; d = b - a + 1); type A [d]int; len(A{})`, res: "7"}, // right-assoc: b-(a+1)=5
 	})
 }
 
@@ -1264,6 +1269,13 @@ func TestArithInt(t *testing.T) {
 
 		{n: "rem_float_const", src: "i := 102; i % -1e2", res: "2"},
 		{n: "add_assign_float_const", src: "a := 4; a += 13/4.0; a", res: "7"},
+
+		// Binary operators are left-associative: (a op b) op c, not a op (b op c).
+		{n: "sub_chain", src: "10 - 3 - 2", res: "5"},      // right-assoc: 10-(3-2)=9
+		{n: "sub_add_chain", src: "10 - 3 + 2", res: "9"},  // right-assoc: 10-(3+2)=5
+		{n: "div_chain", src: "12 / 6 / 2", res: "1"},      // right-assoc: 12/(6/2)=4
+		// Unary operators are right-associative.
+		{n: "negate_double", src: "a := 5; - -a", res: "5"}, // left-assoc: would panic
 	})
 }
 
