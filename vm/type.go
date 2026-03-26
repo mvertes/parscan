@@ -32,6 +32,7 @@ type Type struct {
 	Params       []*Type         // parscan-level parameter types for func types (nil for non-func or if unknown)
 	Returns      []*Type         // parscan-level return types for func types (nil for non-func or if unknown)
 	Fields       []*Type         // parscan-level field types for struct types, parallel to reflect visible fields
+	ElemType     *Type           // parscan-level element type for map/slice/array/pointer/chan types
 }
 
 // IfaceMethod describes a method required by an interface type.
@@ -89,8 +90,11 @@ func (t *Type) String() string {
 	return t.Rtype.String()
 }
 
-// Elem returns a type's element type.
+// Elem returns a type's element type, preserving parscan-level info (e.g. IfaceMethods).
 func (t *Type) Elem() *Type {
+	if t.ElemType != nil {
+		return t.ElemType
+	}
 	e := t.Rtype.Elem()
 	return &Type{Name: e.Name(), Rtype: e}
 }
@@ -417,22 +421,22 @@ func (v Value) Equal(u Value) bool {
 
 // PointerTo returns the pointer type with element t.
 func PointerTo(t *Type) *Type {
-	return &Type{Name: t.Name, Rtype: reflect.PointerTo(t.Rtype)}
+	return &Type{Name: t.Name, Rtype: reflect.PointerTo(t.Rtype), ElemType: t}
 }
 
 // ArrayOf returns the array type with the given length and element type.
 func ArrayOf(length int, t *Type) *Type {
-	return &Type{Rtype: reflect.ArrayOf(length, t.Rtype)}
+	return &Type{Rtype: reflect.ArrayOf(length, t.Rtype), ElemType: t}
 }
 
 // SliceOf returns the slice type with the given element type.
 func SliceOf(t *Type) *Type {
-	return &Type{Rtype: reflect.SliceOf(t.Rtype)}
+	return &Type{Rtype: reflect.SliceOf(t.Rtype), ElemType: t}
 }
 
 // MapOf returns the map type with the given key and element types.
 func MapOf(k, e *Type) *Type {
-	return &Type{Rtype: reflect.MapOf(k.Rtype, e.Rtype)}
+	return &Type{Rtype: reflect.MapOf(k.Rtype, e.Rtype), ElemType: e}
 }
 
 // FuncOf returns the function type with the given argument and result types.

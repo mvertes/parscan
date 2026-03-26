@@ -750,6 +750,8 @@ func TestMap(t *testing.T) {
 		{n: "#04", src: src0 + `var m = M{"xx": true}; m["xx"] = false`, res: `map[xx:false]`},
 		{n: "#05", src: "var m map[string]int64; func f() {m = make(map[string]int64)}; f(); len(m)", res: "0"},
 		{n: "ptr_elem", src: `type T struct{v int}; m := map[int]*T{0: {v: 2}}; m[0].v`, res: "2"},
+		{n: "iface_elem", src: `type I interface { Foo() int }; type S1 struct { i int }; func (s S1) Foo() int { return s.i }; type S2 struct{}; func (s *S2) Foo() int { return 42 }; Is := map[string]I{"foo": S1{21}, "bar": &S2{}}; n := 0; for _, s := range Is { n += s.Foo() }; n`, res: "63"},
+		{n: "iface_addr_lit", src: `type I interface { Foo() int }; type S struct{}; func (s *S) Foo() int { return 7 }; m := map[string]I{"k": &S{}}; m["k"].Foo()`, res: "7"},
 	})
 }
 
