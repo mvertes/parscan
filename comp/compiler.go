@@ -691,6 +691,19 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			s := stack[len(stack)-1-narg]
+			// If the symbol at the expected position is a plain non-callable value,
+			// arguments may have been expanded from a multi-return call (e.g. g(f())
+			// where f returns 2 values). Search backward for the real function symbol.
+			if s.Kind == symbol.Value && (s.Type == nil || s.Type.Rtype.Kind() != reflect.Func) {
+				for i := narg + 1; i < len(stack); i++ {
+					candidate := stack[len(stack)-1-i]
+					if candidate.Kind != symbol.Value || (candidate.Type != nil && candidate.Type.Rtype.Kind() == reflect.Func) {
+						s = candidate
+						narg = i
+						break
+					}
+				}
+			}
 			if ok, err := c.compileBuiltin(s, narg, t, &stack, push, pop, top); ok {
 				if err != nil {
 					return err
