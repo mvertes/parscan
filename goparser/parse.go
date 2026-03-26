@@ -600,6 +600,12 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		return p.parseType(in)
 	case lang.Var:
 		return p.parseVar(in)
+	case lang.BraceBlock:
+		label := "block" + strconv.Itoa(p.labelCount[p.scope])
+		p.labelCount[p.scope]++
+		p.pushScope(label)
+		defer p.popScope()
+		return p.Parse(in[0].Block())
 	case lang.Mul, lang.ParenBlock:
 		if i := in.Index(lang.Assign); i > 0 {
 			return p.parseAssign(in, i)

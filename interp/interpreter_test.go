@@ -794,6 +794,23 @@ var t T
 t.X = 99
 t.X`, res: "99"},
 
+		// Naked block creates a new scope; inner variable shadows outer.
+		{n: "block_scope", src: `
+func f() int {
+	a := 1
+	{ a := 3; _ = a }
+	return a
+}
+f()`, res: "1"},
+		// Multiple nested blocks each shadow independently.
+		{n: "block_scope_nested", src: `
+func f() int {
+	a := 1
+	{ a := 2; { a := 3; _ = a }; _ = a }
+	return a
+}
+f()`, res: "1"},
+
 		// Struct field name shadows a builtin type (e.g. rune).
 		{n: "field_shadows_type", src: `
 type P struct { pos uint8; size uint8 }
