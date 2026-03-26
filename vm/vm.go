@@ -47,6 +47,7 @@ const (
 	Greater                // n1 n2 -- cond; cond = n1 > n2
 	Grow                   // -- ; sp += $1
 	Index                  // a i -- a[i] ;
+	IndexAddr              // a i -- &a[i] ; pointer to element
 	IndexSet               // a i v -- a; a[i] = v
 	Jump                   // -- ; ip += $1
 	JumpTrue               // cond -- ; if cond { ip += $1 }
@@ -1045,6 +1046,11 @@ func (m *Machine) Run() (err error) {
 				} else {
 					mem[sp-2] = fromReflect(ref.Index(idx))
 				}
+				mem = mem[:sp-1]
+			case IndexAddr:
+				idx := int(mem[sp-1].num) //nolint:gosec
+				ref := reflect.Indirect(mem[sp-2].ref)
+				mem[sp-2] = Value{ref: ref.Index(idx).Addr()}
 				mem = mem[:sp-1]
 			case IndexSet:
 				idx := int(mem[sp-2].num) //nolint:gosec

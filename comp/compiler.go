@@ -438,7 +438,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			push(&symbol.Symbol{Kind: symbol.Value, Type: vm.PointerTo(pop().Type)})
-			c.emit(t, vm.Addr)
+			if n := len(c.Code); n > 0 && c.Code[n-1].Op == vm.Index {
+				c.Code[n-1].Op = vm.IndexAddr
+			} else {
+				c.emit(t, vm.Addr)
+			}
 
 		case lang.Deref:
 			if err := checkTopN(1); err != nil {

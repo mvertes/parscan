@@ -196,6 +196,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if len(toks) == 0 {
 				break
 			}
+			flushops(p.precedence(newIndex(t.Pos))) // left-associative: flush prior Index before next
 			out = append(out, toks...)
 			if toks[len(toks)-1].Tok != lang.Slice {
 				ops = append(ops, newIndex(t.Pos))

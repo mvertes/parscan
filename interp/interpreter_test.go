@@ -479,6 +479,11 @@ func TestArray(t *testing.T) {
 		// [...] array syntax.
 		{n: "ellipsis", src: `a := [...]int{10, 20, 30}; len(a)`, res: "3"},
 
+		// Chained indexing: multi-dimensional arrays and slices.
+		{n: "2d_array", src: `a := [3][2]int{{1, 2}, {3, 4}, {5, 6}}; a[1][0]`, res: "3"},
+		{n: "2d_slice", src: `a := [][]int{{1, 2}, {3, 4}}; a[1][0]`, res: "3"},
+		{n: "2d_named", src: `type M [3][16]int; m := M{}; m[0][1] = 7; m[0][1]`, res: "7"},
+
 		// Pointer-to-array: Go allows indexing and ranging directly over *[N]T.
 		{n: "ptr_index", src: `type T [2]int; func f(t *T) int { return t[0] }; f(&T{1, 2})`, res: "1"},
 		{n: "ptr_index_set", src: `type T [2]int; t := &T{1, 2}; t[1] = 9; t[1]`, res: "9"},
@@ -552,6 +557,18 @@ pp := &p
 
 		// IIFE (immediately invoked function expression) returning a pointer.
 		{n: "iife_ptr", src: `var a = func() *bool { b := true; return &b }(); *a && true`, res: "true"},
+
+		// Address of slice/array element: &a[i] must alias the element, not copy it.
+		{n: "addr_slice_elem", src: `a := []int{1, 2, 3}; p := &a[1]; *p = 99; a[1]`, res: "99"},
+		{n: "addr_array_elem", src: `a := [3]int{1, 2, 3}; p := &a[1]; *p = 99; a[1]`, res: "99"},
+
+		// Address of 2D array element (yaegi-issue-1177).
+		{n: "addr_2d_elem", src: `
+type counters [3][16]int
+cs := &counters{}
+p := &cs[0][1]
+*p = 2
+cs[0][1]`, res: "2"},
 	})
 }
 
@@ -1288,9 +1305,9 @@ func TestArithInt(t *testing.T) {
 		{n: "add_assign_float_const", src: "a := 4; a += 13/4.0; a", res: "7"},
 
 		// Binary operators are left-associative: (a op b) op c, not a op (b op c).
-		{n: "sub_chain", src: "10 - 3 - 2", res: "5"},      // right-assoc: 10-(3-2)=9
-		{n: "sub_add_chain", src: "10 - 3 + 2", res: "9"},  // right-assoc: 10-(3+2)=5
-		{n: "div_chain", src: "12 / 6 / 2", res: "1"},      // right-assoc: 12/(6/2)=4
+		{n: "sub_chain", src: "10 - 3 - 2", res: "5"},     // right-assoc: 10-(3-2)=9
+		{n: "sub_add_chain", src: "10 - 3 + 2", res: "9"}, // right-assoc: 10-(3+2)=5
+		{n: "div_chain", src: "12 / 6 / 2", res: "1"},     // right-assoc: 12/(6/2)=4
 		// Unary operators are right-associative.
 		{n: "negate_double", src: "a := 5; - -a", res: "5"}, // left-assoc: would panic
 	})
