@@ -790,6 +790,32 @@ func (t T) String() string { return "hello" }
 var s Stringer = T(1)
 s.String()`, res: "hello"},
 
+		{n: "embed", src: `
+type Fooer interface { Foo() string }
+type Barer interface {
+	// comment
+	Fooer
+	Bar() string
+}
+type T struct{}
+func (t *T) Foo() string { return "foo" }
+func (t *T) Bar() string { return "bar" }
+var b Barer = &T{}
+b.Foo() + b.Bar()`, res: "foobar"},
+
+		// embedding a builtin interface (error) and a method name that shadows a user-defined type name
+		{n: "embed_builtin", src: `
+type Error interface {
+	error
+	Message() string
+}
+type T struct{ Msg string }
+func (t *T) Error() string   { return t.Msg }
+func (t *T) Message() string { return "msg:" + t.Msg }
+func newError() Error { return &T{"test"} }
+e := newError()
+e.Error()`, res: "test"},
+
 		{n: "recv_value", src: `
 type Doubler interface { Double() int }
 type N int

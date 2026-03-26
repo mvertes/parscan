@@ -415,9 +415,12 @@ func (p *Parser) registerFunc(toks Tokens) error {
 
 	case toks[1].Tok == lang.ParenBlock && len(toks) > 2 && toks[2].Tok == lang.Ident:
 		// Method or anonymous function. Disambiguate: if toks[2] is a known
-		// type, this is an anonymous func (e.g. func(int) T {...}), not a method.
+		// type and toks[3] is not a ParenBlock (param list), this is an anonymous
+		// func with a named return type (e.g. func(int) T {...}), not a method.
 		if s, _, ok := p.Symbols.Get(toks[2].Str, p.scope); ok && s.IsType() {
-			return nil
+			if len(toks) < 4 || toks[3].Tok != lang.ParenBlock {
+				return nil
+			}
 		}
 		// Method: func (recv) Name(params) rettype { ... }
 		recvr, err := p.Scan(toks[1].Block(), false)
@@ -1029,10 +1032,14 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	case lang.ParenBlock:
 		// receiver, or anonymous function parameters.
 		if t := in[2]; t.Tok == lang.Ident {
+			// If in[2] is a known type and in[3] is not a ParenBlock (param list),
+			// this is an anonymous func with a named return type (e.g. func(T) Ret{}).
 			if s, _, ok := p.Symbols.Get(t.Str, p.scope); ok && s.IsType() {
-				fname = "#f" + strconv.Itoa(p.clonum) // Generated closure symbol name.
-				p.clonum++
-				break
+				if len(in) < 4 || in[3].Tok != lang.ParenBlock {
+					fname = "#f" + strconv.Itoa(p.clonum) // Generated closure symbol name.
+					p.clonum++
+					break
+				}
 			}
 			// Method: derive fname from receiver type name.
 			recvr, scanErr := p.Scan(in[1].Block(), false)

@@ -210,11 +210,30 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		}
 		var methods []vm.IfaceMethod
 		for _, lt := range toks.Split(lang.Semicolon) {
-			if len(lt) == 0 {
+			if len(lt) == 0 || lt[0].Tok == lang.Comment {
 				continue
 			}
 			if lt[0].Tok != lang.Ident {
 				return nil, 0, fmt.Errorf("%w: expected method name in interface", ErrSyntax)
+			}
+			if len(lt) == 1 || lt[1].Tok != lang.ParenBlock {
+				s, _, ok := p.Symbols.Get(lt[0].Str, p.scope)
+				if !ok {
+					return nil, 0, ErrUndefined{lt[0].Str}
+				}
+				if s.Kind != symbol.Type || !s.Type.IsInterface() {
+					return nil, 0, fmt.Errorf("%w: %s is not an interface", ErrSyntax, lt[0].Str)
+				}
+				if len(s.Type.IfaceMethods) > 0 {
+					methods = append(methods, s.Type.IfaceMethods...)
+				} else {
+					// Builtin interface (e.g. error): synthesize from reflect method set.
+					for j := 0; j < s.Type.Rtype.NumMethod(); j++ {
+						m := s.Type.Rtype.Method(j)
+						methods = append(methods, vm.IfaceMethod{Name: m.Name, ID: -1})
+					}
+				}
+				continue
 			}
 			methods = append(methods, vm.IfaceMethod{Name: lt[0].Str, ID: -1})
 		}

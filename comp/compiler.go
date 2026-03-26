@@ -1413,11 +1413,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if funcType, ok := t.Arg[1].(*vm.Type); ok {
 				for i := 0; i < numOut; i++ {
 					stackSym := stack[len(stack)-numOut+i]
-					retTyp := funcType.Out(i)
-					if i < len(funcType.Returns) {
-						retTyp = funcType.Returns[i]
-					}
-					c.emitIfaceWrapAt(t, retTyp, stackSym.Type, numOut-1-i)
+					c.emitIfaceWrapAt(t, funcType.ReturnType(i), stackSym.Type, numOut-1-i)
 				}
 			}
 			c.emit(t, vm.Return)

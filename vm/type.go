@@ -102,6 +102,14 @@ func (t *Type) Out(i int) *Type {
 	return &Type{Name: o.Name(), Rtype: o}
 }
 
+// ReturnType returns the parscan-level i'th return type if known, else falls back to Out(i).
+func (t *Type) ReturnType(i int) *Type {
+	if i < len(t.Returns) {
+		return t.Returns[i]
+	}
+	return t.Out(i)
+}
+
 // Value is the VM runtime value.
 // Numeric types (bool, int*, uint*, float*) store their value inline in num.
 // ref carries reflect.Zero(t) for type metadata on numeric types.
