@@ -833,12 +833,13 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				switch ts.Type.Rtype.Kind() {
 				case reflect.Struct:
 					if ks.Value.CanInt() {
-						// Wrap parscan func in a real Go func for native callbacks.
 						fieldIdx := int(ks.Value.Int()) //nolint:gosec
 						if fieldIdx < len(ts.Type.Fields) {
-							if ft := ts.Type.Fields[fieldIdx]; ft != nil && ft.Rtype.Kind() == reflect.Func {
+							ft := ts.Type.Fields[fieldIdx]
+							if ft != nil && ft.Rtype.Kind() == reflect.Func {
 								c.emit(t, vm.WrapFunc, c.typeIndex(ft))
 							}
+							c.emitIfaceWrap(t, ft, vs.Type)
 						}
 						c.emit(t, vm.FieldFset)
 					}
@@ -858,10 +859,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 			case symbol.Unset:
 				j := ts.Type.FieldIndex(ks.Name)
-				// Wrap parscan func in a real Go func for native callbacks.
-				if ft := ts.Type.FieldType(ks.Name); ft != nil && ft.Rtype.Kind() == reflect.Func {
+				ft := ts.Type.FieldType(ks.Name)
+				if ft != nil && ft.Rtype.Kind() == reflect.Func {
 					c.emit(t, vm.WrapFunc, c.typeIndex(ft))
 				}
+				c.emitIfaceWrap(t, ft, vs.Type)
 				c.emit(t, vm.FieldSet, j...)
 			}
 

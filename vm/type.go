@@ -48,7 +48,10 @@ type Iface struct {
 	Val Value // the concrete value
 }
 
-var ifaceRtype = reflect.TypeOf(Iface{})
+var (
+	ifaceRtype = reflect.TypeOf(Iface{})
+	anyRtype   = reflect.TypeOf((*interface{})(nil)).Elem()
+)
 
 // ParscanFunc bundles a parscan func value with its native Go reflect.MakeFunc wrapper.
 // Stored when a parscan func is assigned to a struct field of func type:
@@ -212,8 +215,7 @@ func NewValue(typ reflect.Type, arg ...int) Value {
 	case reflect.Func, reflect.Interface:
 		// Func/interface variables hold heterogeneous values (int, Closure, Iface).
 		// Use interface{} so reflect.Set can accept any of them.
-		ifaceType := reflect.TypeOf((*any)(nil)).Elem()
-		return Value{ref: reflect.New(ifaceType).Elem()}
+		return Value{ref: reflect.New(anyRtype).Elem()}
 	}
 	return Value{ref: reflect.New(typ).Elem()}
 }
@@ -462,7 +464,12 @@ func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 	for i, f := range fields {
 		rf[i].Name = f.Name
 		rf[i].PkgPath = f.PkgPath
-		rf[i].Type = f.Rtype
+		// Interface fields use interface{} so vm.Iface values can be stored via reflect.Set.
+		if f.Rtype.Kind() == reflect.Interface {
+			rf[i].Type = anyRtype
+		} else {
+			rf[i].Type = f.Rtype
+		}
 		// reflect.StructOf panics if Anonymous=true and PkgPath is non-empty, or if
 		// Anonymous=false and the name is lowercase with empty PkgPath. For embedded
 		// built-in types (e.g. bool, int) the name is lowercase with no PkgPath; we

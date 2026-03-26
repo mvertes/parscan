@@ -949,6 +949,16 @@ func (c *s) A() string { return "a" }
 v, _ := NewS()
 v.A()`, res: "a"},
 
+		// chained method call on interface-typed struct field returned as interface
+		{n: "iface_struct_field_method", src: `
+type Enabler interface { Enabled() bool }
+type Logger struct { core Enabler }
+func (log *Logger) GetCore() Enabler { return log.core }
+type T struct{}
+func (t *T) Enabled() bool { return true }
+base := &Logger{&T{}}
+base.GetCore().Enabled()`, res: "true"},
+
 		// nil error interface: short-circuit prevents call on nil receiver
 		{n: "error_nil_shortcircuit", src: `
 var a error = nil
