@@ -792,6 +792,17 @@ t.X`, res: "99"},
 type P struct { pos uint8; size uint8 }
 type buf struct { rune [3]P }
 len(buf{}.rune)`, res: "3"},
+
+		// Local type aliases chained inside a function, used in composite literal.
+		{n: "local_alias_composite", src: `
+type original struct { Field string }
+func f() string {
+	type alias original
+	type alias2 alias
+	a := &alias2{Field: "test"}
+	return a.Field
+}
+f()`, res: "test"},
 	})
 }
 

@@ -126,7 +126,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				}
 			}
 			if s != nil && s.Kind == symbol.Type {
-				ctype = s.Type.String()
+				ctype = t.Str
 			}
 			out = append(out, t)
 
