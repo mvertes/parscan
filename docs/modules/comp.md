@@ -40,6 +40,21 @@ slice and populates a `Data` slice (the global memory segment).
 A symbolic stack shadows the VM stack to track types at compile time,
 enabling type-specific opcode selection.
 
+### Call handling
+
+The `lang.Call` token in the flat stream triggers a unified call-handling
+path. The compiler distinguishes two cases based on the callee symbol's kind:
+
+- **Parscan function** (`Kind: Func`, `LocalVar`, etc.) -- emits `vm.Call`
+  after optionally packing variadic args with `MkSlice`.
+- **Native Go function value** (`Kind: Value`) -- emits `vm.CallX`, which
+  invokes the callee via `reflect.Value.Call`.
+
+The `lang.CallX` parser token was removed; the distinction is now made
+entirely inside the `case lang.Call` handler using the compile-time symbolic
+stack. Builtin symbols (`Kind: Builtin`) are intercepted by `compileBuiltin`
+before either path is reached.
+
 ### Peephole optimization
 
 After emitting a binary op, the compiler checks whether the preceding
@@ -92,13 +107,14 @@ slice parameter.
 ### Built-in function dispatch
 
 `compileBuiltin()` intercepts calls to Go builtins by matching on
-`Symbol.Name`. It is called from both the `lang.Call` and `lang.CallX`
-handlers. Each builtin emits a dedicated opcode:
+`Symbol.Name`. It is called from the `lang.Call` handler (which now
+handles both parscan function calls and native Go value calls). Each
+builtin emits a dedicated opcode:
 
 | Builtin | Opcode(s) | Notes |
 |---------|-----------|-------|
-| `print` | (native `Value`) | Dispatched as a regular `CallX`; not a `Builtin` symbol |
-| `println` | (native `Value`) | Same as `print` |
+| `print` | `vm.CallX` (native reflect call) | Registered as `Kind: Value` with a Go func; dispatched via `vm.CallX` opcode, not a `Builtin` symbol |
+| `println` | `vm.CallX` (native reflect call) | Same as `print` |
 | `len` | `Len` + `Swap` + `Pop` | `Len` does not consume input (used in slice exprs too) |
 | `cap` | `Cap` + `Swap` + `Pop` | Same pattern as `len` |
 | `append` | `Append` | Uses `reflect.Append` for amortized growth |

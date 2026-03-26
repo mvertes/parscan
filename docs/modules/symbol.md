@@ -20,6 +20,11 @@ to resolve addresses and types.
   - `Index` -- address in the VM data segment or frame.
   - `Type` -- `*vm.Type` for the symbol's runtime type.
   - `Captured` / `FreeVars` -- closure capture metadata.
+  - `RecvName` -- for method symbols: raw receiver variable name, cached
+    from Phase 1 so `parseFunc` can re-use it in Phase 2.
+  - `InNames` / `OutNames` -- raw input/output parameter names for func
+    symbols, cached during Phase 1 signature parsing so Phase 2 does not
+    re-parse the signature.
 - **`Kind`** (int enum) -- symbol classification.
 - **`Get(name, scope string) (*Symbol, string, bool)`** -- lookup by
   walking from the innermost scope outward.

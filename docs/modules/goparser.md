@@ -58,6 +58,14 @@ most complex stage in the pipeline.
 `parseExpr` converts infix expressions to postfix using a shunting-yard
 algorithm. Operator precedence and associativity come from `lang.TokenProps`.
 
+Binary operators are left-associative: when a binary operator `op` is pushed
+onto the operator stack, the shunting-yard loop flushes all pending operators
+with precedence `>= prec(op)` before pushing `op`. Unary operators flush only
+`> prec(op)`, making them right-associative.
+
+A token preceded by a colon (e.g. in composite literals) is treated as a unary
+context, so that `&` or `*` there is not misclassified as binary.
+
 ### Control flow encoding
 
 Instead of building an AST, control structures are lowered to
@@ -77,6 +85,12 @@ Labels are scoped and auto-numbered (e.g. `for0`, `if1`) via `labelCount`.
 
 Scopes are slash-separated paths pushed/popped as the parser enters/leaves
 blocks. The scope path is used as a prefix key in `symbol.SymMap`.
+
+Bare braced blocks (`{ ... }` as a statement, not controlled by `if`,
+`for`, or `switch`) are supported as anonymous nested scopes. `parseStmt`
+detects a leading `BraceBlock` token, pushes a synthetic `block<n>` scope
+label, parses the block body, then pops the scope on exit. This matches Go
+semantics for variable shadowing inside bare blocks.
 
 ### Closure analysis
 

@@ -15,9 +15,11 @@ value representation) and `Type` (runtime type metadata).
 
 - **`Machine`** -- VM state: `code`, `mem`, `ip`, `fp`, closure `env`,
   a `frames []frame` stack (caller env + packed nret/narg per call),
-  panic state (`panicking`, `panicVal`), a `funcFields` side-table for
-  parscan funcs stored in native struct fields, a `Symbols` map for
-  name-to-mem-index lookup, and debug state.
+  panic state (`panicking`, `panicVal`), two func-field side-tables
+  (`funcFields` keyed by reflect.Value address, `funcFieldsByFuncPtr`
+  keyed by the closure's function pointer -- used as a stable fallback
+  when a struct containing func fields is copied e.g. via `append`), a
+  `Symbols` map for name-to-mem-index lookup, and debug state.
 - **`frame`** -- per-call metadata saved on the caller side. Fields:
   `env []*Value` (caller's closure env) and `info int` (packed
   `nret | (narg << 16)`). Stored in `Machine.frames`.
@@ -47,7 +49,19 @@ value representation) and `Type` (runtime type metadata).
 
 - **`Type`** -- runtime type: `Rtype reflect.Type`, `Name`, `PkgPath`,
   `Methods []Method`, `IfaceMethods []IfaceMethod`,
-  `Embedded []EmbeddedField`, `Params []*Type`, `Fields []*Type`.
+  `Embedded []EmbeddedField`, `Params []*Type`, `Returns []*Type`,
+  `Fields []*Type`, `ElemType *Type`.
+  `ElemType` preserves the parscan-level element type for
+  map/slice/array/pointer/chan composites, propagated by `PointerTo`,
+  `ArrayOf`, `SliceOf`, and `MapOf`. `Elem()` returns `ElemType` when
+  set, falling back to a bare `reflect.Type` wrapper.
+- **`(*Type).SameAs(u *Type) bool`** -- reports whether two types
+  represent the same concrete type (same `Rtype` and `Name`). Used by
+  `TypeBranch` for type-switch comparison and by `TypeAssert`.
+- **`(*Type).ReturnType(i int) *Type`** -- returns the parscan-level
+  i'th return type from `Returns` if available, else falls back to
+  `Out(i)` (reflect-level). Preserves interface method metadata for
+  multi-return functions.
 - **`Iface{Typ *Type, Val Value}`** -- boxed interface value.
 - **`Closure{Code int, Env []*Value}`** -- captured function.
 - **`ParscanFunc{Val Value, GF reflect.Value}`** -- wraps a parscan
@@ -70,11 +84,14 @@ value representation) and `Type` (runtime type metadata).
     `RemInt`...`RemFloat64`, `NegInt`...`NegFloat64`,
     `GreaterInt`...`GreaterFloat64`, `LowerInt`...`LowerFloat64`.
   - Immediate: `AddIntImm`, `SubIntImm`, `MulIntImm`, `GreaterIntImm`,
-    `GreaterUintImm`, `LowerIntImm`, `LowerUintImm`, `EqualIntImm`.
+    `GreaterUintImm`, `LowerIntImm`, `LowerUintImm`.
   - Bitwise: `BitAnd`, `BitOr`, `BitXor`, `BitAndNot`, `BitShl`,
     `BitShr`, `BitComp`.
-  - Collections: `Index`, `IndexSet`, `MapIndex`, `MapSet`, `Slice`,
-    `Slice3`, `Field`, `FieldSet`, `FieldFset`.
+  - Collections: `Index`, `IndexAddr`, `IndexSet`, `MapIndex`,
+    `MapIndexOk`, `MapSet`, `Slice`, `Slice3`, `Field`, `FieldSet`,
+    `FieldFset`. `IndexAddr` takes an array/slice and index and pushes
+    a pointer to the element (used for `&a[i]`). `MapIndexOk` pushes
+    both value and ok (the `v, ok := m[k]` form).
   - Types: `Convert`, `TypeAssert`, `TypeBranch`, `Fnew`, `FnewE`,
     `New`, `MkSlice`, `MkMap`.
   - Builtins: `Append`, `CopySlice`, `DeleteMap`, `Cap`, `Len`,
@@ -84,7 +101,8 @@ value representation) and `Type` (runtime type metadata).
   - Native interop: `WrapFunc` -- wraps a parscan function value in a
     `reflect.MakeFunc` adapter so it can be called by native Go code.
     Produces a `ParscanFunc` on the stack.
-  - Range: `Next`, `Next2`, `Pull`, `Pull2`, `Stop`.
+  - Range: `Next`, `Next0`, `Next2`, `Pull`, `Pull2`, `Stop`, `Stop0`.
+    `Next0`/`Stop0` are used when the range variable is blank or absent.
   - Exceptions: `Panic`, `Recover`, `DeferPush`, `DeferRet`.
   - Debug: `Trap`.
 
@@ -148,11 +166,17 @@ Parscan functions are integers (code addresses) or `Closure` values at
 runtime. Neither can be stored directly in a typed Go `func` field via
 `reflect.Set`. Two mechanisms bridge this gap:
 
-1. **`funcFields` side-table.** The VM maintains a `map[uintptr]Value`
-   keyed by the address of the target reflect.Value. When the compiler
-   detects assignment of a parscan func to a native struct field, it emits
-   an instruction that stores the parscan func into `funcFields` while
-   writing a zero/stub into the actual field.
+1. **`funcFields` side-tables.** The VM maintains two `map[uintptr]Value`
+   tables for parscan funcs assigned to native struct func fields:
+   - `funcFields` -- keyed by the `reflect.Value` memory address of the
+     target field. Fast for direct access; invalidated when the struct is
+     copied (e.g. by `append`).
+   - `funcFieldsByFuncPtr` -- keyed by the closure's stable function
+     pointer (obtained by dereferencing the field address). Used as a
+     fallback when address-based lookup misses after a copy.
+   When the compiler detects assignment of a parscan func to a native
+   struct field, it emits an instruction that stores the parscan func into
+   both tables while writing a zero/stub into the actual field.
 
 2. **`WrapFunc` opcode.** Converts the parscan func on the stack into a
    `ParscanFunc` by calling `reflect.MakeFunc` with a trampoline that

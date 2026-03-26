@@ -17,11 +17,18 @@ stored in a struct field.
 
 Two complementary mechanisms handle this:
 
-1. **`funcFields` side-table in `Machine`.** A `map[uintptr]Value`
-   keyed on the `reflect.Value` pointer of the target field. When the VM
-   detects assignment of a parscan func to a native struct `func` field,
-   it writes the parscan func into the side-table instead of (or in
-   addition to) the field itself. Reads route back through the table.
+1. **`funcFields` and `funcFieldsByFuncPtr` side-tables in `Machine`.**
+   Two `map[uintptr]Value` maps maintain parscan func values assigned to
+   native struct `func` fields:
+   - `funcFields` -- keyed by the field's `reflect.Value` memory address.
+     Fast but invalidated when the containing struct is copied (e.g. by
+     `append`).
+   - `funcFieldsByFuncPtr` -- keyed by the closure's stable function
+     pointer (dereferenced from the field address). Provides a fallback
+     when `funcFields` misses due to a copy.
+   When the VM detects assignment of a parscan func to a struct `func`
+   field, it writes into both tables and stores a placeholder in the
+   actual field. Reads route back through the tables.
 
 2. **`WrapFunc` opcode and `ParscanFunc` type.** When a parscan func must
    be callable by native Go code that holds a `reflect.Value` reference,
@@ -44,8 +51,9 @@ Two complementary mechanisms handle this:
   (no reflect overhead).
 
 **Harder:**
-- `Machine` carries a `funcFields` side-table that must be consulted on
-  every struct func-field read/write, adding indirection.
+- `Machine` carries two func-field side-tables (`funcFields` and
+  `funcFieldsByFuncPtr`) that must be consulted on struct func-field
+  reads/writes, adding two map lookups per access.
 - `WrapFunc`-generated functions hold a reference to the `Machine`,
   so the machine cannot be garbage-collected while a native callback
   is live.
