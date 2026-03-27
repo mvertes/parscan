@@ -51,55 +51,55 @@ func BenchmarkVM(b *testing.B) {
 // fibTypedCode is fib(20) hand-written with per-type opcodes (no Imm).
 // fib function at addr 1, call site at addr 19.
 var fibTypedCode = []Instruction{
-	{Op: Jump, Arg: []int{19}},     // 0: skip to call site
-	{Op: Get, Arg: []int{1, -3}},   // 1: push i
-	{Op: Push, Arg: []int{2}},      // 2
-	{Op: LowerInt},                 // 3: i < 2
-	{Op: JumpTrue, Arg: []int{13}}, // 4: if i<2 goto 17
-	{Op: Push, Arg: []int{1}},      // 5: fib addr
-	{Op: Get, Arg: []int{1, -3}},   // 6: push i
-	{Op: Push, Arg: []int{2}},      // 7
-	{Op: SubInt},                   // 8: i-2
-	{Op: Call, Arg: []int{1, 1}},   // 9: fib(i-2)
-	{Op: Push, Arg: []int{1}},      // 10: fib addr
-	{Op: Get, Arg: []int{1, -3}},   // 11: push i
-	{Op: Push, Arg: []int{1}},      // 12
-	{Op: SubInt},                   // 13: i-1
-	{Op: Call, Arg: []int{1, 1}},   // 14: fib(i-1)
-	{Op: AddInt},                   // 15: sum
-	{Op: Return, Arg: []int{1, 1}}, // 16: return (recursive)
-	{Op: Get, Arg: []int{1, -3}},   // 17: base case
-	{Op: Return, Arg: []int{1, 1}}, // 18: return i
-	{Op: Push, Arg: []int{1}},      // 19: call site
-	{Op: Push, Arg: []int{20}},     // 20: n=20
-	{Op: Call, Arg: []int{1, 1}},   // 21
-	{Op: Exit},                     // 22
+	{Op: Jump, A: 19},        // 0: skip to call site
+	{Op: Get, A: 1, B: -3},   // 1: push i
+	{Op: Push, A: 2},         // 2
+	{Op: LowerInt},           // 3: i < 2
+	{Op: JumpTrue, A: 13},    // 4: if i<2 goto 17
+	{Op: Push, A: 1},         // 5: fib addr
+	{Op: Get, A: 1, B: -3},   // 6: push i
+	{Op: Push, A: 2},         // 7
+	{Op: SubInt},             // 8: i-2
+	{Op: Call, A: 1, B: 1},   // 9: fib(i-2)
+	{Op: Push, A: 1},         // 10: fib addr
+	{Op: Get, A: 1, B: -3},   // 11: push i
+	{Op: Push, A: 1},         // 12
+	{Op: SubInt},             // 13: i-1
+	{Op: Call, A: 1, B: 1},   // 14: fib(i-1)
+	{Op: AddInt},             // 15: sum
+	{Op: Return, A: 1, B: 1}, // 16: return (recursive)
+	{Op: Get, A: 1, B: -3},   // 17: base case
+	{Op: Return, A: 1, B: 1}, // 18: return i
+	{Op: Push, A: 1},         // 19: call site
+	{Op: Push, A: 20},        // 20: n=20
+	{Op: Call, A: 1, B: 1},   // 21
+	{Op: Exit},               // 22
 }
 
 // fibImmCode is fib(20) rewritten with immediate-operand opcodes.
 // Saves 3 Push instructions from the function body.
 // fib function at addr 1, call site at addr 16.
 var fibImmCode = []Instruction{
-	{Op: Jump, Arg: []int{16}},       // 0: skip to call site
-	{Op: Get, Arg: []int{1, -3}},     // 1: push i
-	{Op: LowerIntImm, Arg: []int{2}}, // 2: i < 2 (was: Push 2; LowerInt)
-	{Op: JumpTrue, Arg: []int{11}},   // 3: if i<2 goto 14
-	{Op: Push, Arg: []int{1}},        // 4: fib addr
-	{Op: Get, Arg: []int{1, -3}},     // 5: push i
-	{Op: SubIntImm, Arg: []int{2}},   // 6: i-2 (was: Push 2; SubInt)
-	{Op: Call, Arg: []int{1, 1}},     // 7: fib(i-2)
-	{Op: Push, Arg: []int{1}},        // 8: fib addr
-	{Op: Get, Arg: []int{1, -3}},     // 9: push i
-	{Op: SubIntImm, Arg: []int{1}},   // 10: i-1 (was: Push 1; SubInt)
-	{Op: Call, Arg: []int{1, 1}},     // 11: fib(i-1)
-	{Op: AddInt},                     // 12: sum
-	{Op: Return, Arg: []int{1, 1}},   // 13: return (recursive)
-	{Op: Get, Arg: []int{1, -3}},     // 14: base case
-	{Op: Return, Arg: []int{1, 1}},   // 15: return i
-	{Op: Push, Arg: []int{1}},        // 16: call site
-	{Op: Push, Arg: []int{20}},       // 17: n=20
-	{Op: Call, Arg: []int{1, 1}},     // 18
-	{Op: Exit},                       // 19
+	{Op: Jump, A: 16},        // 0: skip to call site
+	{Op: Get, A: 1, B: -3},   // 1: push i
+	{Op: LowerIntImm, A: 2},  // 2: i < 2 (was: Push 2; LowerInt)
+	{Op: JumpTrue, A: 11},    // 3: if i<2 goto 14
+	{Op: Push, A: 1},         // 4: fib addr
+	{Op: Get, A: 1, B: -3},   // 5: push i
+	{Op: SubIntImm, A: 2},    // 6: i-2 (was: Push 2; SubInt)
+	{Op: Call, A: 1, B: 1},   // 7: fib(i-2)
+	{Op: Push, A: 1},         // 8: fib addr
+	{Op: Get, A: 1, B: -3},   // 9: push i
+	{Op: SubIntImm, A: 1},    // 10: i-1 (was: Push 1; SubInt)
+	{Op: Call, A: 1, B: 1},   // 11: fib(i-1)
+	{Op: AddInt},             // 12: sum
+	{Op: Return, A: 1, B: 1}, // 13: return (recursive)
+	{Op: Get, A: 1, B: -3},   // 14: base case
+	{Op: Return, A: 1, B: 1}, // 15: return i
+	{Op: Push, A: 1},         // 16: call site
+	{Op: Push, A: 20},        // 17: n=20
+	{Op: Call, A: 1, B: 1},   // 18
+	{Op: Exit},               // 19
 }
 
 func BenchmarkFibTyped(b *testing.B) {
@@ -129,72 +129,72 @@ var tests = []struct {
 	mem        string        // expected memory content
 }{{ // #00 -- A simple addition.
 	code: []Instruction{
-		{Op: Push, Arg: []int{1}},
-		{Op: Push, Arg: []int{2}},
+		{Op: Push, A: 1},
+		{Op: Push, A: 2},
 		{Op: AddInt},
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[3]",
 }, { // #01 -- A simple subtraction.
 	code: []Instruction{
-		{Op: Push, Arg: []int{2}},
-		{Op: Push, Arg: []int{3}},
+		{Op: Push, A: 2},
+		{Op: Push, A: 3},
 		{Op: SubInt},
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[-1]",
 }, { // #02 -- A simple multiplication.
 	code: []Instruction{
-		{Op: Push, Arg: []int{3}},
-		{Op: Push, Arg: []int{2}},
+		{Op: Push, A: 3},
+		{Op: Push, A: 2},
 		{Op: MulInt},
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[6]",
 }, { // #03 -- lower.
 	code: []Instruction{
-		{Op: Push, Arg: []int{2}},
-		{Op: Push, Arg: []int{3}},
+		{Op: Push, A: 2},
+		{Op: Push, A: 3},
 		{Op: LowerInt},
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[true]",
 }, { // #04 -- greater.
 	code: []Instruction{
-		{Op: Push, Arg: []int{3}},
-		{Op: Push, Arg: []int{2}},
+		{Op: Push, A: 3},
+		{Op: Push, A: 2},
 		{Op: GreaterInt},
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[true]",
 }, { // #05 -- equal.
 	code: []Instruction{
-		{Op: Push, Arg: []int{2}},
-		{Op: Push, Arg: []int{3}},
+		{Op: Push, A: 2},
+		{Op: Push, A: 3},
 		{Op: Equal},
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[false]",
 }, { // #06 -- equalSet.
 	code: []Instruction{
-		{Op: Push, Arg: []int{2}},
-		{Op: Push, Arg: []int{3}},
+		{Op: Push, A: 2},
+		{Op: Push, A: 3},
 		{Op: EqualSet},
 		{Op: Exit},
 	},
 	start: 0, end: 2, mem: "[2 false]",
 }, { // #07 -- equalSet.
 	code: []Instruction{
-		{Op: Push, Arg: []int{3}},
-		{Op: Push, Arg: []int{3}},
+		{Op: Push, A: 3},
+		{Op: Push, A: 3},
 		{Op: EqualSet},
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[true]",
 }, { // #08 not.
 	code: []Instruction{
-		{Op: Push, Arg: []int{3}},
-		{Op: Push, Arg: []int{3}},
+		{Op: Push, A: 3},
+		{Op: Push, A: 3},
 		{Op: Equal},
 		{Op: Not},
 		{Op: Exit},
@@ -202,80 +202,80 @@ var tests = []struct {
 	start: 0, end: 1, mem: "[false]",
 }, { // #09 pop.
 	code: []Instruction{
-		{Op: Push, Arg: []int{3}},
-		{Op: Push, Arg: []int{2}},
-		{Op: Pop, Arg: []int{1}},
+		{Op: Push, A: 3},
+		{Op: Push, A: 2},
+		{Op: Pop, A: 1},
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[3]",
 }, { // #10 -- Assign a variable.
 	sym: []Value{ValueOf(0)},
 	code: []Instruction{
-		{Op: Grow, Arg: []int{1}},
-		{Op: New, Arg: []int{2, 0}},
-		{Op: Push, Arg: []int{2}},
-		{Op: Set, Arg: []int{0, 1}},
+		{Op: Grow, A: 1},
+		{Op: New, A: 2, B: 0},
+		{Op: Push, A: 2},
+		{Op: Set, A: 0, B: 1},
 		{Op: Exit},
 	},
 	start: 1, end: 2, mem: "[2]",
 }, { // #11 -- Calling a function defined outside the VM.
 	sym: []Value{ValueOf(fmt.Println), ValueOf("Hello")},
 	code: []Instruction{
-		{Op: Get, Arg: []int{0, 0}},
-		{Op: Get, Arg: []int{0, 1}},
-		{Op: Call, Arg: []int{1, 0}},
+		{Op: Get, A: 0, B: 0},
+		{Op: Get, A: 0, B: 1},
+		{Op: Call, A: 1},
 		{Op: Exit},
 	},
 	start: 2, end: 4, mem: "[6 <nil>]",
 }, { // #12 -- Defining and calling a function in VM.
 	code: []Instruction{
-		{Op: Jump, Arg: []int{3}},      // 0
-		{Op: Push, Arg: []int{3}},      // 1
-		{Op: Return, Arg: []int{1, 1}}, // 2
-		{Op: Push, Arg: []int{1}},      // 3
-		{Op: Push, Arg: []int{1}},      // 4
-		{Op: Call, Arg: []int{1, 1}},   // 5
-		{Op: Exit},                     // 6
+		{Op: Jump, A: 3},         // 0
+		{Op: Push, A: 3},         // 1
+		{Op: Return, A: 1, B: 1}, // 2
+		{Op: Push, A: 1},         // 3
+		{Op: Push, A: 1},         // 4
+		{Op: Call, A: 1, B: 1},   // 5
+		{Op: Exit},               // 6
 	},
 	start: 0, end: 1, mem: "[3]",
 }, { // #13 -- Defining and calling a function in VM.
 	code: []Instruction{
-		{Op: Jump, Arg: []int{5}},      // 0
-		{Op: Push, Arg: []int{3}},      // 1
-		{Op: Set, Arg: []int{1, -3}},   // 2
-		{Op: Get, Arg: []int{1, -3}},   // 3
-		{Op: Return, Arg: []int{1, 1}}, // 4
-		{Op: Push, Arg: []int{1}},      // 5
-		{Op: Push, Arg: []int{1}},      // 6
-		{Op: Call, Arg: []int{1, 1}},   // 7
-		{Op: Exit},                     // 8
+		{Op: Jump, A: 5},         // 0
+		{Op: Push, A: 3},         // 1
+		{Op: Set, A: 1, B: -3},   // 2
+		{Op: Get, A: 1, B: -3},   // 3
+		{Op: Return, A: 1, B: 1}, // 4
+		{Op: Push, A: 1},         // 5
+		{Op: Push, A: 1},         // 6
+		{Op: Call, A: 1, B: 1},   // 7
+		{Op: Exit},               // 8
 	},
 	start: 0, end: 1, mem: "[3]",
 }, { // #14 -- Fibonacci numbers, hand written. Showcase recursivity.
 	code: []Instruction{
-		{Op: Jump, Arg: []int{19}},     // 0
-		{Op: Get, Arg: []int{1, -3}},   // 1  [2 i]
-		{Op: Push, Arg: []int{2}},      // 2  [2]
-		{Op: LowerInt},                 // 3  [true/false]
-		{Op: JumpTrue, Arg: []int{13}}, // 4  [], goto 17
-		{Op: Push, Arg: []int{1}},      // 5
-		{Op: Get, Arg: []int{1, -3}},   // 6  [i]
-		{Op: Push, Arg: []int{2}},      // 7  [i 2]
-		{Op: SubInt},                   // 8  [(i-2)]
-		{Op: Call, Arg: []int{1, 1}},   // 9  [fib(i-2)]
-		{Op: Push, Arg: []int{1}},      // 10
-		{Op: Get, Arg: []int{1, -3}},   // 11 [fib(i-2) i]
-		{Op: Push, Arg: []int{1}},      // 12 [(i-2) i 1]
-		{Op: SubInt},                   // 13 [(i-2) (i-1)]
-		{Op: Call, Arg: []int{1, 1}},   // 14 [fib(i-2) fib(i-1)]
-		{Op: AddInt},                   // 15 [fib(i-2)+fib(i-1)]
-		{Op: Return, Arg: []int{1, 1}}, // 16 return i
-		{Op: Get, Arg: []int{1, -3}},   // 17 [i]
-		{Op: Return, Arg: []int{1, 1}}, // 18 return i
-		{Op: Push, Arg: []int{1}},      // 19
-		{Op: Push, Arg: []int{6}},      // 20 [1]
-		{Op: Call, Arg: []int{1, 1}},   // 21 [fib(*1)]
-		{Op: Exit},                     // 22
+		{Op: Jump, A: 19},        // 0
+		{Op: Get, A: 1, B: -3},   // 1  [2 i]
+		{Op: Push, A: 2},         // 2  [2]
+		{Op: LowerInt},           // 3  [true/false]
+		{Op: JumpTrue, A: 13},    // 4  [], goto 17
+		{Op: Push, A: 1},         // 5
+		{Op: Get, A: 1, B: -3},   // 6  [i]
+		{Op: Push, A: 2},         // 7  [i 2]
+		{Op: SubInt},             // 8  [(i-2)]
+		{Op: Call, A: 1, B: 1},   // 9  [fib(i-2)]
+		{Op: Push, A: 1},         // 10
+		{Op: Get, A: 1, B: -3},   // 11 [fib(i-2) i]
+		{Op: Push, A: 1},         // 12 [(i-2) i 1]
+		{Op: SubInt},             // 13 [(i-2) (i-1)]
+		{Op: Call, A: 1, B: 1},   // 14 [fib(i-2) fib(i-1)]
+		{Op: AddInt},             // 15 [fib(i-2)+fib(i-1)]
+		{Op: Return, A: 1, B: 1}, // 16 return i
+		{Op: Get, A: 1, B: -3},   // 17 [i]
+		{Op: Return, A: 1, B: 1}, // 18 return i
+		{Op: Push, A: 1},         // 19
+		{Op: Push, A: 6},         // 20 [1]
+		{Op: Call, A: 1, B: 1},   // 21 [fib(*1)]
+		{Op: Exit},               // 22
 	},
 	start: 0, end: 1, mem: "[8]",
 }}

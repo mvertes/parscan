@@ -273,7 +273,28 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
 		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 	}
-	c.Code = append(c.Code, vm.Instruction{Pos: vm.Pos(t.Pos + c.posBase), Op: op, Arg: arg})
+	inst := vm.Instruction{Pos: vm.Pos(t.Pos + c.posBase), Op: op}
+	if len(arg) > 0 {
+		inst.A = arg[0]
+	}
+	if len(arg) > 1 {
+		inst.B = arg[1]
+	}
+	if len(arg) > 2 {
+		inst.C = arg[2]
+	}
+	// Field/FieldSet encode a variable-length field index path in A, B, C.
+	// Unused trailing fields must be -1 so the VM can distinguish
+	// path length (field index 0 is valid).
+	if op == vm.Field || op == vm.FieldSet {
+		if len(arg) < 3 {
+			inst.C = -1
+		}
+		if len(arg) < 2 {
+			inst.B = -1
+		}
+	}
+	c.Code = append(c.Code, inst)
 }
 
 // emitIfaceWrap emits IfaceWrap if assigning a concrete value to an interface type.
@@ -1424,7 +1445,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			case 2:
 				v := stack[len(stack)-2]
 				k := stack[len(stack)-3]
-				c.emit(t, vm.Next2, i, lf(k), k.Index, v.Index)
+				if lf(k) == vm.Local {
+					c.emit(t, vm.Next2Local, i, k.Index, v.Index)
+				} else {
+					c.emit(t, vm.Next2, i, k.Index, v.Index)
+				}
 			}
 
 		case lang.Range:
@@ -1565,7 +1590,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			return fmt.Errorf("label not found: %q", t.Str)
 		}
 		loc := t.Arg[0].(int)
-		c.Code[loc].Arg[0] = int(s.Value.Int()) - loc // relative code position
+		c.Code[loc].A = int(s.Value.Int()) - loc // relative code position
 	}
 	return err
 }
@@ -1624,7 +1649,7 @@ func (c *Compiler) retractPush(s *symbol.Symbol) (int, bool) {
 	if s.Kind != symbol.Const || len(c.Code) == 0 || c.Code[len(c.Code)-1].Op != vm.Push {
 		return 0, false
 	}
-	n := c.Code[len(c.Code)-1].Arg[0]
+	n := c.Code[len(c.Code)-1].A
 	c.Code = c.Code[:len(c.Code)-1]
 	return n, true
 }
@@ -1686,11 +1711,11 @@ func (c *Compiler) PrintCode() {
 		extra := ""
 		switch l.Op {
 		case vm.Jump, vm.JumpFalse, vm.JumpTrue, vm.JumpSetFalse, vm.JumpSetTrue:
-			if d, ok := labels[i+l.Arg[0]]; ok {
+			if d, ok := labels[i+l.A]; ok {
 				extra = "// " + d[0]
 			}
 		case vm.Get, vm.Set:
-			if d, ok := data[l.Arg[0]]; ok {
+			if d, ok := data[l.A]; ok {
 				extra = "// " + d
 			}
 		}
@@ -1795,7 +1820,7 @@ func enclosingFunc(scopedName string, syms symbol.SymMap) string {
 func (c *Compiler) removeFnew(index int) {
 	for i := len(c.Code) - 1; i >= 0; i-- {
 		op := c.Code[i].Op
-		if (op == vm.Fnew || op == vm.FnewE) && c.Code[i].Arg[0] == index {
+		if (op == vm.Fnew || op == vm.FnewE) && c.Code[i].A == index {
 			copy(c.Code[i:], c.Code[i+1:])
 			c.Code = c.Code[:len(c.Code)-1]
 			return

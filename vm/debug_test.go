@@ -133,12 +133,12 @@ func TestEnterDebug(t *testing.T) {
 	// Build a single-frame scenario with a Trap instruction.
 	// func foo(x int) { trap() } ; foo(10)
 	code := Code{
-		{Op: Push, Arg: []int{4}},      // 0: push func addr (ip=4)
-		{Op: Push, Arg: []int{10}},     // 1: push arg
-		{Op: Call, Arg: []int{1, 0}},   // 2: call(1 arg, 0 ret)
-		{Op: Exit},                     // 3
-		{Op: Trap},                     // 4: trap inside the function
-		{Op: Return, Arg: []int{0, 1}}, // 5
+		{Op: Push, A: 4},   // 0: push func addr (ip=4)
+		{Op: Push, A: 10},  // 1: push arg
+		{Op: Call, A: 1},   // 2: call(1 arg, 0 ret)
+		{Op: Exit},         // 3
+		{Op: Trap},         // 4: trap inside the function
+		{Op: Return, B: 1}, // 5
 	}
 
 	var sources2 scan.Sources

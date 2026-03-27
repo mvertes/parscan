@@ -41,8 +41,8 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
 	if s, ok := i.Symbols["main"]; ok {
-		i.PushCode(vm.Instruction{Op: vm.Push, Arg: []int{int(i.Data[s.Index].Int())}})
-		i.PushCode(vm.Instruction{Op: vm.Call, Arg: []int{0, 0}})
+		i.PushCode(vm.Instruction{Op: vm.Push, A: int(i.Data[s.Index].Int())})
+		i.PushCode(vm.Instruction{Op: vm.Call})
 	}
 	i.PushCode(vm.Instruction{Op: vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
