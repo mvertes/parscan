@@ -29,7 +29,6 @@ type Closure struct {
 const (
 	// Instruction effect on stack: values consumed -- values produced.
 	Nop          Op = iota // --
-	Add                    // n1 n2 -- sum ; sum = n1+n2
 	Addr                   // a -- &a ;
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	Deref                  // x -- *x ;
@@ -43,7 +42,6 @@ const (
 	Field                  // s -- f ; f = s.FieldIndex($1, ...)
 	FieldSet               // s d -- s ; s.FieldIndex($1, ...) = d
 	FieldFset              // s i v -- s; s.FieldIndex(i) = v
-	Greater                // n1 n2 -- cond; cond = n1 > n2
 	Grow                   // -- ; sp += $1
 	Index                  // a i -- a[i] ;
 	IndexAddr              // a i -- &a[i] ; pointer to element
@@ -54,13 +52,10 @@ const (
 	JumpSetTrue            //
 	JumpSetFalse           //
 	Len                    // -- x; x = mem[sp-$1]
-	Lower                  // n1 n2 -- cond ; cond = n1 < n2
 	MapIndex               // a i -- a[i]
 	MapIndexOk             // a i -- v ok ; v, ok = a[i]
 	MapSet                 // a i v -- a; a[i] = v
-	Mul                    // n1 n2 -- prod ; prod = n1*n2
 	New                    // -- x; mem[fp+$1] = new mem[$2]
-	Neg                    // -- ; - mem[fp]
 	Next                   // -- ; iterator next, set K
 	Next0                  // -- ; iterator next, no variable
 	Next2                  // -- ; iterator next, set K V
@@ -76,7 +71,6 @@ const (
 	Slice3                 // a l h m -- a; a = a[l:h:m]
 	Stop                   // -- iterator stop
 	Stop0                  // -- iterator stop, no variable
-	Sub                    // n1 n2 -- diff ; diff = n1 - n2
 	Swap                   // --
 	HAlloc                 // -- &cell ; cell = new(Value), push its pointer
 	HGet                   // -- v    ; v = *State.Env[$1]
@@ -101,6 +95,7 @@ const (
 	PtrNew                 // -- ptr ; ptr = new(T), type at mem[$0]
 	Trap                   // -- ; pause VM execution and enter debug mode
 	WrapFunc               // parscanFuncVal -- ParscanFunc ; wrap parscan func in reflect.MakeFunc for native callbacks; $0=typeIdx
+	AddStr                 // s1 s2 -- s ; s = s1 + s2 (string concatenation)
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -338,27 +333,6 @@ func (m *Machine) Run() (err error) {
 				log.Printf("ip:%-3d sp:%-3d fp:%-3d op:[%-20v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
 			}
 			switch c.Op {
-			case Add:
-				switch k := mem[sp-2].ref.Kind(); {
-				case k == reflect.String:
-					mem[sp-2] = ValueOf(mem[sp-2].ref.String() + mem[sp-1].ref.String())
-				case isFloat(k):
-					mem[sp-2].num = addf[float64](mem[sp-2].num, mem[sp-1].num)
-					mem[sp-2].ref = zfloat64
-				default:
-					mem[sp-2].num = add[int](mem[sp-2].num, mem[sp-1].num)
-					mem[sp-2].ref = zint
-				}
-				mem = mem[:sp-1]
-			case Mul:
-				if isFloat(mem[sp-2].ref.Kind()) {
-					mem[sp-2].num = mulf[float64](mem[sp-2].num, mem[sp-1].num)
-					mem[sp-2].ref = zfloat64
-				} else {
-					mem[sp-2].num = mul[int](mem[sp-2].num, mem[sp-1].num)
-					mem[sp-2].ref = zint
-				}
-				mem = mem[:sp-1]
 			case Addr:
 				v := mem[sp-1]
 				if v.ref.CanAddr() {
@@ -702,29 +676,8 @@ func (m *Machine) Run() (err error) {
 					continue
 				}
 				mem = mem[:sp-1]
-			case Greater:
-				if isFloat(mem[sp-2].ref.Kind()) {
-					mem[sp-2] = boolVal(math.Float64frombits(mem[sp-2].num) > math.Float64frombits(mem[sp-1].num))
-				} else {
-					mem[sp-2] = boolVal(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
-				}
-				mem = mem[:sp-1]
-			case Lower:
-				if isFloat(mem[sp-2].ref.Kind()) {
-					mem[sp-2] = boolVal(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
-				} else {
-					mem[sp-2] = boolVal(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
-				}
-				mem = mem[:sp-1]
 			case Len:
 				mem = append(mem, ValueOf(mem[sp-1-c.Arg[0]].ref.Len()))
-			case Neg:
-				if isFloat(mem[sp-1].ref.Kind()) {
-					mem[sp-1].num = math.Float64bits(-math.Float64frombits(mem[sp-1].num))
-				} else {
-					mem[sp-1].num = uint64(-int64(mem[sp-1].num)) //nolint:gosec
-				}
-				resetNumRef(&mem[sp-1])
 			case Next:
 				if k, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); ok {
 					addr := c.Arg[2]
@@ -919,15 +872,6 @@ func (m *Machine) Run() (err error) {
 			case Stop0:
 				mem[sp-1].ref.Interface().(func())()
 				mem = mem[:sp-3]
-			case Sub:
-				if isFloat(mem[sp-2].ref.Kind()) {
-					mem[sp-2].num = math.Float64bits(math.Float64frombits(mem[sp-2].num) - math.Float64frombits(mem[sp-1].num))
-				} else {
-					mem[sp-2].num = uint64(int64(mem[sp-2].num) - int64(mem[sp-1].num)) //nolint:gosec
-				}
-				resetNumRef(&mem[sp-2])
-				mem = mem[:sp-1]
-
 			// Generic bitwise.
 			case BitAnd:
 				mem[sp-2].num &= mem[sp-1].num
@@ -1097,7 +1041,11 @@ func (m *Machine) Run() (err error) {
 				}
 				mem = mem[:sp-2*n]
 
-				// Per-type Add.
+			case AddStr:
+				mem[sp-2] = Value{ref: reflect.ValueOf(mem[sp-2].ref.String() + mem[sp-1].ref.String())}
+				mem = mem[:sp-1]
+
+			// Per-type Add.
 			case AddInt:
 				mem[sp-2].num = add[int](mem[sp-2].num, mem[sp-1].num)
 				mem[sp-2].ref = zint

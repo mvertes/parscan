@@ -381,13 +381,17 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emitConstConvert(t, right, typ, 0)
 			c.emitConstConvert(t, left, typ, 1)
 			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
+			if typ != nil && typ.Rtype.Kind() == reflect.String {
+				c.emit(t, vm.AddStr)
+				break
+			}
 			if isInt64Kind(typ) || isUint64Kind(typ) {
 				if n, ok := c.retractPush(right); ok {
 					c.emit(t, vm.AddIntImm, n)
 					break
 				}
 			}
-			c.emit(t, numericOp(vm.AddInt, vm.Add, typ))
+			c.emit(t, numericOp(vm.AddInt, typ))
 
 		case lang.Mul:
 			if err := checkTopN(2); err != nil {
@@ -404,7 +408,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					break
 				}
 			}
-			c.emit(t, numericOp(vm.MulInt, vm.Mul, typ))
+			c.emit(t, numericOp(vm.MulInt, typ))
 
 		case lang.Sub:
 			if err := checkTopN(2); err != nil {
@@ -421,7 +425,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					break
 				}
 			}
-			c.emit(t, numericOp(vm.SubInt, vm.Sub, typ))
+			c.emit(t, numericOp(vm.SubInt, typ))
 
 		case lang.Quo:
 			if err := checkTopN(2); err != nil {
@@ -432,7 +436,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emitConstConvert(t, right, typ, 0)
 			c.emitConstConvert(t, left, typ, 1)
 			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
-			c.emit(t, numericOp(vm.DivInt, vm.DivInt, typ))
+			c.emit(t, numericOp(vm.DivInt, typ))
 
 		case lang.Rem:
 			if err := checkTopN(2); err != nil {
@@ -443,14 +447,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emitConstConvert(t, right, typ, 0)
 			c.emitConstConvert(t, left, typ, 1)
 			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
-			c.emit(t, numericOp(vm.RemInt, vm.RemInt, typ))
+			c.emit(t, numericOp(vm.RemInt, typ))
 
 		case lang.Minus:
 			if err := checkTopN(1); err != nil {
 				return err
 			}
 			typ := symbol.Vtype(top())
-			c.emit(t, numericOp(vm.NegInt, vm.Neg, typ))
+			c.emit(t, numericOp(vm.NegInt, typ))
 
 		case lang.Not:
 			if err := checkTopN(1); err != nil {
@@ -577,7 +581,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					break
 				}
 			}
-			c.emit(t, numericOp(vm.GreaterInt, vm.Greater, typ))
+			c.emit(t, numericOp(vm.GreaterInt, typ))
 
 		case lang.Less:
 			if err := checkTopN(2); err != nil {
@@ -597,7 +601,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					break
 				}
 			}
-			c.emit(t, numericOp(vm.LowerInt, vm.Lower, typ))
+			c.emit(t, numericOp(vm.LowerInt, typ))
 
 		case lang.GreaterEqual:
 			if err := checkTopN(2); err != nil {
@@ -619,7 +623,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					break
 				}
 			}
-			c.emit(t, numericOp(vm.LowerInt, vm.Lower, typ))
+			c.emit(t, numericOp(vm.LowerInt, typ))
 			c.emit(t, vm.Not)
 
 		case lang.LessEqual:
@@ -642,7 +646,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					break
 				}
 			}
-			c.emit(t, numericOp(vm.GreaterInt, vm.Greater, typ))
+			c.emit(t, numericOp(vm.GreaterInt, typ))
 			c.emit(t, vm.Not)
 
 		case lang.NotEqual:
@@ -1644,16 +1648,16 @@ func isUint64Kind(typ *vm.Type) bool {
 }
 
 // numericOp returns a per-type opcode computed as base + type offset.
-// If the type is not a numeric type, it returns the fallback opcode.
-func numericOp(base, fallback vm.Op, typ *vm.Type) vm.Op {
-	if typ == nil || int(typ.Rtype.Kind()) >= len(vm.NumKindOffset) { //nolint:gosec
-		return fallback
+// Panics if typ is nil or not a numeric kind — caller must ensure type is resolved.
+func numericOp(base vm.Op, typ *vm.Type) vm.Op {
+	if typ == nil {
+		panic("numericOp: nil type")
 	}
-	off := vm.NumKindOffset[typ.Rtype.Kind()]
-	if off < 0 {
-		return fallback
+	k := typ.Rtype.Kind()
+	if int(k) >= len(vm.NumKindOffset) || vm.NumKindOffset[k] < 0 { //nolint:gosec
+		panic(fmt.Sprintf("numericOp: non-numeric kind %v", k))
 	}
-	return base + vm.Op(off)
+	return base + vm.Op(vm.NumKindOffset[k]) //nolint:gosec
 }
 
 // PrintCode pretty prints the generated code.
