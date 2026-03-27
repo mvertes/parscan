@@ -198,13 +198,30 @@ func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 	}
 	for _, im := range iface.IfaceMethods {
 		id := c.methodID(im.Name)
-		if id < len(typ.Methods) && typ.Methods[id].Index >= 0 {
-			continue // already registered directly
+		if id < len(typ.Methods) && (typ.Methods[id].Index >= 0 || typ.Methods[id].EmbedIface) {
+			continue // already registered directly or through embedded interface
 		}
 		// Find the method: value receiver, pointer receiver, or promoted.
 		s := &symbol.Symbol{Kind: symbol.Var, Name: lookupTyp.Name, Type: lookupTyp}
 		m, fieldPath := c.Symbols.MethodByName(s, im.Name)
 		if m == nil {
+			// MethodByName only finds concrete function symbols; interface methods have none.
+			for _, emb := range lookupTyp.Embedded {
+				embType := emb.Type
+				if embType == nil || !embType.IsInterface() {
+					continue
+				}
+				for _, embIM := range embType.IfaceMethods {
+					if embIM.Name != im.Name {
+						continue
+					}
+					for len(typ.Methods) <= id {
+						typ.Methods = append(typ.Methods, vm.Method{Index: -1})
+					}
+					typ.Methods[id] = vm.Method{Index: -1, Path: []int{emb.FieldIdx}, EmbedIface: true}
+					break
+				}
+			}
 			continue
 		}
 		// Path: nil = direct (no adjustment), []int{} = deref only, non-empty = field path.

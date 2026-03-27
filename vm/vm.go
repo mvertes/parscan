@@ -543,6 +543,18 @@ func (m *Machine) Run() (err error) {
 			case IfaceCall:
 				ifc := mem[sp-1].IfaceVal()
 				method := ifc.Typ.Methods[c.Arg[0]]
+				// The concrete type inside an embedded interface field is only known at runtime.
+				for method.EmbedIface {
+					rv := ifc.Val.Reflect()
+					if rv.Kind() == reflect.Pointer {
+						rv = rv.Elem()
+					}
+					for _, fi := range method.Path {
+						rv = rv.Field(fi)
+					}
+					ifc = fromReflect(rv).IfaceVal()
+					method = ifc.Typ.Methods[c.Arg[0]]
+				}
 				codeAddr := int(mem[method.Index].num) //nolint:gosec
 				// Build a closure with the concrete receiver as Env[0], replacing the
 				// interface value on the stack. Same result as HAlloc+Get+Swap+MkClosure.

@@ -11,8 +11,9 @@ import (
 
 // Method records a method's code location and receiver path for interface dispatch.
 type Method struct {
-	Index int   // data index of code address (-1 if unset)
-	Path  []int // field index path to embedded receiver (nil = direct, []int{} = deref only)
+	Index      int   // data index of code address (-1 if unset or EmbedIface)
+	Path       []int // field index path to embedded receiver (nil = direct, []int{} = deref only)
+	EmbedIface bool  // Path leads to an embedded interface field; dispatch through it
 }
 
 // EmbeddedField records a parscan embedded field within a struct type.
@@ -76,7 +77,11 @@ func (t *Type) SameAs(u *Type) bool {
 // iface.IfaceMethods must have IDs populated (by the compiler) before calling this.
 func (t *Type) Implements(iface *Type) bool {
 	for _, im := range iface.IfaceMethods {
-		if im.ID < 0 || im.ID >= len(t.Methods) || t.Methods[im.ID].Index < 0 {
+		if im.ID < 0 || im.ID >= len(t.Methods) {
+			return false
+		}
+		m := t.Methods[im.ID]
+		if m.Index < 0 && !m.EmbedIface {
 			return false
 		}
 	}

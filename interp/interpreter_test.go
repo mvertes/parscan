@@ -688,6 +688,15 @@ type A struct { V int }
 type B struct { *A }
 type C struct { B }
 c := C{B{&A{77}}}; c.V`, res: "77"},
+
+		{n: "embed_iface", src: `
+type Transformer interface { Reset() string }
+type Encoder struct { Transformer }
+type nop struct{}
+func (nop) Reset() string { return "ok" }
+func f(e Transformer) string { return e.Reset() }
+e := Encoder{Transformer: nop{}}
+f(e)`, res: "ok"},
 	})
 }
 
