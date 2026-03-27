@@ -52,23 +52,23 @@ func BenchmarkVM(b *testing.B) {
 // fib function at addr 1, call site at addr 19.
 var fibTypedCode = []Instruction{
 	{Op: Jump, A: 19},        // 0: skip to call site
-	{Op: Get, A: 1, B: -3},   // 1: push i
+	{Op: GetLocal, A: -3},    // 1: push i
 	{Op: Push, A: 2},         // 2
 	{Op: LowerInt},           // 3: i < 2
 	{Op: JumpTrue, A: 13},    // 4: if i<2 goto 17
 	{Op: Push, A: 1},         // 5: fib addr
-	{Op: Get, A: 1, B: -3},   // 6: push i
+	{Op: GetLocal, A: -3},    // 6: push i
 	{Op: Push, A: 2},         // 7
 	{Op: SubInt},             // 8: i-2
 	{Op: Call, A: 1, B: 1},   // 9: fib(i-2)
 	{Op: Push, A: 1},         // 10: fib addr
-	{Op: Get, A: 1, B: -3},   // 11: push i
+	{Op: GetLocal, A: -3},    // 11: push i
 	{Op: Push, A: 1},         // 12
 	{Op: SubInt},             // 13: i-1
 	{Op: Call, A: 1, B: 1},   // 14: fib(i-1)
 	{Op: AddInt},             // 15: sum
 	{Op: Return, A: 1, B: 1}, // 16: return (recursive)
-	{Op: Get, A: 1, B: -3},   // 17: base case
+	{Op: GetLocal, A: -3},    // 17: base case
 	{Op: Return, A: 1, B: 1}, // 18: return i
 	{Op: Push, A: 1},         // 19: call site
 	{Op: Push, A: 20},        // 20: n=20
@@ -81,20 +81,20 @@ var fibTypedCode = []Instruction{
 // fib function at addr 1, call site at addr 16.
 var fibImmCode = []Instruction{
 	{Op: Jump, A: 16},        // 0: skip to call site
-	{Op: Get, A: 1, B: -3},   // 1: push i
+	{Op: GetLocal, A: -3},    // 1: push i
 	{Op: LowerIntImm, A: 2},  // 2: i < 2 (was: Push 2; LowerInt)
 	{Op: JumpTrue, A: 11},    // 3: if i<2 goto 14
 	{Op: Push, A: 1},         // 4: fib addr
-	{Op: Get, A: 1, B: -3},   // 5: push i
+	{Op: GetLocal, A: -3},    // 5: push i
 	{Op: SubIntImm, A: 2},    // 6: i-2 (was: Push 2; SubInt)
 	{Op: Call, A: 1, B: 1},   // 7: fib(i-2)
 	{Op: Push, A: 1},         // 8: fib addr
-	{Op: Get, A: 1, B: -3},   // 9: push i
+	{Op: GetLocal, A: -3},    // 9: push i
 	{Op: SubIntImm, A: 1},    // 10: i-1 (was: Push 1; SubInt)
 	{Op: Call, A: 1, B: 1},   // 11: fib(i-1)
 	{Op: AddInt},             // 12: sum
 	{Op: Return, A: 1, B: 1}, // 13: return (recursive)
-	{Op: Get, A: 1, B: -3},   // 14: base case
+	{Op: GetLocal, A: -3},    // 14: base case
 	{Op: Return, A: 1, B: 1}, // 15: return i
 	{Op: Push, A: 1},         // 16: call site
 	{Op: Push, A: 20},        // 17: n=20
@@ -221,8 +221,8 @@ var tests = []struct {
 }, { // #11 -- Calling a function defined outside the VM.
 	sym: []Value{ValueOf(fmt.Println), ValueOf("Hello")},
 	code: []Instruction{
-		{Op: Get, A: 0, B: 0},
-		{Op: Get, A: 0, B: 1},
+		{Op: GetGlobal, A: 0},
+		{Op: GetGlobal, A: 1},
 		{Op: Call, A: 1},
 		{Op: Exit},
 	},
@@ -243,7 +243,7 @@ var tests = []struct {
 		{Op: Jump, A: 5},         // 0
 		{Op: Push, A: 3},         // 1
 		{Op: Set, A: 1, B: -3},   // 2
-		{Op: Get, A: 1, B: -3},   // 3
+		{Op: GetLocal, A: -3},    // 3
 		{Op: Return, A: 1, B: 1}, // 4
 		{Op: Push, A: 1},         // 5
 		{Op: Push, A: 1},         // 6
@@ -254,23 +254,23 @@ var tests = []struct {
 }, { // #14 -- Fibonacci numbers, hand written. Showcase recursivity.
 	code: []Instruction{
 		{Op: Jump, A: 19},        // 0
-		{Op: Get, A: 1, B: -3},   // 1  [2 i]
+		{Op: GetLocal, A: -3},    // 1  [2 i]
 		{Op: Push, A: 2},         // 2  [2]
 		{Op: LowerInt},           // 3  [true/false]
 		{Op: JumpTrue, A: 13},    // 4  [], goto 17
 		{Op: Push, A: 1},         // 5
-		{Op: Get, A: 1, B: -3},   // 6  [i]
+		{Op: GetLocal, A: -3},    // 6  [i]
 		{Op: Push, A: 2},         // 7  [i 2]
 		{Op: SubInt},             // 8  [(i-2)]
 		{Op: Call, A: 1, B: 1},   // 9  [fib(i-2)]
 		{Op: Push, A: 1},         // 10
-		{Op: Get, A: 1, B: -3},   // 11 [fib(i-2) i]
+		{Op: GetLocal, A: -3},    // 11 [fib(i-2) i]
 		{Op: Push, A: 1},         // 12 [(i-2) i 1]
 		{Op: SubInt},             // 13 [(i-2) (i-1)]
 		{Op: Call, A: 1, B: 1},   // 14 [fib(i-2) fib(i-1)]
 		{Op: AddInt},             // 15 [fib(i-2)+fib(i-1)]
 		{Op: Return, A: 1, B: 1}, // 16 return i
-		{Op: Get, A: 1, B: -3},   // 17 [i]
+		{Op: GetLocal, A: -3},    // 17 [i]
 		{Op: Return, A: 1, B: 1}, // 18 return i
 		{Op: Push, A: 1},         // 19
 		{Op: Push, A: 6},         // 20 [1]

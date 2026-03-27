@@ -15,7 +15,7 @@ import (
 const debug = false
 
 // Op is a VM opcode (bytecode instruction).
-type Op int
+type Op int32
 
 //go:generate stringer -type=Op
 
@@ -225,6 +225,8 @@ const (
 	LowerUintImm   // n -- n<$1  (unsigned)
 
 	Next2Local // -- ; iterator next, set K V (local scope); like Next2 but scope is always Local
+	GetLocal   // -- value ; value = mem[$1+fp-1] (local variable, no scope check)
+	GetGlobal  // -- value ; value = mem[$1] (global variable, syncs num from ref if needed)
 )
 
 // Memory attributes.
@@ -238,18 +240,17 @@ const (
 const frameOverhead = 3
 
 // Pos is the source code position of instruction.
-type Pos int
+type Pos int32
 
-// Instruction represents a virtual machine bytecode instruction.
+// Instruction represents a virtual machine bytecode instruction (16 bytes).
 // Fields A, B, C hold up to 3 immediate operands (0 when unused).
 type Instruction struct {
-	Pos     // position in source
-	Op      // opcode
-	A, B, C int
+	Op      Op
+	A, B, C int32
 }
 
 func (i Instruction) String() (s string) {
-	s = fmt.Sprintf("%3d: %v", i.Pos, i.Op)
+	s = i.Op.String()
 	if i.A != 0 || i.B != 0 || i.C != 0 {
 		s += fmt.Sprintf(" %v", i.A)
 	}
@@ -263,7 +264,25 @@ func (i Instruction) String() (s string) {
 }
 
 // Code represents the virtual machine byte code.
-type Code []Instruction
+type Code struct {
+	Inst []Instruction // bytecode instructions
+	Pos  []Pos         // parallel source positions (Pos[i] corresponds to Inst[i])
+}
+
+// Len returns the number of instructions.
+func (c *Code) Len() int { return len(c.Inst) }
+
+// Append adds an instruction with its source position.
+func (c *Code) Append(pos Pos, inst Instruction) {
+	c.Inst = append(c.Inst, inst)
+	c.Pos = append(c.Pos, pos)
+}
+
+// Truncate removes instructions after index n.
+func (c *Code) Truncate(n int) {
+	c.Inst = c.Inst[:n]
+	c.Pos = c.Pos[:n]
+}
 
 // Machine is a stack-based virtual machine that executes bytecode instructions.
 type Machine struct {
@@ -304,7 +323,7 @@ func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
 }
 
 // deferSentinelIP is the ip value used as return address for deferred call frames.
-// A negative ip is checked before m.code[ip] to dispatch the DeferRet handler.
+// A negative ip is checked before m.code.Inst[ip] to dispatch the DeferRet handler.
 const deferSentinelIP = -1
 
 // deferSentinelBits is deferSentinelIP packed into the retIP slot's low 32 bits.
@@ -337,8 +356,8 @@ func (m *Machine) Run() (err error) {
 
 	for {
 		for ip >= 0 {
-			sp = len(mem)   // stack pointer
-			c := m.code[ip] // current instruction
+			sp = len(mem)        // stack pointer
+			c := m.code.Inst[ip] // current instruction
 			if debug {
 				log.Printf("ip:%-3d sp:%-3d fp:%-3d op:[%-20v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
 			}
@@ -352,11 +371,15 @@ func (m *Machine) Run() (err error) {
 					mem[sp-1] = Value{ref: v.Reflect().Addr()}
 				}
 			case Set:
-				m.assignSlot(&mem[c.A*(fp-1)+c.B], mem[sp-1])
+				m.assignSlot(&mem[int(c.A)*(fp-1)+int(c.B)], mem[sp-1])
 				mem = mem[:sp-1]
 			case Call:
-				narg := c.A
-				fval := m.resolveFuncField(mem[sp-1-narg])
+				narg := int(c.A)
+				fval := mem[sp-1-narg]
+				// Inline fast path: only call resolveFuncField for addressable Func fields.
+				if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
+					fval = m.resolveFuncField(fval)
+				}
 				prevEnv := m.env
 				var nip int
 				if isNum(fval.ref.Kind()) {
@@ -389,7 +412,7 @@ func (m *Machine) Run() (err error) {
 					nip = int(fval.num) //nolint:gosec
 					m.env = nil
 				}
-				nret := c.B
+				nret := int(c.B)
 				fpVal := uint64(fp) //nolint:gosec
 				if prevEnv != nil {
 					m.frames = append(m.frames, prevEnv)
@@ -411,21 +434,28 @@ func (m *Machine) Run() (err error) {
 				val := mem[sp-1]
 				numSet(ptr.ref.Elem(), val)
 				mem = mem[:sp-2]
+			case GetLocal:
+				mem = append(mem, mem[int(c.A)+fp-1])
+			case GetGlobal:
+				// Global slots written via SetS update ref through a shared pointer without
+				// updating num in the original slot; sync num from ref before copying.
+				v := mem[int(c.A)]
+				if isNum(v.ref.Kind()) && v.ref.CanAddr() {
+					v.num = numBits(v.ref)
+				}
+				mem = append(mem, v)
 			case Get:
-				if c.A == Local {
-					// Local slots have num always in sync with ref (maintained by all write ops).
-					mem = append(mem, mem[c.B+fp-1])
+				if int(c.A) == Local {
+					mem = append(mem, mem[int(c.B)+fp-1])
 				} else {
-					// Global slots written via SetS update ref through a shared pointer without
-					// updating num in the original slot; sync num from ref before copying.
-					v := mem[c.B]
+					v := mem[int(c.B)]
 					if isNum(v.ref.Kind()) && v.ref.CanAddr() {
 						v.num = numBits(v.ref)
 					}
 					mem = append(mem, v)
 				}
 			case New:
-				mem[c.A+fp-1] = NewValue(mem[c.B].ref.Type())
+				mem[int(c.A)+fp-1] = NewValue(mem[int(c.B)].ref.Type())
 			case Equal:
 				mem[sp-2] = boolVal(mem[sp-2].Equal(mem[sp-1]))
 				mem = mem[:sp-1]
@@ -440,9 +470,9 @@ func (m *Machine) Run() (err error) {
 					mem[sp-1] = boolVal(false)
 				}
 			case Convert:
-				idx := sp - 1 - c.B
+				idx := sp - 1 - int(c.B)
 				v := mem[idx]
-				dstType := mem[c.A].ref.Type()
+				dstType := mem[int(c.A)].ref.Type()
 				dstKind := dstType.Kind()
 				if !v.ref.IsValid() {
 					// nil source: zero value of destination type.
@@ -523,13 +553,13 @@ func (m *Machine) Run() (err error) {
 				}
 
 			case IfaceWrap:
-				typ := mem[c.A].ref.Interface().(*Type)
-				idx := sp - 1 - c.B
+				typ := mem[int(c.A)].ref.Interface().(*Type)
+				idx := sp - 1 - int(c.B)
 				mem[idx] = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: mem[idx]})}
 
 			case IfaceCall:
 				ifc := mem[sp-1].IfaceVal()
-				method := ifc.Typ.Methods[c.A]
+				method := ifc.Typ.Methods[int(c.A)]
 				// The concrete type inside an embedded interface field is only known at runtime.
 				for method.EmbedIface {
 					rv := ifc.Val.Reflect()
@@ -540,7 +570,7 @@ func (m *Machine) Run() (err error) {
 						rv = rv.Field(fi)
 					}
 					ifc = fromReflect(rv).IfaceVal()
-					method = ifc.Typ.Methods[c.A]
+					method = ifc.Typ.Methods[int(c.A)]
 				}
 				codeAddr := int(mem[method.Index].num) //nolint:gosec
 				// Build a closure with the concrete receiver as Env[0], replacing the
@@ -561,8 +591,8 @@ func (m *Machine) Run() (err error) {
 				mem[sp-1] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Env: []*Value{cell}})}
 
 			case TypeAssert:
-				dstTyp := mem[c.A].ref.Interface().(*Type)
-				okForm := c.B == 1
+				dstTyp := mem[int(c.A)].ref.Interface().(*Type)
+				okForm := int(c.B) == 1
 				ifc := mem[sp-1]
 				if !ifc.IsIface() {
 					if !okForm {
@@ -612,11 +642,11 @@ func (m *Machine) Run() (err error) {
 				ifc := mem[sp-1]
 				mem = mem[:sp-1]
 				var matched bool
-				if c.B == -1 {
+				if int(c.B) == -1 {
 					matched = !ifc.IsIface()
 				} else if ifc.IsIface() {
 					ctyp := ifc.IfaceVal().Typ
-					dtyp := mem[c.B].ref.Interface().(*Type)
+					dtyp := mem[int(c.B)].ref.Interface().(*Type)
 					if dtyp.IsInterface() {
 						matched = ctyp.Implements(dtyp)
 					} else {
@@ -624,18 +654,18 @@ func (m *Machine) Run() (err error) {
 					}
 				}
 				if !matched {
-					ip += c.A
+					ip += int(c.A)
 					continue
 				}
 
 			case Exit:
 				return err
 			case Fnew:
-				mem = append(mem, NewValue(mem[c.A].ref.Type(), c.B))
+				mem = append(mem, NewValue(mem[int(c.A)].ref.Type(), int(c.B)))
 			case FnewE:
-				mem = append(mem, NewValue(mem[c.A].ref.Type().Elem(), c.B))
+				mem = append(mem, NewValue(mem[int(c.A)].ref.Type().Elem(), int(c.B)))
 			case Field:
-				fv := forceSettable(fieldByABC(reflect.Indirect(mem[sp-1].ref), c.A, c.B, c.C))
+				fv := forceSettable(fieldByABC(reflect.Indirect(mem[sp-1].ref), int(c.A), int(c.B), int(c.C)))
 				switch {
 				case isNum(fv.Kind()):
 					// Preserve addressable ref for write-through on struct field mutations.
@@ -648,32 +678,32 @@ func (m *Machine) Run() (err error) {
 					mem[sp-1] = Value{ref: fv}
 				}
 			case FieldSet:
-				m.setFuncField(forceSettable(fieldByABC(mem[sp-2].ref, c.A, c.B, c.C)), mem[sp-1])
+				m.setFuncField(forceSettable(fieldByABC(mem[sp-2].ref, int(c.A), int(c.B), int(c.C))), mem[sp-1])
 				mem = mem[:sp-1]
 			case FieldFset:
 				m.setFuncField(forceSettable(mem[sp-3].ref.Field(int(mem[sp-2].num))), mem[sp-1]) //nolint:gosec
 				mem = mem[:sp-2]
 			case Jump:
-				ip += c.A
+				ip += int(c.A)
 				continue
 			case JumpTrue:
 				cond := mem[sp-1].num != 0
 				mem = mem[:sp-1]
 				if cond {
-					ip += c.A
+					ip += int(c.A)
 					continue
 				}
 			case JumpFalse:
 				cond := mem[sp-1].num != 0
 				mem = mem[:sp-1]
 				if !cond {
-					ip += c.A
+					ip += int(c.A)
 					continue
 				}
 			case JumpSetTrue:
 				cond := mem[sp-1].num != 0
 				if cond {
-					ip += c.A
+					ip += int(c.A)
 					// Note that the stack is not modified if cond is true.
 					continue
 				}
@@ -681,43 +711,43 @@ func (m *Machine) Run() (err error) {
 			case JumpSetFalse:
 				cond := mem[sp-1].num != 0
 				if !cond {
-					ip += c.A
+					ip += int(c.A)
 					// Note that the stack is not modified if cond is false.
 					continue
 				}
 				mem = mem[:sp-1]
 			case Len:
-				mem = append(mem, ValueOf(mem[sp-1-c.A].ref.Len()))
+				mem = append(mem, ValueOf(mem[sp-1-int(c.A)].ref.Len()))
 			case Next:
 				if k, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); ok {
-					addr := c.C
-					if c.B == Local {
+					addr := int(c.C)
+					if int(c.B) == Local {
 						addr += fp - 1
 					}
 					m.assignSlot(&mem[addr], fromReflect(k))
 				} else {
-					ip += c.A
+					ip += int(c.A)
 					continue
 				}
 			case Next0:
 				if _, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); !ok {
-					ip += c.A
+					ip += int(c.A)
 					continue
 				}
 			case Next2:
 				if k, v, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
-					m.assignSlot(&mem[c.B], fromReflect(k))
-					m.assignSlot(&mem[c.C], fromReflect(v))
+					m.assignSlot(&mem[int(c.B)], fromReflect(k))
+					m.assignSlot(&mem[int(c.C)], fromReflect(v))
 				} else {
-					ip += c.A
+					ip += int(c.A)
 					continue
 				}
 			case Next2Local:
 				if k, v, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
-					m.assignSlot(&mem[fp-1+c.B], fromReflect(k))
-					m.assignSlot(&mem[fp-1+c.C], fromReflect(v))
+					m.assignSlot(&mem[fp-1+int(c.B)], fromReflect(k))
+					m.assignSlot(&mem[fp-1+int(c.C)], fromReflect(v))
 				} else {
-					ip += c.A
+					ip += int(c.A)
 					continue
 				}
 			case Not:
@@ -728,9 +758,9 @@ func (m *Machine) Run() (err error) {
 				}
 				mem[sp-1].ref = zbool
 			case Pop:
-				mem = mem[:sp-c.A]
+				mem = mem[:sp-int(c.A)]
 			case Push:
-				mem = append(mem, Value{num: uint64(c.A), ref: zint}) //nolint:gosec
+				mem = append(mem, Value{num: uint64(int(c.A)), ref: zint}) //nolint:gosec
 			case Pull:
 				next, stop := iter.Pull(mem[sp-1].Seq())
 				mem = append(mem, ValueOf(next), ValueOf(stop))
@@ -738,11 +768,11 @@ func (m *Machine) Run() (err error) {
 				next, stop := iter.Pull2(mem[sp-1].Seq2())
 				mem = append(mem, ValueOf(next), ValueOf(stop))
 			case Grow:
-				mem = append(mem, make([]Value, c.A)...)
+				mem = append(mem, make([]Value, int(c.A))...)
 			case DeferPush:
 				// Snapshot args in-place (detach addressable refs to prevent aliasing).
-				narg := c.A
-				isX := c.B
+				narg := int(c.A)
+				isX := int(c.B)
 				for i := sp - narg; i < sp; i++ {
 					if isNum(mem[i].ref.Kind()) && mem[i].ref.CanAddr() {
 						mem[i].ref = reflect.Zero(mem[i].ref.Type())
@@ -762,7 +792,7 @@ func (m *Machine) Run() (err error) {
 				// The original parscan func is preserved in ParscanFunc.Val for fast in-VM dispatch.
 				// CallFunc is re-entrant for single-threaded synchronous callbacks; concurrent goroutine
 				// calls to different wrapped functions on the same Machine are NOT safe.
-				typ := mem[c.A].ref.Interface().(*Type)
+				typ := mem[int(c.A)].ref.Interface().(*Type)
 				fval := mem[sp-1]
 				mem[sp-1] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: m.wrapForFunc(fval, typ.Rtype)})}
 
@@ -942,7 +972,7 @@ func (m *Machine) Run() (err error) {
 				resetNumRef(&mem[sp-1])
 
 			case Swap:
-				a, b := sp-c.A-1, sp-c.B-1
+				a, b := sp-int(c.A)-1, sp-int(c.B)-1
 				mem[a], mem[b] = mem[b], mem[a]
 			case HAlloc:
 				cell := new(Value)
@@ -958,14 +988,14 @@ func (m *Machine) Run() (err error) {
 				}
 				mem[sp-1] = ValueOf(cell) // replace value with cell pointer
 			case HGet:
-				mem = append(mem, *m.env[c.A])
+				mem = append(mem, *m.env[int(c.A)])
 			case HSet:
-				*m.env[c.A] = mem[sp-1]
+				*m.env[int(c.A)] = mem[sp-1]
 				mem = mem[:sp-1]
 			case HPtr:
-				mem = append(mem, ValueOf(m.env[c.A]))
+				mem = append(mem, ValueOf(m.env[int(c.A)]))
 			case MkClosure:
-				n := c.A
+				n := int(c.A)
 				codeAddr := int(mem[sp-n-1].num) //nolint:gosec
 				env := make([]*Value, n)
 				for i := range n {
@@ -976,8 +1006,8 @@ func (m *Machine) Run() (err error) {
 				mem = mem[:sp-n-1]
 				mem = append(mem, clo)
 			case MkSlice:
-				n := c.A
-				elemType := mem[c.B].ref.Type()
+				n := int(c.A)
+				elemType := mem[int(c.B)].ref.Type()
 				sliceType := reflect.SliceOf(elemType)
 				switch {
 				case n < 0:
@@ -1002,12 +1032,12 @@ func (m *Machine) Run() (err error) {
 					mem = mem[:sp-n+1]
 				}
 			case MkMap:
-				keyType := mem[c.A].ref.Type()
-				valType := mem[c.B].ref.Type()
+				keyType := mem[int(c.A)].ref.Type()
+				valType := mem[int(c.B)].ref.Type()
 				mapType := reflect.MapOf(keyType, valType)
 				mem = append(mem, Value{ref: reflect.MakeMap(mapType)})
 			case Append:
-				n := c.A
+				n := int(c.A)
 				sp = len(mem) - 1
 				result := mem[sp-n].ref
 				elemType := result.Type().Elem()
@@ -1028,9 +1058,9 @@ func (m *Machine) Run() (err error) {
 				mem[sp-1].ref.SetMapIndex(mem[sp].Reflect(), reflect.Value{})
 				mem = mem[:sp]
 			case Cap:
-				mem = append(mem, ValueOf(mem[sp-1-c.A].ref.Cap()))
+				mem = append(mem, ValueOf(mem[sp-1-int(c.A)].ref.Cap()))
 			case PtrNew:
-				typ := mem[c.A].ref.Type()
+				typ := mem[int(c.A)].ref.Type()
 				mem = append(mem, Value{ref: reflect.New(typ)})
 			case Index:
 				idx := int(mem[sp-1].num) //nolint:gosec
@@ -1070,7 +1100,7 @@ func (m *Machine) Run() (err error) {
 				mapVal.SetMapIndex(numReflect(mt.Key(), mem[sp-2]), m.wrapForFunc(mem[sp-1], mt.Elem()))
 				mem = mem[:sp-2]
 			case SetS:
-				n := c.A
+				n := int(c.A)
 				for i := 0; i < n; i++ {
 					m.assignSlot(&mem[sp-2*n+i], mem[sp-n+i])
 				}
@@ -1383,22 +1413,22 @@ func (m *Machine) Run() (err error) {
 
 			// Immediate operand ops: right-hand constant is in Arg[0].
 			case AddIntImm:
-				mem[sp-1].num = uint64(int(mem[sp-1].num) + c.A) //nolint:gosec
+				mem[sp-1].num = uint64(int(mem[sp-1].num) + int(c.A)) //nolint:gosec
 				mem[sp-1].ref = zint
 			case SubIntImm:
-				mem[sp-1].num = uint64(int(mem[sp-1].num) - c.A) //nolint:gosec
+				mem[sp-1].num = uint64(int(mem[sp-1].num) - int(c.A)) //nolint:gosec
 				mem[sp-1].ref = zint
 			case MulIntImm:
-				mem[sp-1].num = uint64(int(mem[sp-1].num) * c.A) //nolint:gosec
+				mem[sp-1].num = uint64(int(mem[sp-1].num) * int(c.A)) //nolint:gosec
 				mem[sp-1].ref = zint
 			case GreaterIntImm:
-				mem[sp-1] = boolVal(int(mem[sp-1].num) > c.A) //nolint:gosec
+				mem[sp-1] = boolVal(int(mem[sp-1].num) > int(c.A)) //nolint:gosec
 			case GreaterUintImm:
-				mem[sp-1] = boolVal(uint(mem[sp-1].num) > uint(c.A)) //nolint:gosec
+				mem[sp-1] = boolVal(uint(mem[sp-1].num) > uint(int(c.A))) //nolint:gosec
 			case LowerIntImm:
-				mem[sp-1] = boolVal(int(mem[sp-1].num) < c.A) //nolint:gosec
+				mem[sp-1] = boolVal(int(mem[sp-1].num) < int(c.A)) //nolint:gosec
 			case LowerUintImm:
-				mem[sp-1] = boolVal(uint(mem[sp-1].num) < uint(c.A)) //nolint:gosec
+				mem[sp-1] = boolVal(uint(mem[sp-1].num) < uint(int(c.A))) //nolint:gosec
 			}
 			ip++
 		}
@@ -1551,10 +1581,12 @@ func fieldByABC(v reflect.Value, a, b, c int) reflect.Value {
 	return v.FieldByIndex([]int{a, b, c})
 }
 
-// PushCode adds instructions to the machine code.
+// PushCode adds instructions to the machine code (with zero source positions).
 func (m *Machine) PushCode(code ...Instruction) (p int) {
-	p = len(m.code)
-	m.code = append(m.code, code...)
+	p = m.code.Len()
+	for _, inst := range code {
+		m.code.Append(0, inst)
+	}
 	return p
 }
 
@@ -1619,7 +1651,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	savedFrames := m.frames
 	savedPanicking := m.panicking
 	savedPanicVal := m.panicVal
-	savedCodeLen := len(m.code)
+	savedCodeLen := m.code.Len()
 
 	defer func() {
 		m.mem = savedMem
@@ -1629,7 +1661,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 		m.frames = savedFrames
 		m.panicking = savedPanicking
 		m.panicVal = savedPanicVal
-		m.code = m.code[:savedCodeLen]
+		m.code.Truncate(savedCodeLen)
 	}()
 
 	// Reset per-call state.
@@ -1650,11 +1682,9 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	// Temporarily append Call + Exit to drive the function to completion.
 	narg := funcType.NumIn()
 	nret := funcType.NumOut()
-	callIP := len(m.code)
-	m.code = append(m.code,
-		Instruction{Op: Call, A: narg, B: nret},
-		Instruction{Op: Exit},
-	)
+	callIP := m.code.Len()
+	m.code.Append(0, Instruction{Op: Call, A: int32(narg), B: int32(nret)}) //nolint:gosec
+	m.code.Append(0, Instruction{Op: Exit})
 	m.ip = callIP
 	m.fp = 0
 
@@ -1680,8 +1710,8 @@ func (m *Machine) Top() (v Value) {
 
 // PopExit removes the last machine code instruction if is Exit.
 func (m *Machine) PopExit() {
-	if l := len(m.code); l > 0 && m.code[l-1].Op == Exit {
-		m.code = m.code[:l-1]
+	if l := m.code.Len(); l > 0 && m.code.Inst[l-1].Op == Exit {
+		m.code.Truncate(l - 1)
 	}
 }
 

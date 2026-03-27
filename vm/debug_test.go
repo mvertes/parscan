@@ -23,7 +23,7 @@ func TestDumpFrame(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	DumpFrame(&buf, mem, nil, 6, 8, 2, 1, nil)
+	DumpFrame(&buf, mem, Code{}, 6, 8, 2, 1, nil)
 	out := buf.String()
 
 	// Verify key elements are present.
@@ -36,7 +36,7 @@ func TestDumpFrame(t *testing.T) {
 
 func TestDumpFrame_Invalid(t *testing.T) {
 	var buf bytes.Buffer
-	DumpFrame(&buf, nil, nil, 0, 0, 0, 0, nil)
+	DumpFrame(&buf, nil, Code{}, 0, 0, 0, 0, nil)
 	if !strings.Contains(buf.String(), "invalid") {
 		t.Errorf("expected 'invalid' message, got: %s", buf.String())
 	}
@@ -52,12 +52,8 @@ func TestDumpFrame_WithDebugInfo(t *testing.T) {
 		ValueOf(100), // local 1
 	}
 	code := Code{
-		{Pos: 0, Op: Push},
-		{Pos: 0, Op: Push},
-		{Pos: 0, Op: Push},
-		{Pos: 0, Op: Push},
-		{Pos: 0, Op: Push},
-		{Pos: 10, Op: Call}, // retIP=5 points here
+		Inst: []Instruction{{Op: Push}, {Op: Push}, {Op: Push}, {Op: Push}, {Op: Push}, {Op: Call}},
+		Pos:  []Pos{0, 0, 0, 0, 0, 10},
 	}
 	var sources scan.Sources
 	sources.Add("m:test", "func foo(n int) int {\n\treturn n + 1\n}\n")
@@ -131,7 +127,7 @@ func TestDumpCallStack_NoFrames(t *testing.T) {
 func TestEnterDebug(t *testing.T) {
 	// Build a single-frame scenario with a Trap instruction.
 	// func foo(x int) { trap() } ; foo(10)
-	code := Code{
+	code := []Instruction{
 		{Op: Push, A: 4},   // 0: push func addr (ip=4)
 		{Op: Push, A: 10},  // 1: push arg
 		{Op: Call, A: 1},   // 2: call(1 arg, 0 ret)
@@ -171,7 +167,7 @@ func TestEnterDebug(t *testing.T) {
 }
 
 func TestEnterDebugHelp(t *testing.T) {
-	code := Code{
+	code := []Instruction{
 		{Op: Trap}, // 0
 		{Op: Exit}, // 1
 	}

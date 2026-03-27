@@ -273,15 +273,15 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
 		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 	}
-	inst := vm.Instruction{Pos: vm.Pos(t.Pos + c.posBase), Op: op}
+	inst := vm.Instruction{Op: op}
 	if len(arg) > 0 {
-		inst.A = arg[0]
+		inst.A = int32(arg[0]) //nolint:gosec
 	}
 	if len(arg) > 1 {
-		inst.B = arg[1]
+		inst.B = int32(arg[1]) //nolint:gosec
 	}
 	if len(arg) > 2 {
-		inst.C = arg[2]
+		inst.C = int32(arg[2]) //nolint:gosec
 	}
 	// Field/FieldSet encode a variable-length field index path in A, B, C.
 	// Unused trailing fields must be -1 so the VM can distinguish
@@ -294,7 +294,7 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 			inst.B = -1
 		}
 	}
-	c.Code = append(c.Code, inst)
+	c.Append(vm.Pos(t.Pos+c.posBase), inst) //nolint:gosec
 }
 
 // emitIfaceWrap emits IfaceWrap if assigning a concrete value to an interface type.
@@ -366,7 +366,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			n := int(n64)
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(n), Type: c.Symbols["int"].Type})
-			c.emit(t, vm.Push, n)
+			if n >= -1<<31 && n < 1<<31 {
+				c.emit(t, vm.Push, n)
+			} else {
+				// Large constant: store in data segment and load via Get.
+				di := len(c.Data)
+				c.Data = append(c.Data, vm.ValueOf(n))
+				c.emit(t, vm.GetGlobal, di)
+			}
 
 		case lang.Float:
 			f, err := strconv.ParseFloat(t.Str, 64)
@@ -377,7 +384,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			di := len(c.Data)
 			c.Data = append(c.Data, v)
 			push(&symbol.Symbol{Kind: symbol.Const, Value: v, Type: c.Symbols["float64"].Type})
-			c.emit(t, vm.Get, vm.Global, di)
+			c.emit(t, vm.GetGlobal, di)
 
 		case lang.String:
 			if t.Prefix() == "'" {
@@ -391,7 +398,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			s := t.Block()
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(s), Type: c.Symbols["string"].Type})
-			c.emit(t, vm.Get, vm.Global, c.stringIndex(s))
+			c.emit(t, vm.GetGlobal, c.stringIndex(s))
 
 		case lang.Add:
 			if err := checkTopN(2); err != nil {
@@ -491,8 +498,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			push(&symbol.Symbol{Kind: symbol.Value, Type: vm.PointerTo(pop().Type)})
-			if n := len(c.Code); n > 0 && c.Code[n-1].Op == vm.Index {
-				c.Code[n-1].Op = vm.IndexAddr
+			if n := c.Len(); n > 0 && c.Inst[n-1].Op == vm.Index {
+				c.Inst[n-1].Op = vm.IndexAddr
 			} else {
 				c.emit(t, vm.Addr)
 			}
@@ -541,10 +548,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			var offset int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // store code location for fixup
+				t.Arg = []any{c.Len()} // store code location for fixup
 				fixList = append(fixList, t)
 			} else {
-				offset = int(s.Value.Int()) - len(c.Code)
+				offset = int(s.Value.Int()) - c.Len()
 			}
 			c.emit(t, vm.TypeBranch, offset, typeIdx) // Arg[0]=offset, Arg[1]=typeIdx
 
@@ -1128,7 +1135,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			// Closure creation: emit code address + captured cell pointers + MkClosure.
 			if s.Kind == symbol.Func && len(s.FreeVars) > 0 {
-				c.emit(t, vm.Get, vm.Global, s.Index)
+				c.emit(t, vm.GetGlobal, s.Index)
 				// Determine the current function's FreeVars for transitive capture.
 				var outerCloSym *symbol.Symbol
 				if cf := curFunc(); cf != "" {
@@ -1148,10 +1155,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						}
 					}
 					if fvSym.Kind == symbol.LocalVar {
-						c.emit(t, vm.Get, vm.Local, fvSym.Index)
+						c.emit(t, vm.GetLocal, fvSym.Index)
 						c.emit(t, vm.HAlloc)
 					} else {
-						c.emit(t, vm.Get, vm.Global, fvSym.Index)
+						c.emit(t, vm.GetGlobal, fvSym.Index)
 						c.emit(t, vm.HAlloc)
 					}
 				}
@@ -1170,7 +1177,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			// Regular local or global access.
 			// Type symbols are always in global Data.
 			if s.Kind == symbol.LocalVar {
-				c.emit(t, vm.Get, vm.Local, s.Index)
+				c.emit(t, vm.GetLocal, s.Index)
 			} else {
 				if s.Index == symbol.UnsetAddr {
 					// Type or value symbol discovered during Phase 2 code generation.
@@ -1191,7 +1198,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						c.emit(t, vm.Fnew, s.Index, 1)
 					}
 				} else {
-					c.emit(t, vm.Get, vm.Global, s.Index)
+					c.emit(t, vm.GetGlobal, s.Index)
 				}
 			}
 
@@ -1199,7 +1206,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if expected, ok := jumpDepth[t.Str]; ok && len(stack) != expected {
 				return fmt.Errorf("stack depth mismatch at label %s: got %d, want %d", t.Str, len(stack), expected)
 			}
-			lc := len(c.Code)
+			lc := c.Len()
 			if s, ok := c.Symbols[t.Str]; ok {
 				s.Value = vm.ValueOf(lc)
 				if s.Kind == symbol.Func {
@@ -1254,10 +1261,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
+				t.Arg = []any{c.Len()} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - c.Len()
 			}
 			c.emit(t, vm.JumpFalse, i)
 
@@ -1269,10 +1276,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			jumpDepth[t.Str] = len(stack) + 1 // one value (LHS or RHS) arrives at the merge label
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
+				t.Arg = []any{c.Len()} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - c.Len()
 			}
 			c.emit(t, vm.JumpSetFalse, i)
 
@@ -1284,20 +1291,20 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			jumpDepth[t.Str] = len(stack) + 1 // one value (LHS or RHS) arrives at the merge label
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
+				t.Arg = []any{c.Len()} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - c.Len()
 			}
 			c.emit(t, vm.JumpSetTrue, i)
 
 		case lang.Goto:
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
+				t.Arg = []any{c.Len()} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - c.Len()
 			}
 			c.emit(t, vm.Jump, i)
 
@@ -1331,7 +1338,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					sym = c.Symbols[name]
 				}
 				push(sym)
-				c.emit(t, vm.Get, vm.Global, l)
+				c.emit(t, vm.GetGlobal, l)
 			case symbol.Unset:
 				return errorf("invalid symbol: %s", s.Name)
 			default:
@@ -1390,7 +1397,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					// Swap 0 1: put code addr below cell (MkClosure convention: code at sp-n-1).
 					// MkClosure 1: produce Closure{code, [receiver_cell]}.
 					c.emit(t, vm.HAlloc)
-					c.emit(t, vm.Get, vm.Global, m.Index)
+					c.emit(t, vm.GetGlobal, m.Index)
 					c.emit(t, vm.Swap, 0, 1)
 					c.emit(t, vm.MkClosure, 1)
 					break
@@ -1425,10 +1432,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			n := t.Arg[0].(int)
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
+				t.Arg = []any{c.Len()} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - len(c.Code)
+				i = int(s.Value.Int()) - c.Len()
 			}
 			lf := func(s *symbol.Symbol) int {
 				if s.Kind == symbol.LocalVar {
@@ -1590,7 +1597,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			return fmt.Errorf("label not found: %q", t.Str)
 		}
 		loc := t.Arg[0].(int)
-		c.Code[loc].A = int(s.Value.Int()) - loc // relative code position
+		c.Inst[loc].A = int32(int(s.Value.Int()) - loc) //nolint:gosec // relative code position
 	}
 	return err
 }
@@ -1646,11 +1653,11 @@ func shiftLeftType(left *symbol.Symbol, intTyp *vm.Type) *vm.Type {
 // retractPush removes the most recently emitted Push if s is a constant,
 // returning (immediate value, true). Used for immediate-operand peephole.
 func (c *Compiler) retractPush(s *symbol.Symbol) (int, bool) {
-	if s.Kind != symbol.Const || len(c.Code) == 0 || c.Code[len(c.Code)-1].Op != vm.Push {
+	if s.Kind != symbol.Const || c.Len() == 0 || c.Inst[c.Len()-1].Op != vm.Push {
 		return 0, false
 	}
-	n := c.Code[len(c.Code)-1].A
-	c.Code = c.Code[:len(c.Code)-1]
+	n := int(c.Inst[c.Len()-1].A)
+	c.Truncate(c.Len() - 1)
 	return n, true
 }
 
@@ -1704,25 +1711,25 @@ func (c *Compiler) PrintCode() {
 	}
 
 	fmt.Fprintln(os.Stderr, "# Code:")
-	for i, l := range c.Code {
+	for i, l := range c.Inst {
 		for _, label := range labels[i] {
 			fmt.Fprintln(os.Stderr, label+":")
 		}
 		extra := ""
 		switch l.Op {
 		case vm.Jump, vm.JumpFalse, vm.JumpTrue, vm.JumpSetFalse, vm.JumpSetTrue:
-			if d, ok := labels[i+l.A]; ok {
+			if d, ok := labels[i+int(l.A)]; ok {
 				extra = "// " + d[0]
 			}
-		case vm.Get, vm.Set:
-			if d, ok := data[l.A]; ok {
+		case vm.Get, vm.GetLocal, vm.GetGlobal, vm.Set:
+			if d, ok := data[int(l.A)]; ok {
 				extra = "// " + d
 			}
 		}
 		fmt.Fprintf(os.Stderr, "%4d %v %v\n", i, l, extra)
 	}
 
-	for _, label := range labels[len(c.Code)] {
+	for _, label := range labels[c.Len()] {
 		fmt.Fprintln(os.Stderr, label+":")
 	}
 	fmt.Fprintln(os.Stderr, "# End code")
@@ -1818,11 +1825,12 @@ func enclosingFunc(scopedName string, syms symbol.SymMap) string {
 
 // removeFnew removes the Fnew/FnewE instruction for the given symbol index.
 func (c *Compiler) removeFnew(index int) {
-	for i := len(c.Code) - 1; i >= 0; i-- {
-		op := c.Code[i].Op
-		if (op == vm.Fnew || op == vm.FnewE) && c.Code[i].A == index {
-			copy(c.Code[i:], c.Code[i+1:])
-			c.Code = c.Code[:len(c.Code)-1]
+	for i := c.Len() - 1; i >= 0; i-- {
+		op := c.Inst[i].Op
+		if (op == vm.Fnew || op == vm.FnewE) && int(c.Inst[i].A) == index {
+			copy(c.Inst[i:], c.Inst[i+1:])
+			copy(c.Pos[i:], c.Pos[i+1:])
+			c.Truncate(c.Len() - 1)
 			return
 		}
 	}
