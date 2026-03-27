@@ -33,7 +33,9 @@ slice and populates a `Data` slice (the global memory segment).
 
 1. Looks up the corresponding symbol in `SymMap`.
 2. Emits `Get`/`Set`/`Push` instructions based on symbol kind and locality.
-3. For operators, emits the matching opcode (type-specific where possible).
+3. For operators, emits the statically-typed opcode; `numericOp()` selects
+   the exact per-type opcode using `vm.NumKindOffset`. For `+` on strings,
+   emits `AddStr`. Panics if the type is unresolved or non-numeric.
 4. For `Label`, records the code address; for `Goto`/`JumpFalse`, emits
    jumps and patches targets.
 
@@ -47,12 +49,14 @@ path. The compiler distinguishes two cases based on the callee symbol's kind:
 
 - **Parscan function** (`Kind: Func`, `LocalVar`, etc.) -- emits `vm.Call`
   after optionally packing variadic args with `MkSlice`.
-- **Native Go function value** (`Kind: Value`) -- emits `vm.CallX`, which
-  invokes the callee via `reflect.Value.Call`.
+- **Native Go function value** (`Kind: Value`) -- also emits `vm.Call`;
+  the `Call` opcode handler detects a `reflect.Func` at runtime and
+  dispatches via `reflect.Value.Call` directly.
 
-The `lang.CallX` parser token was removed; the distinction is now made
-entirely inside the `case lang.Call` handler using the compile-time symbolic
-stack. Builtin symbols (`Kind: Builtin`) are intercepted by `compileBuiltin`
+The `lang.CallX` parser token and the `vm.CallX` opcode were both removed;
+the distinction between parscan and native callees is now made entirely
+inside the `case lang.Call` handler using the compile-time symbolic stack.
+Builtin symbols (`Kind: Builtin`) are intercepted by `compileBuiltin`
 before either path is reached.
 
 ### Peephole optimization

@@ -99,8 +99,11 @@ env, nret/narg). See [vm](modules/vm.md#call-frame) for details.
    data slots and uses topological sorting of var declarations to eliminate
    retries entirely. See [ADR-004](decisions/ADR-004-lazy-fixpoint.md).
 
-5. **Per-type opcodes** -- 12 numeric type variants for arithmetic ops,
-   plus immediate-operand variants that fold `Push+BinOp` into one instruction.
+5. **Per-type opcodes** -- all arithmetic opcodes are statically typed;
+   there are no generic `Add`/`Sub`/`Mul`/`Neg`/`Greater`/`Lower` opcodes.
+   12 numeric type variants per operation are selected at compile time via
+   `NumKindOffset`. String concatenation uses the separate `AddStr` opcode.
+   Immediate-operand variants fold `Push+BinOp` into one instruction.
    See [ADR-005](decisions/ADR-005-per-type-opcodes.md).
 
 6. **Native Go interop** -- parscan functions are wrapped via `WrapFunc`

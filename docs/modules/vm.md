@@ -75,14 +75,19 @@ value representation) and `Type` (runtime type metadata).
 - **`Op`** (int enum) -- 200+ opcodes organized in groups:
   - Stack/control: `Nop`, `Pop`, `Push`, `Swap`, `Exit`, `Jump`,
     `JumpTrue`, `JumpFalse`, `JumpSetTrue`, `JumpSetFalse`, `Call`,
-    `CallX`, `Return`.
+    `Return`.
   - Memory: `Get`, `Set`, `SetS`, `Addr`, `Deref`, `DerefSet`, `Grow`.
-  - Arithmetic: `Add`, `Sub`, `Mul`, `Neg`, `Equal`, `EqualSet`,
-    `Greater`, `Lower` (generic); per-type variants:
-    `AddInt`...`AddFloat64`, `SubInt`...`SubFloat64`,
-    `MulInt`...`MulFloat64`, `DivInt`...`DivFloat64`,
-    `RemInt`...`RemFloat64`, `NegInt`...`NegFloat64`,
-    `GreaterInt`...`GreaterFloat64`, `LowerInt`...`LowerFloat64`.
+  - Arithmetic -- no generic numeric opcodes remain; every arithmetic op
+    is statically typed:
+    - `Equal`, `EqualSet` (type-agnostic comparison via `Value.Equal`).
+    - `AddStr` -- string concatenation (`s1 + s2`); the only non-numeric
+      binary add op.
+    - Per-type variants (12 types each, selected at compile time via
+      `NumKindOffset`):
+      `AddInt`...`AddFloat64`, `SubInt`...`SubFloat64`,
+      `MulInt`...`MulFloat64`, `DivInt`...`DivFloat64`,
+      `RemInt`...`RemFloat64`, `NegInt`...`NegFloat64`,
+      `GreaterInt`...`GreaterFloat64`, `LowerInt`...`LowerFloat64`.
   - Immediate: `AddIntImm`, `SubIntImm`, `MulIntImm`, `GreaterIntImm`,
     `GreaterUintImm`, `LowerIntImm`, `LowerUintImm`.
   - Bitwise: `BitAnd`, `BitOr`, `BitXor`, `BitAndNot`, `BitShl`,
@@ -140,11 +145,26 @@ mem[dataLen ..]        call stack (grows upward)
 
 ### Per-type numeric ops
 
-To avoid type-switch overhead on the hot path, the compiler emits
-type-specific opcodes. There are 12 numeric type variants (int, int8, ...,
-float64), each with its own `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg`,
-`Greater`, `Lower` opcode. The generic `add[T]`, `sub[T]`, etc. functions
-in `numops.go` use Go generics internally.
+All arithmetic opcodes are statically typed -- there are no generic
+`Add`/`Sub`/`Mul`/`Neg`/`Greater`/`Lower` opcodes. The compiler always
+knows the operand kind at compile time and selects the exact opcode from
+the 12-variant block using `NumKindOffset`:
+
+```
+opcode = baseOp + Op(NumKindOffset[reflect.Kind])
+```
+
+`NumKindOffset` is a fixed array (indexed by `reflect.Kind`) that maps
+each numeric kind to a 0-based slot: 0=int, 1=int8, ..., 9=uint64,
+10=float32, 11=float64. Non-numeric kinds return -1 (the compiler panics
+before reaching that state).
+
+String concatenation (`s1 + s2`) is handled by the dedicated `AddStr`
+opcode rather than a typed numeric block.
+
+The helper functions `add[T]`, `sub[T]`, etc. in `numops.go` use Go
+generics internally; each typed opcode dispatches to exactly one
+instantiation with zero runtime branching.
 
 ### Closure dispatch
 
