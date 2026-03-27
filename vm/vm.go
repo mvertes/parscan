@@ -31,6 +31,7 @@ const (
 	Nop          Op = iota // --
 	Addr                   // a -- &a ;
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
+	CallImm                // [a1 .. ai] -- [r1 .. rj] ; $1=dataIdx of func, $2=narg<<16|nret
 	Deref                  // x -- *x ;
 	DerefSet               // ptr val -- ; *ptr = val
 	Get                    // addr -- value ; value = mem[addr]
@@ -415,6 +416,34 @@ func (m *Machine) Run() (err error) {
 			if sp+3 >= len(mem) {
 				mem = growStack(mem, sp, 3)
 			}
+			mem[sp+1] = Value{}
+			mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg)}
+			mem[sp+3] = Value{num: fpVal}
+			sp += 3 // deferHead, retIP+info, prevFP+envFlag
+			ip = nip
+			fp = sp + 1
+			continue
+		case CallImm:
+			narg := int(c.B) >> 16
+			nret := int(c.B) & 0xFFFF
+			nip := int(mem[int(c.A)].num) //nolint:gosec
+			prevEnv := m.env
+			fpVal := uint64(fp) //nolint:gosec
+			if prevEnv != nil {
+				m.frames = append(m.frames, prevEnv)
+				fpVal |= envSavedFlag
+			}
+			m.env = nil
+			if sp+4 >= len(mem) {
+				mem = growStack(mem, sp, 4)
+			}
+			// Shift args up by 1 to insert a placeholder func slot below them,
+			// keeping the frame layout identical to Call.
+			for i := 0; i < narg; i++ {
+				mem[sp+1-i] = mem[sp-i]
+			}
+			mem[sp-narg+1] = Value{} // placeholder func slot
+			sp++
 			mem[sp+1] = Value{}
 			mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg)}
 			mem[sp+3] = Value{num: fpVal}

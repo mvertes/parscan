@@ -853,7 +853,13 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					callNarg = nFixed + 1
 				}
-				c.emit(t, vm.Call, callNarg, nret)
+				// Direct call to a declared function (no closure): use CallImm
+				// to avoid loading the func value and skip type dispatch at runtime.
+				if s.Kind == symbol.Func && len(s.FreeVars) == 0 && c.removeGetGlobal(s.Index) {
+					c.emit(t, vm.CallImm, s.Index, callNarg<<16|nret)
+				} else {
+					c.emit(t, vm.Call, callNarg, nret)
+				}
 				break
 			}
 			// s.Kind == symbol.Value: function value on stack (native Go func or returned parscan closure).
@@ -1732,7 +1738,7 @@ func (c *Compiler) PrintCode() {
 			if d, ok := labels[i+int(l.A)]; ok {
 				extra = "// " + d[0]
 			}
-		case vm.Get, vm.GetLocal, vm.GetGlobal, vm.Set:
+		case vm.Get, vm.GetLocal, vm.GetGlobal, vm.Set, vm.CallImm:
 			if d, ok := data[int(l.A)]; ok {
 				extra = "// " + d
 			}
@@ -1844,6 +1850,24 @@ func (c *Compiler) removeFnew(index int) {
 			return
 		}
 	}
+}
+
+// removeGetGlobal removes the most recent GetGlobal instruction for the given data index,
+// but only if it was a standalone function load (not part of a method dispatch / MkClosure sequence).
+// Returns true if the instruction was removed.
+func (c *Compiler) removeGetGlobal(index int) bool {
+	for i := len(c.Code) - 1; i >= 0; i-- {
+		if c.Code[i].Op == vm.GetGlobal && int(c.Code[i].A) == index {
+			// Skip if followed by Swap (method dispatch: GetGlobal + Swap + MkClosure).
+			if i+1 < len(c.Code) && c.Code[i+1].Op == vm.Swap {
+				return false
+			}
+			copy(c.Code[i:], c.Code[i+1:])
+			c.Code = c.Code[:len(c.Code)-1]
+			return true
+		}
+	}
+	return false
 }
 
 // compileBuiltin handles built-in function calls (len, cap, append, copy, delete, new, make,
