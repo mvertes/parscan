@@ -5,9 +5,9 @@ import (
 	"fmt" // for tracing only
 	"io"
 	"iter"
-	"log"     // for tracing only
-	"math"    // for float arithmetic
-	"reflect" // for optional CallX only
+	"log"  // for tracing only
+	"math" // for float arithmetic
+	"reflect"
 	"strings"
 	"unsafe" // to allow setting unexported struct fields //nolint:depguard
 )
@@ -32,7 +32,6 @@ const (
 	Add                    // n1 n2 -- sum ; sum = n1+n2
 	Addr                   // a -- &a ;
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
-	CallX                  // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = mem[f](a1, ...)
 	Deref                  // x -- *x ;
 	DerefSet               // ptr val -- ; *ptr = val
 	Get                    // addr -- value ; value = mem[addr]
@@ -388,6 +387,21 @@ func (m *Machine) Run() (err error) {
 					nip = iv
 					m.env = nil
 				} else {
+					rv := fval.ref
+					if rv.Kind() == reflect.Interface && !rv.IsNil() {
+						rv = rv.Elem()
+					}
+					if rv.Kind() == reflect.Func {
+						in := make([]reflect.Value, narg)
+						for i := range in {
+							in[i] = mem[sp-narg+i].Reflect()
+						}
+						mem = mem[:sp-narg-1]
+						for _, v := range rv.Call(in) {
+							mem = append(mem, fromReflect(v))
+						}
+						break
+					}
 					nip = int(fval.num) //nolint:gosec
 					m.env = nil
 				}
@@ -397,17 +411,6 @@ func (m *Machine) Run() (err error) {
 				ip = nip
 				fp = sp + 3
 				continue
-			case CallX: // Should be made optional.
-				narg := c.Arg[0]
-				in := make([]reflect.Value, narg)
-				for i := range in {
-					in[i] = mem[sp-narg+i].Reflect()
-				}
-				f := mem[sp-1-narg].ref
-				mem = mem[:sp-narg-1]
-				for _, v := range f.Call(in) {
-					mem = append(mem, fromReflect(v))
-				}
 			case Deref:
 				r := mem[sp-1].ref.Elem()
 				v := Value{ref: r}

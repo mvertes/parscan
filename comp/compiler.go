@@ -819,7 +819,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Call, callNarg, nret)
 				break
 			}
-			// s.Kind == symbol.Value: call a Go native function value via reflect.
+			// s.Kind == symbol.Value: function value on stack (native Go func or returned parscan closure).
 			var rtyp reflect.Type
 			if rv := s.Value.Reflect(); rv.IsValid() {
 				rtyp = rv.Type()
@@ -830,12 +830,20 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			for i := 0; i < narg+1; i++ {
 				pop()
 			}
+			nret := 0
 			if rtyp != nil {
-				for i := 0; i < rtyp.NumOut(); i++ {
-					push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtyp.Out(i)}})
+				nret = rtyp.NumOut()
+				for i := 0; i < nret; i++ {
+					var retType *vm.Type
+					if s.Type != nil {
+						retType = s.Type.ReturnType(i)
+					} else {
+						retType = &vm.Type{Rtype: rtyp.Out(i)}
+					}
+					push(&symbol.Symbol{Kind: symbol.Value, Type: retType})
 				}
 			}
-			c.emit(t, vm.CallX, narg)
+			c.emit(t, vm.Call, narg, nret)
 
 		case lang.Colon:
 			vs := pop() // value

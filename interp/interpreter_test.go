@@ -1316,6 +1316,21 @@ func f() int {
 	return foos[0]() + foos[1]() + foos[2]()
 }
 f()`, res: "33"},
+		// Closures stored in []func() slice called via range iteration (yaegi-issue-1594).
+		{n: "#11", src: `
+func f() int {
+	var fns []func() int
+	for _, v := range []int{1, 2, 3} {
+		x := v*100 + v
+		fns = append(fns, func() int { return x })
+	}
+	result := 0
+	for _, fn := range fns {
+		result += fn()
+	}
+	return result
+}
+f()`, res: "606"},
 	})
 }
 

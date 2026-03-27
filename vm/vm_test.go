@@ -223,7 +223,7 @@ var tests = []struct {
 	code: []Instruction{
 		{Op: Get, Arg: []int{0, 0}},
 		{Op: Get, Arg: []int{0, 1}},
-		{Op: CallX, Arg: []int{1}},
+		{Op: Call, Arg: []int{1, 0}},
 		{Op: Exit},
 	},
 	start: 2, end: 4, mem: "[6 <nil>]",
