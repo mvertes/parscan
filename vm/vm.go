@@ -227,6 +227,7 @@ const (
 	Next2Local // -- ; iterator next, set K V (local scope); like Next2 but scope is always Local
 	GetLocal   // -- value ; value = mem[$1+fp-1] (local variable, no scope check)
 	GetGlobal  // -- value ; value = mem[$1] (global variable, syncs num from ref if needed)
+	NextLocal  // -- ; iterator next, set K (local scope); like Next but scope is always Local
 )
 
 // Memory attributes.
@@ -243,46 +244,26 @@ const frameOverhead = 3
 type Pos int32
 
 // Instruction represents a virtual machine bytecode instruction (16 bytes).
-// Fields A, B, C hold up to 3 immediate operands (0 when unused).
+// Fields A, B hold up to 2 immediate operands (0 when unused).
 type Instruction struct {
-	Op      Op
-	A, B, C int32
+	Op   Op
+	A, B int32
+	Pos  Pos
 }
 
 func (i Instruction) String() (s string) {
-	s = i.Op.String()
-	if i.A != 0 || i.B != 0 || i.C != 0 {
+	s = fmt.Sprintf("%3d: %v", i.Pos, i.Op)
+	if i.A != 0 || i.B != 0 {
 		s += fmt.Sprintf(" %v", i.A)
 	}
-	if i.B != 0 || i.C != 0 {
+	if i.B != 0 {
 		s += fmt.Sprintf(" %v", i.B)
-	}
-	if i.C != 0 {
-		s += fmt.Sprintf(" %v", i.C)
 	}
 	return s
 }
 
 // Code represents the virtual machine byte code.
-type Code struct {
-	Inst []Instruction // bytecode instructions
-	Pos  []Pos         // parallel source positions (Pos[i] corresponds to Inst[i])
-}
-
-// Len returns the number of instructions.
-func (c *Code) Len() int { return len(c.Inst) }
-
-// Append adds an instruction with its source position.
-func (c *Code) Append(pos Pos, inst Instruction) {
-	c.Inst = append(c.Inst, inst)
-	c.Pos = append(c.Pos, pos)
-}
-
-// Truncate removes instructions after index n.
-func (c *Code) Truncate(n int) {
-	c.Inst = c.Inst[:n]
-	c.Pos = c.Pos[:n]
-}
+type Code []Instruction
 
 // Machine is a stack-based virtual machine that executes bytecode instructions.
 type Machine struct {
@@ -323,7 +304,7 @@ func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
 }
 
 // deferSentinelIP is the ip value used as return address for deferred call frames.
-// A negative ip is checked before m.code.Inst[ip] to dispatch the DeferRet handler.
+// A negative ip is checked before m.code[ip] to dispatch the DeferRet handler.
 const deferSentinelIP = -1
 
 // deferSentinelBits is deferSentinelIP packed into the retIP slot's low 32 bits.
@@ -373,7 +354,7 @@ func (m *Machine) Run() (err error) {
 
 	for {
 		for ip >= 0 {
-			c := m.code.Inst[ip] // current instruction
+			c := m.code[ip] // current instruction
 			if debug {
 				log.Printf("ip:%-3d sp:%-3d fp:%-3d op:[%-20v] mem:%v\n", ip, sp, fp, c, Vstring(mem[:sp+1]))
 			}
@@ -727,7 +708,7 @@ func (m *Machine) Run() (err error) {
 				sp++
 				mem[sp] = NewValue(mem[int(c.A)].ref.Type().Elem(), int(c.B))
 			case Field:
-				fv := forceSettable(fieldByABC(reflect.Indirect(mem[sp].ref), int(c.A), int(c.B), int(c.C)))
+				fv := forceSettable(fieldByAB(reflect.Indirect(mem[sp].ref), int(c.A), int(c.B)))
 				switch {
 				case isNum(fv.Kind()):
 					// Preserve addressable ref for write-through on struct field mutations.
@@ -740,7 +721,7 @@ func (m *Machine) Run() (err error) {
 					mem[sp] = Value{ref: fv}
 				}
 			case FieldSet:
-				m.setFuncField(forceSettable(fieldByABC(mem[sp-1].ref, int(c.A), int(c.B), int(c.C))), mem[sp])
+				m.setFuncField(forceSettable(fieldByAB(mem[sp-1].ref, int(c.A), int(c.B))), mem[sp])
 				sp--
 			case FieldFset:
 				m.setFuncField(forceSettable(mem[sp-2].ref.Field(int(mem[sp-1].num))), mem[sp]) //nolint:gosec
@@ -786,11 +767,14 @@ func (m *Machine) Run() (err error) {
 				mem[sp] = ValueOf(mem[sp-1-int(c.A)].ref.Len())
 			case Next:
 				if k, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, bool))(); ok {
-					addr := int(c.C)
-					if int(c.B) == Local {
-						addr += fp - 1
-					}
-					m.assignSlot(&mem[addr], fromReflect(k))
+					m.assignSlot(&mem[int(c.B)], fromReflect(k))
+				} else {
+					ip += int(c.A)
+					continue
+				}
+			case NextLocal:
+				if k, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, bool))(); ok {
+					m.assignSlot(&mem[fp-1+int(c.B)], fromReflect(k))
 				} else {
 					ip += int(c.A)
 					continue
@@ -802,16 +786,18 @@ func (m *Machine) Run() (err error) {
 				}
 			case Next2:
 				if k, v, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
-					m.assignSlot(&mem[int(c.B)], fromReflect(k))
-					m.assignSlot(&mem[int(c.C)], fromReflect(v))
+					kAddr, vAddr := int(int16(c.B)), int(int16(c.B>>16)) //nolint:gosec
+					m.assignSlot(&mem[kAddr], fromReflect(k))
+					m.assignSlot(&mem[vAddr], fromReflect(v))
 				} else {
 					ip += int(c.A)
 					continue
 				}
 			case Next2Local:
 				if k, v, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
-					m.assignSlot(&mem[fp-1+int(c.B)], fromReflect(k))
-					m.assignSlot(&mem[fp-1+int(c.C)], fromReflect(v))
+					kAddr, vAddr := int(int16(c.B)), int(int16(c.B>>16)) //nolint:gosec
+					m.assignSlot(&mem[fp-1+kAddr], fromReflect(k))
+					m.assignSlot(&mem[fp-1+vAddr], fromReflect(v))
 				} else {
 					ip += int(c.A)
 					continue
@@ -1714,22 +1700,21 @@ func (m *Machine) Run() (err error) {
 
 // fieldByABC reconstructs a FieldByIndex path from fixed A, B, C args.
 // B < 0 means single-level; C < 0 means two-level; otherwise three-level.
-func fieldByABC(v reflect.Value, a, b, c int) reflect.Value {
+// fieldByAB accesses a struct field using the A, B encoding:
+//
+//	B == -1: single field at index A
+//	B >= 0:  two-level path [A, B]
+func fieldByAB(v reflect.Value, a, b int) reflect.Value {
 	if b < 0 {
 		return v.Field(a)
 	}
-	if c < 0 {
-		return v.FieldByIndex([]int{a, b})
-	}
-	return v.FieldByIndex([]int{a, b, c})
+	return v.FieldByIndex([]int{a, b})
 }
 
 // PushCode adds instructions to the machine code (with zero source positions).
 func (m *Machine) PushCode(code ...Instruction) (p int) {
-	p = m.code.Len()
-	for _, inst := range code {
-		m.code.Append(0, inst)
-	}
+	p = len(m.code)
+	m.code = append(m.code, code...)
 	return p
 }
 
@@ -1794,7 +1779,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	savedFrames := m.frames
 	savedPanicking := m.panicking
 	savedPanicVal := m.panicVal
-	savedCodeLen := m.code.Len()
+	savedCodeLen := len(m.code)
 
 	defer func() {
 		m.mem = savedMem
@@ -1804,7 +1789,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 		m.frames = savedFrames
 		m.panicking = savedPanicking
 		m.panicVal = savedPanicVal
-		m.code.Truncate(savedCodeLen)
+		m.code = m.code[:savedCodeLen]
 	}()
 
 	// Reset per-call state.
@@ -1825,9 +1810,9 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	// Temporarily append Call + Exit to drive the function to completion.
 	narg := funcType.NumIn()
 	nret := funcType.NumOut()
-	callIP := m.code.Len()
-	m.code.Append(0, Instruction{Op: Call, A: int32(narg), B: int32(nret)}) //nolint:gosec
-	m.code.Append(0, Instruction{Op: Exit})
+	callIP := len(m.code)
+	m.code = append(m.code, Instruction{Op: Call, A: int32(narg), B: int32(nret)}) //nolint:gosec
+	m.code = append(m.code, Instruction{Op: Exit})
 	m.ip = callIP
 	m.fp = 0
 
@@ -1853,8 +1838,8 @@ func (m *Machine) Top() (v Value) {
 
 // PopExit removes the last machine code instruction if is Exit.
 func (m *Machine) PopExit() {
-	if l := m.code.Len(); l > 0 && m.code.Inst[l-1].Op == Exit {
-		m.code.Truncate(l - 1)
+	if l := len(m.code); l > 0 && m.code[l-1].Op == Exit {
+		m.code = m.code[:l-1]
 	}
 }
 

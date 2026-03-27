@@ -273,28 +273,33 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
 		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 	}
-	inst := vm.Instruction{Op: op}
+	inst := vm.Instruction{Op: op, Pos: vm.Pos(t.Pos + c.posBase)} //nolint:gosec
 	if len(arg) > 0 {
 		inst.A = int32(arg[0]) //nolint:gosec
 	}
 	if len(arg) > 1 {
 		inst.B = int32(arg[1]) //nolint:gosec
 	}
-	if len(arg) > 2 {
-		inst.C = int32(arg[2]) //nolint:gosec
-	}
-	// Field/FieldSet encode a variable-length field index path in A, B, C.
-	// Unused trailing fields must be -1 so the VM can distinguish
+	// Field/FieldSet encode a variable-length field index path in A, B.
+	// Unused trailing B must be -1 so the VM can distinguish
 	// path length (field index 0 is valid).
 	if op == vm.Field || op == vm.FieldSet {
-		if len(arg) < 3 {
-			inst.C = -1
-		}
 		if len(arg) < 2 {
 			inst.B = -1
 		}
 	}
-	c.Append(vm.Pos(t.Pos+c.posBase), inst) //nolint:gosec
+	c.Code = append(c.Code, inst)
+}
+
+// emitField emits one or more Field instructions for a field index path.
+// Paths of length 1-2 are emitted as a single Field instruction.
+// Longer paths are split: emit Field for the first 2 indices, then Field for the remainder.
+func (c *Compiler) emitField(t goparser.Token, path []int) {
+	for len(path) > 2 {
+		c.emit(t, vm.Field, path[0], path[1])
+		path = path[2:]
+	}
+	c.emit(t, vm.Field, path...)
 }
 
 // emitIfaceWrap emits IfaceWrap if assigning a concrete value to an interface type.
@@ -498,8 +503,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			push(&symbol.Symbol{Kind: symbol.Value, Type: vm.PointerTo(pop().Type)})
-			if n := c.Len(); n > 0 && c.Inst[n-1].Op == vm.Index {
-				c.Inst[n-1].Op = vm.IndexAddr
+			if n := len(c.Code); n > 0 && c.Code[n-1].Op == vm.Index {
+				c.Code[n-1].Op = vm.IndexAddr
 			} else {
 				c.emit(t, vm.Addr)
 			}
@@ -548,10 +553,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			var offset int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{c.Len()} // store code location for fixup
+				t.Arg = []any{len(c.Code)} // store code location for fixup
 				fixList = append(fixList, t)
 			} else {
-				offset = int(s.Value.Int()) - c.Len()
+				offset = int(s.Value.Int()) - len(c.Code)
 			}
 			c.emit(t, vm.TypeBranch, offset, typeIdx) // Arg[0]=offset, Arg[1]=typeIdx
 
@@ -1206,7 +1211,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if expected, ok := jumpDepth[t.Str]; ok && len(stack) != expected {
 				return fmt.Errorf("stack depth mismatch at label %s: got %d, want %d", t.Str, len(stack), expected)
 			}
-			lc := c.Len()
+			lc := len(c.Code)
 			if s, ok := c.Symbols[t.Str]; ok {
 				s.Value = vm.ValueOf(lc)
 				if s.Kind == symbol.Func {
@@ -1261,10 +1266,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{c.Len()} // current code location
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - c.Len()
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			c.emit(t, vm.JumpFalse, i)
 
@@ -1276,10 +1281,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			jumpDepth[t.Str] = len(stack) + 1 // one value (LHS or RHS) arrives at the merge label
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{c.Len()} // current code location
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - c.Len()
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			c.emit(t, vm.JumpSetFalse, i)
 
@@ -1291,20 +1296,20 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			jumpDepth[t.Str] = len(stack) + 1 // one value (LHS or RHS) arrives at the merge label
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{c.Len()} // current code location
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - c.Len()
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			c.emit(t, vm.JumpSetTrue, i)
 
 		case lang.Goto:
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{c.Len()} // current code location
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - c.Len()
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			c.emit(t, vm.Jump, i)
 
@@ -1370,7 +1375,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					push(m)
 					// Extract embedded receiver if method is promoted through embedded fields.
 					if len(fieldPath) > 0 {
-						c.emit(t, vm.Field, fieldPath...)
+						c.emitField(t, fieldPath)
 					}
 					// Determine if auto-deref or auto-addr is needed.
 					methodWantsPtr := strings.HasPrefix(m.Name, "*")
@@ -1421,7 +1426,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						}
 					}
 					push(&symbol.Symbol{Kind: symbol.Var, Index: symbol.UnsetAddr, Type: structType.FieldType(t.Str[1:])})
-					c.emit(t, vm.Field, f.Index...)
+					c.emitField(t, f.Index)
 					break
 				}
 				return goparser.ErrUndefined{Name: t.Str[1:]}
@@ -1432,10 +1437,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			n := t.Arg[0].(int)
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{c.Len()} // current code location
+				t.Arg = []any{len(c.Code)} // current code location
 				fixList = append(fixList, t)
 			} else {
-				i = int(s.Value.Int()) - c.Len()
+				i = int(s.Value.Int()) - len(c.Code)
 			}
 			lf := func(s *symbol.Symbol) int {
 				if s.Kind == symbol.LocalVar {
@@ -1448,14 +1453,20 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Next0, i)
 			case 1:
 				k := stack[len(stack)-2]
-				c.emit(t, vm.Next, i, lf(k), k.Index)
+				if lf(k) == vm.Local {
+					c.emit(t, vm.NextLocal, i, k.Index)
+				} else {
+					c.emit(t, vm.Next, i, k.Index)
+				}
 			case 2:
 				v := stack[len(stack)-2]
 				k := stack[len(stack)-3]
+				// Pack kAddr (low 16) and vAddr (high 16) into one int.
+				packed := k.Index | (v.Index << 16)
 				if lf(k) == vm.Local {
-					c.emit(t, vm.Next2Local, i, k.Index, v.Index)
+					c.emit(t, vm.Next2Local, i, packed)
 				} else {
-					c.emit(t, vm.Next2, i, k.Index, v.Index)
+					c.emit(t, vm.Next2, i, packed)
 				}
 			}
 
@@ -1597,7 +1608,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			return fmt.Errorf("label not found: %q", t.Str)
 		}
 		loc := t.Arg[0].(int)
-		c.Inst[loc].A = int32(int(s.Value.Int()) - loc) //nolint:gosec // relative code position
+		c.Code[loc].A = int32(int(s.Value.Int()) - loc) //nolint:gosec // relative code position
 	}
 	return err
 }
@@ -1653,11 +1664,11 @@ func shiftLeftType(left *symbol.Symbol, intTyp *vm.Type) *vm.Type {
 // retractPush removes the most recently emitted Push if s is a constant,
 // returning (immediate value, true). Used for immediate-operand peephole.
 func (c *Compiler) retractPush(s *symbol.Symbol) (int, bool) {
-	if s.Kind != symbol.Const || c.Len() == 0 || c.Inst[c.Len()-1].Op != vm.Push {
+	if s.Kind != symbol.Const || len(c.Code) == 0 || c.Code[len(c.Code)-1].Op != vm.Push {
 		return 0, false
 	}
-	n := int(c.Inst[c.Len()-1].A)
-	c.Truncate(c.Len() - 1)
+	n := int(c.Code[len(c.Code)-1].A)
+	c.Code = c.Code[:len(c.Code)-1]
 	return n, true
 }
 
@@ -1711,7 +1722,7 @@ func (c *Compiler) PrintCode() {
 	}
 
 	fmt.Fprintln(os.Stderr, "# Code:")
-	for i, l := range c.Inst {
+	for i, l := range c.Code {
 		for _, label := range labels[i] {
 			fmt.Fprintln(os.Stderr, label+":")
 		}
@@ -1729,7 +1740,7 @@ func (c *Compiler) PrintCode() {
 		fmt.Fprintf(os.Stderr, "%4d %v %v\n", i, l, extra)
 	}
 
-	for _, label := range labels[c.Len()] {
+	for _, label := range labels[len(c.Code)] {
 		fmt.Fprintln(os.Stderr, label+":")
 	}
 	fmt.Fprintln(os.Stderr, "# End code")
@@ -1825,12 +1836,11 @@ func enclosingFunc(scopedName string, syms symbol.SymMap) string {
 
 // removeFnew removes the Fnew/FnewE instruction for the given symbol index.
 func (c *Compiler) removeFnew(index int) {
-	for i := c.Len() - 1; i >= 0; i-- {
-		op := c.Inst[i].Op
-		if (op == vm.Fnew || op == vm.FnewE) && int(c.Inst[i].A) == index {
-			copy(c.Inst[i:], c.Inst[i+1:])
-			copy(c.Pos[i:], c.Pos[i+1:])
-			c.Truncate(c.Len() - 1)
+	for i := len(c.Code) - 1; i >= 0; i-- {
+		op := c.Code[i].Op
+		if (op == vm.Fnew || op == vm.FnewE) && int(c.Code[i].A) == index {
+			copy(c.Code[i:], c.Code[i+1:])
+			c.Code = c.Code[:len(c.Code)-1]
 			return
 		}
 	}

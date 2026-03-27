@@ -25,7 +25,7 @@ func NewInterpreter(s *lang.Spec) *Interp {
 // Eval evaluates code string and return the last produced value if any, or an error.
 // name identifies the source ("m:<content>" for inline, "f:<path>" for file).
 func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
-	codeOffset := i.Len()
+	codeOffset := len(i.Code)
 	dataOffset := 0
 	if codeOffset > 0 {
 		// All data must be copied to the VM the first time only (re-entrance).
@@ -39,7 +39,7 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 
 	i.TrimStack()
 	i.Push(i.Data[dataOffset:]...)
-	i.PushCode(i.Inst[codeOffset:]...)
+	i.PushCode(i.Code[codeOffset:]...)
 	if s, ok := i.Symbols["main"]; ok {
 		i.PushCode(vm.Instruction{Op: vm.Push, A: int32(i.Data[s.Index].Int())}) //nolint:gosec
 		i.PushCode(vm.Instruction{Op: vm.Call})

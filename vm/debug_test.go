@@ -52,8 +52,7 @@ func TestDumpFrame_WithDebugInfo(t *testing.T) {
 		ValueOf(100), // local 1
 	}
 	code := Code{
-		Inst: []Instruction{{Op: Push}, {Op: Push}, {Op: Push}, {Op: Push}, {Op: Push}, {Op: Call}},
-		Pos:  []Pos{0, 0, 0, 0, 0, 10},
+		{Op: Push}, {Op: Push}, {Op: Push}, {Op: Push}, {Op: Push}, {Op: Call, Pos: 10},
 	}
 	var sources scan.Sources
 	sources.Add("m:test", "func foo(n int) int {\n\treturn n + 1\n}\n")

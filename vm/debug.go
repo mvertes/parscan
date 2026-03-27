@@ -92,8 +92,8 @@ func DumpFrame(w io.Writer, mem []Value, code Code, fp, sp, narg, nret int, di *
 		header += " (" + funcName + ")"
 	}
 	// Annotate retIP with source position.
-	if di != nil && retIP >= 0 && retIP < code.Len() {
-		if loc := di.PosToLine(code.Pos[retIP]); loc != "" {
+	if di != nil && retIP >= 0 && retIP < len(code) {
+		if loc := di.PosToLine(code[retIP].Pos); loc != "" {
 			header += " ret@" + loc
 		}
 	}
@@ -259,8 +259,8 @@ func (m *Machine) enterDebug() {
 	}
 
 	loc := ""
-	if di != nil && m.ip > 0 && m.ip-1 < m.code.Len() {
-		loc = di.PosToLine(m.code.Pos[m.ip-1])
+	if di != nil && m.ip > 0 && m.ip-1 < len(m.code) {
+		loc = di.PosToLine(m.code[m.ip-1].Pos)
 	}
 	if loc != "" {
 		_, _ = fmt.Fprintf(out, "trap at ip=%d (%s)\n", m.ip-1, loc)
