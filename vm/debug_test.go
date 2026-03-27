@@ -88,32 +88,31 @@ func TestDumpCallStack(t *testing.T) {
 	// Frame 0 (outer): func at mem[0], 1 arg, fp=5
 	// Frame 1 (inner): func at mem[6], 1 arg, fp=11
 	mem := []Value{
-		ValueOf(0),  // 0  frame 0: func
-		ValueOf(10), // 1  frame 0: arg 0
-		{num: 0},    // 2  frame 0: deferHead
-		{num: 99},   // 3  frame 0: retIP
-		{num: 0},    // 4  frame 0: prevFP (top-level)
-		ValueOf(0),  // 5  frame 0: local 1 (fp=5)
-		ValueOf(5),  // 6  frame 1: func
-		ValueOf(30), // 7  frame 1: arg 0
-		{num: 0},    // 8  frame 1: deferHead
-		{num: 7},    // 9  frame 1: retIP
-		{num: 5},    // 10 frame 1: prevFP -> frame 0 fp=5
-		ValueOf(77), // 11 frame 1: local 1 (fp=11)
+		ValueOf(0),                 // 0  frame 0: func
+		ValueOf(10),                // 1  frame 0: arg 0
+		{num: 0},                   // 2  frame 0: deferHead
+		{num: packRetIP(99, 1, 1)}, // 3  frame 0: retIP+info (nret=1, narg=1)
+		{num: 0},                   // 4  frame 0: prevFP (top-level)
+		ValueOf(0),                 // 5  frame 0: local 1 (fp=5)
+		ValueOf(5),                 // 6  frame 1: func
+		ValueOf(30),                // 7  frame 1: arg 0
+		{num: 0},                   // 8  frame 1: deferHead
+		{num: packRetIP(7, 0, 1)},  // 9  frame 1: retIP+info (nret=0, narg=1)
+		{num: 5},                   // 10 frame 1: prevFP -> frame 0 fp=5
+		ValueOf(77),                // 11 frame 1: local 1 (fp=11)
 	}
 
 	m := &Machine{
-		mem:    mem,
-		fp:     11,
-		frames: []frame{{info: 1 | (1 << 16)}, {info: 0 | (1 << 16)}}, // [nret=1,narg=1], [nret=0,narg=1]
+		mem: mem,
+		fp:  11,
 	}
 
 	var buf bytes.Buffer
 	m.DumpCallStack(&buf, nil)
 	out := buf.String()
 
-	if !strings.Contains(out, "Call Stack (2 frames)") {
-		t.Errorf("expected 2 frames header, got:\n%s", out)
+	if !strings.Contains(out, "Call Stack") {
+		t.Errorf("expected Call Stack header, got:\n%s", out)
 	}
 	if strings.Count(out, "--- Frame") < 2 {
 		t.Errorf("expected 2 frame dumps, got:\n%s", out)

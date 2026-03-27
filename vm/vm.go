@@ -265,21 +265,14 @@ func (i Instruction) String() (s string) {
 // Code represents the virtual machine byte code.
 type Code []Instruction
 
-// Machine represents a virtual machine.
-// frame holds per-call-frame metadata saved on the caller side.
-type frame struct {
-	env  []*Value // caller's closure env (nil for plain functions)
-	info int      // nret | (narg << 16)
-}
-
 // Machine is a stack-based virtual machine that executes bytecode instructions.
 type Machine struct {
-	code    Code     // code to execute
-	mem     []Value  // memory, as a stack
-	ip, fp  int      // instruction pointer and frame pointer
-	dataLen int      // number of global data slots in mem (set by Push)
-	env     []*Value // active closure's captured cells (nil for plain functions)
-	frames  []frame  // saved caller frames (one per call depth)
+	code    Code       // code to execute
+	mem     []Value    // memory, as a stack
+	ip, fp  int        // instruction pointer and frame pointer
+	dataLen int        // number of global data slots in mem (set by Push)
+	env     []*Value   // active closure's captured cells (nil for plain functions)
+	frames  [][]*Value // saved caller envs (only for closure calls where env != nil)
 
 	panicking bool  // true while unwinding due to panic
 	panicVal  Value // value passed to panic()
@@ -314,8 +307,18 @@ func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
 // A negative ip is checked before m.code[ip] to dispatch the DeferRet handler.
 const deferSentinelIP = -1
 
-// deferSentinelBits is deferSentinelIP encoded as uint64 bits (two's complement of -1).
-const deferSentinelBits = ^uint64(0)
+// deferSentinelBits is deferSentinelIP packed into the retIP slot's low 32 bits.
+// High 32 bits are zero (nret=0, narg=0 for defer frames).
+const deferSentinelBits = uint64(0xFFFFFFFF) // low 32 bits = -1, high 32 bits = 0
+
+// envSavedFlag is set in the high bit of prevFP when the caller's env was saved to m.frames.
+const envSavedFlag = uint64(1) << 63
+
+// packRetIP packs the return IP, nret, and narg into a single uint64.
+// Layout: [narg:16 | nret:16 | retIP:32].
+func packRetIP(retIP, nret, narg int) uint64 {
+	return uint64(uint32(retIP)) | uint64(nret)<<32 | uint64(narg)<<48 //nolint:gosec
+}
 
 // panicUnwindIP is the ip sentinel used during panic stack unwinding.
 // The main loop dispatches deferred calls and tears down frames when ip == panicUnwindIP.
@@ -387,8 +390,12 @@ func (m *Machine) Run() (err error) {
 					m.env = nil
 				}
 				nret := c.B
-				m.frames = append(m.frames, frame{env: prevEnv, info: nret | narg<<16})
-				mem = append(mem, Value{}, Value{num: uint64(ip + 1)}, Value{num: uint64(fp)}) //nolint:gosec // deferHead, retIP, prevFP
+				fpVal := uint64(fp) //nolint:gosec
+				if prevEnv != nil {
+					m.frames = append(m.frames, prevEnv)
+					fpVal |= envSavedFlag
+				}
+				mem = append(mem, Value{}, Value{num: packRetIP(ip+1, nret, narg)}, Value{num: fpVal}) //nolint:gosec // deferHead, retIP+info, prevFP+envFlag
 				ip = nip
 				fp = sp + 3
 				continue
@@ -772,7 +779,7 @@ func (m *Machine) Run() (err error) {
 				continue
 
 			case Recover:
-				if m.panicking && int(mem[fp-2].num) == deferSentinelIP { //nolint:gosec
+				if m.panicking && int(int32(mem[fp-2].num)) == deferSentinelIP { //nolint:gosec
 					m.panicking = false
 					pv := m.panicVal
 					// Wrap in Iface so type assertions on the recovered value work.
@@ -788,13 +795,10 @@ func (m *Machine) Run() (err error) {
 				}
 
 			case Return:
-				// Read nret and callNarg from the current frame.
-				nret, callNarg := 0, 0
-				if top := len(m.frames) - 1; top >= 0 {
-					info := m.frames[top].info
-					nret = info & 0xFFFF
-					callNarg = info >> 16
-				}
+				// Read nret and callNarg from the packed retIP slot.
+				retIPInfo := mem[fp-2].num
+				nret := int((retIPInfo >> 32) & 0xFFFF)
+				callNarg := int(retIPInfo >> 48)
 				// If there are pending defers in this frame, dispatch the top one (LIFO).
 				dh := int(mem[fp-3].num) //nolint:gosec
 				if dh != 0 {
@@ -841,25 +845,49 @@ func (m *Machine) Run() (err error) {
 					base := len(mem)
 					mem = append(mem, funcVal)
 					mem = append(mem, mem[dh-narg-2:dh-2]...)
-					mem = append(mem, Value{}, Value{num: deferSentinelBits}, Value{num: uint64(fp)}) //nolint:gosec
-					m.frames = append(m.frames, frame{env: prevEnv})
+					defFPVal := uint64(fp) //nolint:gosec
+					if prevEnv != nil {
+						m.frames = append(m.frames, prevEnv)
+						defFPVal |= envSavedFlag
+					}
+					mem = append(mem, Value{}, Value{num: deferSentinelBits}, Value{num: defFPVal})
 					fp = base + 1 + narg + 3
 					ip = nip
 					continue
 				}
 				// No pending defers: normal frame teardown.
-				ip = int(mem[fp-2].num) //nolint:gosec
+				ip = int(int32(retIPInfo)) //nolint:gosec
 				ofp := fp
-				fp = int(mem[fp-1].num) //nolint:gosec
-				if top := len(m.frames) - 1; top >= 0 {
-					m.env = m.frames[top].env
-					m.frames[top].env = nil // clear for GC
+				fpVal := mem[fp-1].num
+				if fpVal&envSavedFlag != 0 {
+					fp = int(fpVal &^ envSavedFlag) //nolint:gosec
+					top := len(m.frames) - 1
+					m.env = m.frames[top]
+					m.frames[top] = nil // clear for GC
 					m.frames = m.frames[:top]
+				} else {
+					fp = int(fpVal) //nolint:gosec
+					m.env = nil
 				}
 				newBase := ofp - callNarg - 4
-				copy(mem[newBase:], mem[sp-nret:sp])
+				// Inline copy for common small nret to avoid runtime.typedslicecopy.
+				switch nret {
+				case 0:
+					// nothing to copy
+				case 1:
+					mem[newBase] = mem[sp-1]
+				default:
+					copy(mem[newBase:], mem[sp-nret:sp])
+				}
 				newSP := newBase + nret
-				clear(mem[newSP:sp]) // clear stale slots so GC can reclaim references
+				// Scalar clear for small frames to avoid runtime.memclrHasPointers call.
+				if n := sp - newSP; n <= 8 {
+					for i := newSP; i < sp; i++ {
+						mem[i] = Value{}
+					}
+				} else {
+					clear(mem[newSP:sp])
+				}
 				mem = mem[:newSP]
 				continue
 			case Slice:
@@ -1404,8 +1432,8 @@ func (m *Machine) Run() (err error) {
 					continue
 				}
 				// VM defer: store panicUnwindIP as return address, push frame.
-				top := len(m.frames) - 1
-				nret := m.frames[top].info & 0xFFFF
+				retIPInfo := mem[fp-2].num
+				nret := int((retIPInfo >> 32) & 0xFFFF)
 				pip := int32(panicUnwindIP)
 				mem[dh].num = uint64(*(*uint32)(unsafe.Pointer(&pip))) | uint64(nret)<<32 //nolint:gosec
 				prevEnv := m.env
@@ -1426,8 +1454,12 @@ func (m *Machine) Run() (err error) {
 				base := len(mem)
 				mem = append(mem, funcVal)
 				mem = append(mem, mem[dh-narg-2:dh-2]...)
-				mem = append(mem, Value{}, Value{num: deferSentinelBits}, Value{num: uint64(fp)}) //nolint:gosec
-				m.frames = append(m.frames, frame{env: prevEnv})
+				defFPVal := uint64(fp) //nolint:gosec
+				if prevEnv != nil {
+					m.frames = append(m.frames, prevEnv)
+					defFPVal |= envSavedFlag
+				}
+				mem = append(mem, Value{}, Value{num: deferSentinelBits}, Value{num: defFPVal})
 				fp = base + 1 + narg + 3
 				ip = nip
 				continue
@@ -1435,16 +1467,22 @@ func (m *Machine) Run() (err error) {
 			// No more defers in this frame.
 			if !m.panicking {
 				// Recovered: tear down frame, return zero values to caller.
-				top := len(m.frames) - 1
-				f := m.frames[top]
-				nret := f.info & 0xFFFF
-				numIn := f.info >> 16
-				m.env = f.env
-				m.frames[top] = frame{} // clear for GC
-				m.frames = m.frames[:top]
-				ip = int(mem[fp-2].num) //nolint:gosec
+				retIPInfo := mem[fp-2].num
+				nret := int((retIPInfo >> 32) & 0xFFFF)
+				numIn := int(retIPInfo >> 48)
+				ip = int(int32(retIPInfo)) //nolint:gosec
 				ofp := fp
-				fp = int(mem[fp-1].num) //nolint:gosec
+				fpVal := mem[fp-1].num
+				if fpVal&envSavedFlag != 0 {
+					fp = int(fpVal &^ envSavedFlag) //nolint:gosec
+					top := len(m.frames) - 1
+					m.env = m.frames[top]
+					m.frames[top] = nil
+					m.frames = m.frames[:top]
+				} else {
+					fp = int(fpVal) //nolint:gosec
+					m.env = nil
+				}
 				newBase := ofp - numIn - 4
 				newSP := newBase + nret
 				clear(mem[newBase:newSP]) // clear return slots
@@ -1453,14 +1491,19 @@ func (m *Machine) Run() (err error) {
 				continue
 			}
 			// Still panicking: tear down frame, continue unwinding parent.
-			top := len(m.frames) - 1
-			f := m.frames[top]
-			numIn := f.info >> 16
-			m.env = f.env
-			m.frames[top] = frame{} // clear for GC
-			m.frames = m.frames[:top]
+			numIn := int(mem[fp-2].num >> 48)
 			ofp := fp
-			fp = int(mem[fp-1].num) //nolint:gosec
+			fpVal := mem[fp-1].num
+			if fpVal&envSavedFlag != 0 {
+				fp = int(fpVal &^ envSavedFlag) //nolint:gosec
+				top := len(m.frames) - 1
+				m.env = m.frames[top]
+				m.frames[top] = nil
+				m.frames = m.frames[:top]
+			} else {
+				fp = int(fpVal) //nolint:gosec
+				m.env = nil
+			}
 			if fp == 0 {
 				// Top of stack: return panic as error.
 				m.mem, m.ip, m.fp = mem, 0, 0

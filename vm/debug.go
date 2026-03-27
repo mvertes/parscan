@@ -140,12 +140,15 @@ func (m *Machine) DumpCallStack(w io.Writer, di *DebugInfo) {
 		return
 	}
 
-	_, _ = fmt.Fprintf(w, "=== Call Stack (%d frames) ===\n\n", len(m.frames))
+	_, _ = fmt.Fprintln(w, "=== Call Stack ===")
 
-	for depth := len(m.frames) - 1; depth >= 0; depth-- {
-		info := m.frames[depth].info
-		nret := info & 0xFFFF
-		narg := info >> 16
+	for fp > 0 {
+		if fp-2 < 0 || fp-2 >= len(mem) {
+			break
+		}
+		retIPInfo := mem[fp-2].num
+		nret := int((retIPInfo >> 32) & 0xFFFF)
+		narg := int(retIPInfo >> 48)
 
 		DumpFrame(w, mem, m.code, fp, sp, narg, nret, di)
 
@@ -154,7 +157,8 @@ func (m *Machine) DumpCallStack(w io.Writer, di *DebugInfo) {
 		if fp-1 < 0 || fp-1 >= len(mem) {
 			break
 		}
-		fp = int(mem[fp-1].num) //nolint:gosec
+		fpVal := mem[fp-1].num
+		fp = int(fpVal &^ (1 << 63)) //nolint:gosec // mask off envSavedFlag
 	}
 
 	// Print globals with names if available.
