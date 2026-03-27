@@ -151,10 +151,9 @@ that compiles to the `Trap` opcode. When the VM hits `Trap`, it pauses
 execution and drops into an interactive REPL where the user can inspect the
 call stack and memory.
 
-The mechanism reuses the run loop's sentinel-IP pattern (the same approach
-used by `defer` and `panic` unwinding): `Trap` saves the resume address and
-sets `ip` to a special constant (`trapIP = -3`). The outer loop detects
-this sentinel and calls `enterDebug()`.
+The `Trap` opcode saves the resume address, syncs Machine state, and calls
+`enterDebug()` inline. Defer return and panic unwinding use sentinel opcodes
+(`DeferRet`, `PanicUnwind`) appended to the code array at `Run` entry.
 
 Debug info (symbol names, source positions) is built lazily -- the
 interpreter registers a builder function on the VM, and it is only called

@@ -137,8 +137,8 @@ mem[dataLen ..]        call stack (grows upward)
 
 - `mem[fp-3]` -- `deferHead`: index of the topmost deferred-call record
   (0 = none). Updated by `DeferPush`.
-- `mem[fp-2]` -- `retIP`: return address (or `deferSentinelIP = -1` for
-  a deferred frame).
+- `mem[fp-2]` -- `retIP`: return address (or the address of the `DeferRet`
+  sentinel instruction for a deferred frame).
 - `mem[fp-1]` -- `prevFP`: the caller's frame pointer.
 - `frames[top]` -- `frame{env, info}`: the caller's closure env and
   packed nret/narg (side-channel, not on the value stack).
@@ -221,13 +221,12 @@ calling different wrapped functions on the same `Machine` are not safe.
 The `Trap` opcode pauses VM execution and enters an interactive debug
 session. It is emitted by the compiler for calls to the `trap()` builtin.
 
-**Sentinel IP mechanism.** The run loop uses special `ip` values to handle
-out-of-band control flow. `Trap` works the same way as `deferSentinelIP`
-and `panicUnwindIP`: the opcode handler saves the resume address in
-`trapOrig`, sets `ip = trapIP` (constant `-3`), and continues. On the next
-iteration the run loop detects the sentinel, syncs Machine state, and calls
-`enterDebug()`. When the user types `cont`, `enterDebug` returns and the
-loop restores `ip` from `Machine.ip` to resume normal execution.
+**Sentinel opcodes.** Out-of-band control flow (defer return, panic unwind,
+debug trap) is handled via sentinel opcodes (`DeferRet`, `PanicUnwind`)
+appended to the code array at `Run` entry. The `Trap` opcode handles debug
+entry inline: it saves the resume address in `trapOrig`, syncs Machine
+state, and calls `enterDebug()`. When the user types `cont`, `enterDebug`
+returns and execution resumes from `Machine.ip`.
 
 **Debug fields on Machine:**
 
