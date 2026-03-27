@@ -1107,6 +1107,17 @@ func f2(a int64) interface{} { return a + 1 }
 v1 := f1(3).(int)
 v2 := f2(3).(int64)
 v1 + int(v2)`, res: "8"},
+
+		// struct field name same as a type name, type-assert on interface field (yaegi-issue-1320)
+		{n: "iface_field_same_name_as_type", src: `
+type Pooler interface { Get() string }
+type baseClient struct { connPool Pooler }
+type connPool struct { name string }
+func (c *connPool) Get() string { return c.name }
+func newBaseClient(p Pooler) *baseClient { return &baseClient{connPool: p} }
+func newConnPool() *connPool { return &connPool{name: "connPool"} }
+b := newBaseClient(newConnPool())
+b.connPool.(*connPool).name`, res: "connPool"},
 	})
 }
 

@@ -498,15 +498,22 @@ func (t *Type) FieldIndex(name string) []int {
 
 // FieldType returns the type of struct field name, using parscan-level info when available.
 func (t *Type) FieldType(name string) *Type {
+	_, ft := t.FieldLookup(name)
+	return ft
+}
+
+// FieldLookup returns the index path and type of struct field name in a single pass.
+func (t *Type) FieldLookup(name string) ([]int, *Type) {
 	for i, f := range reflect.VisibleFields(t.Rtype) {
-		if f.Name == name {
-			if i < len(t.Fields) {
-				return t.Fields[i]
-			}
-			return &Type{Name: f.Name, PkgPath: f.PkgPath, Rtype: f.Type}
+		if f.Name != name {
+			continue
 		}
+		if i < len(t.Fields) {
+			return f.Index, t.Fields[i]
+		}
+		return f.Index, &Type{Name: f.Name, PkgPath: f.PkgPath, Rtype: f.Type}
 	}
-	return nil
+	return nil, nil
 }
 
 // IsPtr returns true if type t is of pointer kind.

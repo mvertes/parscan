@@ -785,7 +785,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				nret := typ.Rtype.NumOut()
 				for i := 0; i < nret; i++ {
-					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.Out(i)})
+					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.ReturnType(i)})
 				}
 				callNarg := narg
 				if typ.Rtype.IsVariadic() {
@@ -857,9 +857,22 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emitIfaceWrap(t, elemTyp, vs.Type)
 					c.emit(t, vm.MapSet)
 				}
-			case symbol.Unset:
-				j := ts.Type.FieldIndex(ks.Name)
-				ft := ts.Type.FieldType(ks.Name)
+			case symbol.Type, symbol.Unset:
+				fieldName := ks.Name
+				if ks.Kind == symbol.Type {
+					// Field name matches a type name: Ident emitted a spurious Fnew for it.
+					if ts.Type.Rtype.Kind() != reflect.Struct || ks.Type == nil {
+						break
+					}
+					fieldName = ks.Type.Name
+				}
+				j, ft := ts.Type.FieldLookup(fieldName)
+				if j == nil {
+					break
+				}
+				if ks.Kind == symbol.Type {
+					c.removeFnew(ks.Index)
+				}
 				if ft != nil && ft.Rtype.Kind() == reflect.Func {
 					c.emit(t, vm.WrapFunc, c.typeIndex(ft))
 				}
