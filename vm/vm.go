@@ -346,36 +346,52 @@ const panicUnwindIP = -2
 // trapIP is the ip sentinel that triggers interactive debug mode.
 const trapIP = -3
 
+// growStack ensures mem has room for at least sp+1+need elements, where sp is
+// the index of the current top-of-stack element.
+// Returns the (possibly reallocated) slice extended to its full capacity.
+func growStack(mem []Value, sp, need int) []Value {
+	required := sp + 1 + need
+	if required <= len(mem) {
+		return mem
+	}
+	n := max(len(mem)*2, required+256)
+	newMem := make([]Value, n)
+	copy(newMem, mem[:sp+1])
+	return newMem
+}
+
 // Run runs a program.
 func (m *Machine) Run() (err error) {
-	mem, ip, fp, sp := m.mem, m.ip, m.fp, 0
+	mem, ip, fp := m.mem, m.ip, m.fp
+	sp := len(mem) - 1
+	// Extend mem to full capacity so all writes up to cap are in bounds.
+	mem = mem[:cap(mem)]
 
 	defer func() {
-		m.mem, m.ip, m.fp = mem, ip, fp
+		m.mem, m.ip, m.fp = mem[:sp+1], ip, fp
 	}()
 
 	for {
 		for ip >= 0 {
-			sp = len(mem)        // stack pointer
 			c := m.code.Inst[ip] // current instruction
 			if debug {
-				log.Printf("ip:%-3d sp:%-3d fp:%-3d op:[%-20v] mem:%v\n", ip, sp, fp, c, Vstring(mem))
+				log.Printf("ip:%-3d sp:%-3d fp:%-3d op:[%-20v] mem:%v\n", ip, sp, fp, c, Vstring(mem[:sp+1]))
 			}
 			switch c.Op {
 			case Addr:
-				v := mem[sp-1]
+				v := mem[sp]
 				if v.ref.CanAddr() {
-					mem[sp-1] = Value{ref: v.ref.Addr()}
+					mem[sp] = Value{ref: v.ref.Addr()}
 				} else {
 					// Materialize via Reflect() to get an addressable value, then take its address.
-					mem[sp-1] = Value{ref: v.Reflect().Addr()}
+					mem[sp] = Value{ref: v.Reflect().Addr()}
 				}
 			case Set:
-				m.assignSlot(&mem[int(c.A)*(fp-1)+int(c.B)], mem[sp-1])
-				mem = mem[:sp-1]
+				m.assignSlot(&mem[int(c.A)*(fp-1)+int(c.B)], mem[sp])
+				sp--
 			case Call:
 				narg := int(c.A)
-				fval := mem[sp-1-narg]
+				fval := mem[sp-narg]
 				// Inline fast path: only call resolveFuncField for addressable Func fields.
 				if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
 					fval = m.resolveFuncField(fval)
@@ -401,11 +417,15 @@ func (m *Machine) Run() (err error) {
 					if rv.Kind() == reflect.Func {
 						in := make([]reflect.Value, narg)
 						for i := range in {
-							in[i] = mem[sp-narg+i].Reflect()
+							in[i] = mem[sp-narg+1+i].Reflect()
 						}
-						mem = mem[:sp-narg-1]
+						sp -= narg + 1
 						for _, v := range rv.Call(in) {
-							mem = append(mem, fromReflect(v))
+							if sp+1 >= len(mem) {
+								mem = growStack(mem, sp, 1)
+							}
+							sp++
+							mem[sp] = fromReflect(v)
 						}
 						break
 					}
@@ -418,24 +438,34 @@ func (m *Machine) Run() (err error) {
 					m.frames = append(m.frames, prevEnv)
 					fpVal |= envSavedFlag
 				}
-				mem = append(mem, Value{}, Value{num: packRetIP(ip+1, nret, narg)}, Value{num: fpVal}) //nolint:gosec // deferHead, retIP+info, prevFP+envFlag
+				if sp+3 >= len(mem) {
+					mem = growStack(mem, sp, 3)
+				}
+				mem[sp+1] = Value{}
+				mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg)}
+				mem[sp+3] = Value{num: fpVal}
+				sp += 3 // deferHead, retIP+info, prevFP+envFlag
 				ip = nip
-				fp = sp + 3
+				fp = sp + 1
 				continue
 			case Deref:
-				r := mem[sp-1].ref.Elem()
+				r := mem[sp].ref.Elem()
 				v := Value{ref: r}
 				if isNum(r.Kind()) {
 					v.num = numBits(r)
 				}
-				mem[sp-1] = v
+				mem[sp] = v
 			case DerefSet:
-				ptr := mem[sp-2]
-				val := mem[sp-1]
+				ptr := mem[sp-1]
+				val := mem[sp]
 				numSet(ptr.ref.Elem(), val)
-				mem = mem[:sp-2]
+				sp -= 2
 			case GetLocal:
-				mem = append(mem, mem[int(c.A)+fp-1])
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = mem[int(c.A)+fp-1]
 			case GetGlobal:
 				// Global slots written via SetS update ref through a shared pointer without
 				// updating num in the original slot; sync num from ref before copying.
@@ -443,34 +473,46 @@ func (m *Machine) Run() (err error) {
 				if isNum(v.ref.Kind()) && v.ref.CanAddr() {
 					v.num = numBits(v.ref)
 				}
-				mem = append(mem, v)
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = v
 			case Get:
 				if int(c.A) == Local {
-					mem = append(mem, mem[int(c.B)+fp-1])
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = mem[int(c.B)+fp-1]
 				} else {
 					v := mem[int(c.B)]
 					if isNum(v.ref.Kind()) && v.ref.CanAddr() {
 						v.num = numBits(v.ref)
 					}
-					mem = append(mem, v)
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = v
 				}
 			case New:
 				mem[int(c.A)+fp-1] = NewValue(mem[int(c.B)].ref.Type())
 			case Equal:
-				mem[sp-2] = boolVal(mem[sp-2].Equal(mem[sp-1]))
-				mem = mem[:sp-1]
+				mem[sp-1] = boolVal(mem[sp-1].Equal(mem[sp]))
+				sp--
 			case EqualSet:
-				if mem[sp-2].Equal(mem[sp-1]) {
+				if mem[sp-1].Equal(mem[sp]) {
 					// If equal then lhs and rhs are popped, replaced by test result, as in Equal.
-					mem[sp-2] = boolVal(true)
-					mem = mem[:sp-1]
+					mem[sp-1] = boolVal(true)
+					sp--
 				} else {
 					// If not equal then the lhs is let on stack for further processing.
 					// This is used to simplify bytecode in case clauses of switch statments.
-					mem[sp-1] = boolVal(false)
+					mem[sp] = boolVal(false)
 				}
 			case Convert:
-				idx := sp - 1 - int(c.B)
+				idx := sp - int(c.B)
 				v := mem[idx]
 				dstType := mem[int(c.A)].ref.Type()
 				dstKind := dstType.Kind()
@@ -554,11 +596,11 @@ func (m *Machine) Run() (err error) {
 
 			case IfaceWrap:
 				typ := mem[int(c.A)].ref.Interface().(*Type)
-				idx := sp - 1 - int(c.B)
+				idx := sp - int(c.B)
 				mem[idx] = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: mem[idx]})}
 
 			case IfaceCall:
-				ifc := mem[sp-1].IfaceVal()
+				ifc := mem[sp].IfaceVal()
 				method := ifc.Typ.Methods[int(c.A)]
 				// The concrete type inside an embedded interface field is only known at runtime.
 				for method.EmbedIface {
@@ -588,22 +630,26 @@ func (m *Machine) Run() (err error) {
 					}
 					*cell = fromReflect(rv)
 				}
-				mem[sp-1] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Env: []*Value{cell}})}
+				mem[sp] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Env: []*Value{cell}})}
 
 			case TypeAssert:
 				dstTyp := mem[int(c.A)].ref.Interface().(*Type)
 				okForm := int(c.B) == 1
-				ifc := mem[sp-1]
+				ifc := mem[sp]
 				if !ifc.IsIface() {
 					if !okForm {
 						m.panicking = true
 						m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp))}
-						mem = mem[:sp-1]
+						sp--
 						ip = panicUnwindIP
 						continue
 					}
-					mem[sp-1] = NewValue(dstTyp.Rtype)
-					mem = append(mem, boolVal(false))
+					mem[sp] = NewValue(dstTyp.Rtype)
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = boolVal(false)
 					break
 				}
 				concrete := ifc.IfaceVal()
@@ -621,26 +667,34 @@ func (m *Machine) Run() (err error) {
 						result = ifc
 					}
 					if okForm {
-						mem[sp-1] = result
-						mem = append(mem, boolVal(true))
+						mem[sp] = result
+						if sp+1 >= len(mem) {
+							mem = growStack(mem, sp, 1)
+						}
+						sp++
+						mem[sp] = boolVal(true)
 					} else {
-						mem[sp-1] = result
+						mem[sp] = result
 					}
 				} else {
 					if !okForm {
 						m.panicking = true
 						m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface value is %s, not %s", concrete.Typ, dstTyp))}
-						mem = mem[:sp-1]
+						sp--
 						ip = panicUnwindIP
 						continue
 					}
-					mem[sp-1] = NewValue(dstTyp.Rtype)
-					mem = append(mem, boolVal(false))
+					mem[sp] = NewValue(dstTyp.Rtype)
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = boolVal(false)
 				}
 
 			case TypeBranch: // Arg[0]=offset, Arg[1]=typeIdx (-1 for nil case)
-				ifc := mem[sp-1]
-				mem = mem[:sp-1]
+				ifc := mem[sp]
+				sp--
 				var matched bool
 				if int(c.B) == -1 {
 					matched = !ifc.IsIface()
@@ -661,65 +715,77 @@ func (m *Machine) Run() (err error) {
 			case Exit:
 				return err
 			case Fnew:
-				mem = append(mem, NewValue(mem[int(c.A)].ref.Type(), int(c.B)))
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = NewValue(mem[int(c.A)].ref.Type(), int(c.B))
 			case FnewE:
-				mem = append(mem, NewValue(mem[int(c.A)].ref.Type().Elem(), int(c.B)))
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = NewValue(mem[int(c.A)].ref.Type().Elem(), int(c.B))
 			case Field:
-				fv := forceSettable(fieldByABC(reflect.Indirect(mem[sp-1].ref), int(c.A), int(c.B), int(c.C)))
+				fv := forceSettable(fieldByABC(reflect.Indirect(mem[sp].ref), int(c.A), int(c.B), int(c.C)))
 				switch {
 				case isNum(fv.Kind()):
 					// Preserve addressable ref for write-through on struct field mutations.
-					mem[sp-1] = Value{num: numBits(fv), ref: fv}
+					mem[sp] = Value{num: numBits(fv), ref: fv}
 				case fv.Kind() == reflect.Func && fv.CanAddr():
 					// Always return addressable ref so SetS can update funcFields on reassignment.
 					// Call checks funcFields for fast parscan dispatch.
-					mem[sp-1] = Value{ref: fv}
+					mem[sp] = Value{ref: fv}
 				default:
-					mem[sp-1] = Value{ref: fv}
+					mem[sp] = Value{ref: fv}
 				}
 			case FieldSet:
-				m.setFuncField(forceSettable(fieldByABC(mem[sp-2].ref, int(c.A), int(c.B), int(c.C))), mem[sp-1])
-				mem = mem[:sp-1]
+				m.setFuncField(forceSettable(fieldByABC(mem[sp-1].ref, int(c.A), int(c.B), int(c.C))), mem[sp])
+				sp--
 			case FieldFset:
-				m.setFuncField(forceSettable(mem[sp-3].ref.Field(int(mem[sp-2].num))), mem[sp-1]) //nolint:gosec
-				mem = mem[:sp-2]
+				m.setFuncField(forceSettable(mem[sp-2].ref.Field(int(mem[sp-1].num))), mem[sp]) //nolint:gosec
+				sp -= 2
 			case Jump:
 				ip += int(c.A)
 				continue
 			case JumpTrue:
-				cond := mem[sp-1].num != 0
-				mem = mem[:sp-1]
+				cond := mem[sp].num != 0
+				sp--
 				if cond {
 					ip += int(c.A)
 					continue
 				}
 			case JumpFalse:
-				cond := mem[sp-1].num != 0
-				mem = mem[:sp-1]
+				cond := mem[sp].num != 0
+				sp--
 				if !cond {
 					ip += int(c.A)
 					continue
 				}
 			case JumpSetTrue:
-				cond := mem[sp-1].num != 0
+				cond := mem[sp].num != 0
 				if cond {
 					ip += int(c.A)
 					// Note that the stack is not modified if cond is true.
 					continue
 				}
-				mem = mem[:sp-1]
+				sp--
 			case JumpSetFalse:
-				cond := mem[sp-1].num != 0
+				cond := mem[sp].num != 0
 				if !cond {
 					ip += int(c.A)
 					// Note that the stack is not modified if cond is false.
 					continue
 				}
-				mem = mem[:sp-1]
+				sp--
 			case Len:
-				mem = append(mem, ValueOf(mem[sp-1-int(c.A)].ref.Len()))
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = ValueOf(mem[sp-1-int(c.A)].ref.Len())
 			case Next:
-				if k, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); ok {
+				if k, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, bool))(); ok {
 					addr := int(c.C)
 					if int(c.B) == Local {
 						addr += fp - 1
@@ -730,12 +796,12 @@ func (m *Machine) Run() (err error) {
 					continue
 				}
 			case Next0:
-				if _, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, bool))(); !ok {
+				if _, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, bool))(); !ok {
 					ip += int(c.A)
 					continue
 				}
 			case Next2:
-				if k, v, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
+				if k, v, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
 					m.assignSlot(&mem[int(c.B)], fromReflect(k))
 					m.assignSlot(&mem[int(c.C)], fromReflect(v))
 				} else {
@@ -743,7 +809,7 @@ func (m *Machine) Run() (err error) {
 					continue
 				}
 			case Next2Local:
-				if k, v, ok := mem[sp-2].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
+				if k, v, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
 					m.assignSlot(&mem[fp-1+int(c.B)], fromReflect(k))
 					m.assignSlot(&mem[fp-1+int(c.C)], fromReflect(v))
 				} else {
@@ -751,41 +817,60 @@ func (m *Machine) Run() (err error) {
 					continue
 				}
 			case Not:
-				if mem[sp-1].num != 0 {
-					mem[sp-1].num = 0
+				if mem[sp].num != 0 {
+					mem[sp].num = 0
 				} else {
-					mem[sp-1].num = 1
+					mem[sp].num = 1
 				}
-				mem[sp-1].ref = zbool
+				mem[sp].ref = zbool
 			case Pop:
-				mem = mem[:sp-int(c.A)]
+				sp -= int(c.A)
 			case Push:
-				mem = append(mem, Value{num: uint64(int(c.A)), ref: zint}) //nolint:gosec
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = Value{num: uint64(int(c.A)), ref: zint} //nolint:gosec
 			case Pull:
-				next, stop := iter.Pull(mem[sp-1].Seq())
-				mem = append(mem, ValueOf(next), ValueOf(stop))
+				next, stop := iter.Pull(mem[sp].Seq())
+				if sp+2 >= len(mem) {
+					mem = growStack(mem, sp, 2)
+				}
+				mem[sp+1] = ValueOf(next)
+				mem[sp+2] = ValueOf(stop)
+				sp += 2
 			case Pull2:
-				next, stop := iter.Pull2(mem[sp-1].Seq2())
-				mem = append(mem, ValueOf(next), ValueOf(stop))
+				next, stop := iter.Pull2(mem[sp].Seq2())
+				if sp+2 >= len(mem) {
+					mem = growStack(mem, sp, 2)
+				}
+				mem[sp+1] = ValueOf(next)
+				mem[sp+2] = ValueOf(stop)
+				sp += 2
 			case Grow:
-				mem = append(mem, make([]Value, int(c.A))...)
+				if n := int(c.A); sp+n >= len(mem) {
+					mem = growStack(mem, sp, n)
+				}
+				sp += int(c.A)
 			case DeferPush:
 				// Snapshot args in-place (detach addressable refs to prevent aliasing).
 				narg := int(c.A)
 				isX := int(c.B)
-				for i := sp - narg; i < sp; i++ {
+				for i := sp - narg + 1; i <= sp; i++ {
 					if isNum(mem[i].ref.Kind()) && mem[i].ref.CanAddr() {
 						mem[i].ref = reflect.Zero(mem[i].ref.Type())
 					}
 				}
 				// Push 3-slot header: packed(narg/isX), prevHead link, returnIP placeholder.
 				prevHead := int(mem[fp-3].num) //nolint:gosec
-				mem = append(mem,
-					Value{num: uint64(narg<<1 | isX)}, //nolint:gosec
-					Value{num: uint64(prevHead)},      //nolint:gosec
-					Value{},                           // returnIP placeholder, filled by Return
-				)
-				mem[fp-3].num = uint64(sp + 2) //nolint:gosec // dh = index of returnIP slot
+				if sp+3 >= len(mem) {
+					mem = growStack(mem, sp, 3)
+				}
+				mem[sp+1] = Value{num: uint64(narg<<1 | isX)} //nolint:gosec
+				mem[sp+2] = Value{num: uint64(prevHead)}      //nolint:gosec
+				mem[sp+3] = Value{}                           // returnIP placeholder, filled by Return
+				sp += 3
+				mem[fp-3].num = uint64(sp) //nolint:gosec // dh = index of returnIP slot
 
 			case WrapFunc:
 				// Wrap the parscan func value on the stack in a reflect.MakeFunc for native Go callbacks.
@@ -793,8 +878,8 @@ func (m *Machine) Run() (err error) {
 				// CallFunc is re-entrant for single-threaded synchronous callbacks; concurrent goroutine
 				// calls to different wrapped functions on the same Machine are NOT safe.
 				typ := mem[int(c.A)].ref.Interface().(*Type)
-				fval := mem[sp-1]
-				mem[sp-1] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: m.wrapForFunc(fval, typ.Rtype)})}
+				fval := mem[sp]
+				mem[sp] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: m.wrapForFunc(fval, typ.Rtype)})}
 
 			case Trap:
 				m.trapOrig = ip + 1 // resume ip after Trap instruction
@@ -803,8 +888,8 @@ func (m *Machine) Run() (err error) {
 
 			case Panic:
 				m.panicking = true
-				m.panicVal = mem[sp-1]
-				mem = mem[:sp-1] // pop the panic argument
+				m.panicVal = mem[sp]
+				sp-- // pop the panic argument
 				ip = panicUnwindIP
 				continue
 
@@ -818,10 +903,18 @@ func (m *Machine) Run() (err error) {
 						typ := &Type{Name: rt.Name(), Rtype: rt}
 						pv = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: pv})}
 					}
-					mem = append(mem, pv)
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = pv
 					m.panicVal = Value{}
 				} else {
-					mem = append(mem, Value{}) // nil
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = Value{} // nil
 				}
 
 			case Return:
@@ -849,8 +942,8 @@ func (m *Machine) Run() (err error) {
 						for i := 0; i < nret; i++ {
 							mem[retBase+i] = mem[dh+1+i]
 						}
-						clear(mem[retBase+nret : sp])
-						mem = mem[:retBase+nret]
+						clear(mem[retBase+nret : sp+1])
+						sp = retBase + nret - 1
 						mem[fp-3].num = uint64(prevHead) //nolint:gosec
 						continue                         // re-check for more defers
 					}
@@ -872,16 +965,33 @@ func (m *Machine) Run() (err error) {
 						m.env = nil
 					}
 					// Push func+args copy and 3-slot call frame (retIP, prevFP, deferHead=0).
-					base := len(mem)
-					mem = append(mem, funcVal)
-					mem = append(mem, mem[dh-narg-2:dh-2]...)
+					base := sp
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = funcVal
+					{
+						n := (dh - 2) - (dh - narg - 2)
+						if sp+n >= len(mem) {
+							mem = growStack(mem, sp, n)
+						}
+						copy(mem[sp+1:], mem[dh-narg-2:dh-2])
+						sp += n
+					}
 					defFPVal := uint64(fp) //nolint:gosec
 					if prevEnv != nil {
 						m.frames = append(m.frames, prevEnv)
 						defFPVal |= envSavedFlag
 					}
-					mem = append(mem, Value{}, Value{num: deferSentinelBits}, Value{num: defFPVal})
-					fp = base + 1 + narg + 3
+					if sp+3 >= len(mem) {
+						mem = growStack(mem, sp, 3)
+					}
+					mem[sp+1] = Value{}
+					mem[sp+2] = Value{num: deferSentinelBits}
+					mem[sp+3] = Value{num: defFPVal}
+					sp += 3
+					fp = base + 1 + narg + 3 + 1
 					ip = nip
 					continue
 				}
@@ -905,78 +1015,78 @@ func (m *Machine) Run() (err error) {
 				case 0:
 					// nothing to copy
 				case 1:
-					mem[newBase] = mem[sp-1]
+					mem[newBase] = mem[sp]
 				default:
-					copy(mem[newBase:], mem[sp-nret:sp])
+					copy(mem[newBase:], mem[sp-nret+1:sp+1])
 				}
-				newSP := newBase + nret
+				newSP := newBase + nret - 1
 				// Scalar clear for small frames to avoid runtime.memclrHasPointers call.
 				if n := sp - newSP; n <= 8 {
-					for i := newSP; i < sp; i++ {
+					for i := newSP + 1; i <= sp; i++ {
 						mem[i] = Value{}
 					}
 				} else {
-					clear(mem[newSP:sp])
+					clear(mem[newSP+1 : sp+1])
 				}
-				mem = mem[:newSP]
+				sp = newSP
 				continue
 			case Slice:
+				low := int(mem[sp-1].num) //nolint:gosec
+				high := int(mem[sp].num)  //nolint:gosec
+				mem[sp-2] = Value{ref: mem[sp-2].ref.Slice(low, high)}
+				sp -= 2
+			case Slice3:
 				low := int(mem[sp-2].num)  //nolint:gosec
 				high := int(mem[sp-1].num) //nolint:gosec
-				mem[sp-3] = Value{ref: mem[sp-3].ref.Slice(low, high)}
-				mem = mem[:sp-2]
-			case Slice3:
-				low := int(mem[sp-3].num)  //nolint:gosec
-				high := int(mem[sp-2].num) //nolint:gosec
-				hi := int(mem[sp-1].num)   //nolint:gosec
-				mem[sp-4] = Value{ref: mem[sp-4].ref.Slice3(low, high, hi)}
-				mem = mem[:sp-3]
+				hi := int(mem[sp].num)     //nolint:gosec
+				mem[sp-3] = Value{ref: mem[sp-3].ref.Slice3(low, high, hi)}
+				sp -= 3
 			case Stop:
-				mem[sp-1].ref.Interface().(func())()
-				mem = mem[:sp-4]
+				mem[sp].ref.Interface().(func())()
+				sp -= 4
 			case Stop0:
-				mem[sp-1].ref.Interface().(func())()
-				mem = mem[:sp-3]
+				mem[sp].ref.Interface().(func())()
+				sp -= 3
 			// Generic bitwise.
 			case BitAnd:
-				mem[sp-2].num &= mem[sp-1].num
-				resetNumRef(&mem[sp-2])
-				mem = mem[:sp-1]
-			case BitOr:
-				mem[sp-2].num |= mem[sp-1].num
-				resetNumRef(&mem[sp-2])
-				mem = mem[:sp-1]
-			case BitXor:
-				mem[sp-2].num ^= mem[sp-1].num
-				resetNumRef(&mem[sp-2])
-				mem = mem[:sp-1]
-			case BitAndNot:
-				mem[sp-2].num &^= mem[sp-1].num
-				resetNumRef(&mem[sp-2])
-				mem = mem[:sp-1]
-			case BitShl:
-				mem[sp-2].num <<= mem[sp-1].num
-				resetNumRef(&mem[sp-2])
-				mem = mem[:sp-1]
-			case BitShr:
-				k := mem[sp-2].ref.Kind()
-				if k >= reflect.Uint && k <= reflect.Uintptr {
-					mem[sp-2].num >>= mem[sp-1].num
-				} else {
-					mem[sp-2].num = uint64(int64(mem[sp-2].num) >> mem[sp-1].num) //nolint:gosec
-				}
-				resetNumRef(&mem[sp-2])
-				mem = mem[:sp-1]
-			case BitComp:
-				mem[sp-1].num = ^mem[sp-1].num
+				mem[sp-1].num &= mem[sp].num
 				resetNumRef(&mem[sp-1])
+				sp--
+			case BitOr:
+				mem[sp-1].num |= mem[sp].num
+				resetNumRef(&mem[sp-1])
+				sp--
+			case BitXor:
+				mem[sp-1].num ^= mem[sp].num
+				resetNumRef(&mem[sp-1])
+				sp--
+			case BitAndNot:
+				mem[sp-1].num &^= mem[sp].num
+				resetNumRef(&mem[sp-1])
+				sp--
+			case BitShl:
+				mem[sp-1].num <<= mem[sp].num
+				resetNumRef(&mem[sp-1])
+				sp--
+			case BitShr:
+				k := mem[sp-1].ref.Kind()
+				if k >= reflect.Uint && k <= reflect.Uintptr {
+					mem[sp-1].num >>= mem[sp].num
+				} else {
+					mem[sp-1].num = uint64(int64(mem[sp-1].num) >> mem[sp].num) //nolint:gosec
+				}
+				resetNumRef(&mem[sp-1])
+				sp--
+			case BitComp:
+				mem[sp].num = ^mem[sp].num
+				resetNumRef(&mem[sp])
 
 			case Swap:
-				a, b := sp-int(c.A)-1, sp-int(c.B)-1
+				a, b := sp-int(c.A), sp-int(c.B)
 				mem[a], mem[b] = mem[b], mem[a]
 			case HAlloc:
 				cell := new(Value)
-				*cell = mem[sp-1] // initialise cell with top-of-stack value
+				*cell = mem[sp] // initialise cell with top-of-stack value
 				// Detach addressable refs to prevent aliasing: numeric values may share
 				// the underlying memory of the source frame slot via their ref field.
 				// Allocate a fresh reflect.Value (not reflect.Zero) so that Reflect() returns
@@ -986,25 +1096,33 @@ func (m *Machine) Run() (err error) {
 					setNumReflect(rv, cell.num)
 					cell.ref = rv
 				}
-				mem[sp-1] = ValueOf(cell) // replace value with cell pointer
+				mem[sp] = ValueOf(cell) // replace value with cell pointer
 			case HGet:
-				mem = append(mem, *m.env[int(c.A)])
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = *m.env[int(c.A)]
 			case HSet:
-				*m.env[int(c.A)] = mem[sp-1]
-				mem = mem[:sp-1]
+				*m.env[int(c.A)] = mem[sp]
+				sp--
 			case HPtr:
-				mem = append(mem, ValueOf(m.env[int(c.A)]))
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = ValueOf(m.env[int(c.A)])
 			case MkClosure:
 				n := int(c.A)
-				codeAddr := int(mem[sp-n-1].num) //nolint:gosec
+				codeAddr := int(mem[sp-n].num) //nolint:gosec
 				env := make([]*Value, n)
 				for i := range n {
-					env[i] = mem[sp-n+i].ref.Interface().(*Value)
+					env[i] = mem[sp-n+1+i].ref.Interface().(*Value)
 				}
 				clo := ValueOf(Closure{Code: codeAddr, Env: env})
-				clear(mem[sp-n-1 : sp]) // clear code addr + cell ptr slots
-				mem = mem[:sp-n-1]
-				mem = append(mem, clo)
+				clear(mem[sp-n : sp+1]) // clear code addr + cell ptr slots
+				sp -= n
+				mem[sp] = clo
 			case MkSlice:
 				n := int(c.A)
 				elemType := mem[int(c.B)].ref.Type()
@@ -1013,426 +1131,439 @@ func (m *Machine) Run() (err error) {
 				case n < 0:
 					// make([]T, len[, cap]): size args are on the stack.
 					nSizeArgs := -n
-					sp = len(mem) - 1
 					sLen := int(mem[sp-nSizeArgs+1].num) //nolint:gosec
 					sCap := sLen
 					if nSizeArgs == 2 {
 						sCap = int(mem[sp].num) //nolint:gosec
 					}
-					mem = mem[:sp-nSizeArgs+1]
-					mem = append(mem, Value{ref: reflect.MakeSlice(sliceType, sLen, sCap)})
+					sp -= nSizeArgs - 1
+					mem[sp] = Value{ref: reflect.MakeSlice(sliceType, sLen, sCap)}
 				case n == 0:
-					mem = append(mem, Value{ref: reflect.Zero(sliceType)})
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = Value{ref: reflect.Zero(sliceType)}
 				default:
 					slice := reflect.MakeSlice(sliceType, n, n)
 					for i := range n {
-						numSet(slice.Index(i), mem[sp-n+i])
+						numSet(slice.Index(i), mem[sp-n+1+i])
 					}
-					mem[sp-n] = Value{ref: slice}
-					mem = mem[:sp-n+1]
+					mem[sp-n+1] = Value{ref: slice}
+					sp -= n - 1
 				}
 			case MkMap:
 				keyType := mem[int(c.A)].ref.Type()
 				valType := mem[int(c.B)].ref.Type()
 				mapType := reflect.MapOf(keyType, valType)
-				mem = append(mem, Value{ref: reflect.MakeMap(mapType)})
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = Value{ref: reflect.MakeMap(mapType)}
 			case Append:
 				n := int(c.A)
-				sp = len(mem) - 1
 				result := mem[sp-n].ref
 				elemType := result.Type().Elem()
 				for i := range n {
 					result = reflect.Append(result, m.wrapForFunc(mem[sp-n+1+i], elemType))
 				}
 				mem[sp-n] = Value{ref: result}
-				mem = mem[:sp-n+1]
+				sp -= n
 			case CopySlice:
-				sp = len(mem) - 1
 				dst := mem[sp-1].ref
 				src := mem[sp].ref
 				n := reflect.Copy(dst, src)
 				mem[sp-1] = ValueOf(n)
-				mem = mem[:sp]
+				sp--
 			case DeleteMap:
-				sp = len(mem) - 1
 				mem[sp-1].ref.SetMapIndex(mem[sp].Reflect(), reflect.Value{})
-				mem = mem[:sp]
+				sp--
 			case Cap:
-				mem = append(mem, ValueOf(mem[sp-1-int(c.A)].ref.Cap()))
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = ValueOf(mem[sp-1-int(c.A)].ref.Cap())
 			case PtrNew:
 				typ := mem[int(c.A)].ref.Type()
-				mem = append(mem, Value{ref: reflect.New(typ)})
-			case Index:
-				idx := int(mem[sp-1].num) //nolint:gosec
-				ref := reflect.Indirect(mem[sp-2].ref)
-				if ref.Kind() == reflect.String {
-					mem[sp-2] = Value{num: uint64(ref.String()[idx]), ref: zuint8}
-				} else {
-					mem[sp-2] = fromReflect(ref.Index(idx))
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
 				}
-				mem = mem[:sp-1]
+				sp++
+				mem[sp] = Value{ref: reflect.New(typ)}
+			case Index:
+				idx := int(mem[sp].num) //nolint:gosec
+				ref := reflect.Indirect(mem[sp-1].ref)
+				if ref.Kind() == reflect.String {
+					mem[sp-1] = Value{num: uint64(ref.String()[idx]), ref: zuint8}
+				} else {
+					mem[sp-1] = fromReflect(ref.Index(idx))
+				}
+				sp--
 			case IndexAddr:
-				idx := int(mem[sp-1].num) //nolint:gosec
-				ref := reflect.Indirect(mem[sp-2].ref)
-				mem[sp-2] = Value{ref: ref.Index(idx).Addr()}
-				mem = mem[:sp-1]
+				idx := int(mem[sp].num) //nolint:gosec
+				ref := reflect.Indirect(mem[sp-1].ref)
+				mem[sp-1] = Value{ref: ref.Index(idx).Addr()}
+				sp--
 			case IndexSet:
-				idx := int(mem[sp-2].num) //nolint:gosec
-				slot := reflect.Indirect(mem[sp-3].ref).Index(idx)
-				slot.Set(m.wrapForFunc(mem[sp-1], slot.Type()))
-				mem = mem[:sp-2]
+				idx := int(mem[sp-1].num) //nolint:gosec
+				slot := reflect.Indirect(mem[sp-2].ref).Index(idx)
+				slot.Set(m.wrapForFunc(mem[sp], slot.Type()))
+				sp -= 2
 			case MapIndex:
-				rv := mem[sp-2].ref.MapIndex(mem[sp-1].Reflect())
-				mem[sp-2] = fromReflect(rv)
-				mem = mem[:sp-1]
+				rv := mem[sp-1].ref.MapIndex(mem[sp].Reflect())
+				mem[sp-1] = fromReflect(rv)
+				sp--
 			case MapIndexOk:
-				mapVal := mem[sp-2].ref
-				rv := mapVal.MapIndex(mem[sp-1].Reflect())
+				mapVal := mem[sp-1].ref
+				rv := mapVal.MapIndex(mem[sp].Reflect())
 				ok := rv.IsValid()
 				if !ok {
 					rv = reflect.Zero(mapVal.Type().Elem())
 				}
-				mem[sp-2] = fromReflect(rv)
-				mem[sp-1] = boolVal(ok)
+				mem[sp-1] = fromReflect(rv)
+				mem[sp] = boolVal(ok)
 			case MapSet:
-				mapVal := mem[sp-3].ref
+				mapVal := mem[sp-2].ref
 				mt := mapVal.Type()
-				mapVal.SetMapIndex(numReflect(mt.Key(), mem[sp-2]), m.wrapForFunc(mem[sp-1], mt.Elem()))
-				mem = mem[:sp-2]
+				mapVal.SetMapIndex(numReflect(mt.Key(), mem[sp-1]), m.wrapForFunc(mem[sp], mt.Elem()))
+				sp -= 2
 			case SetS:
 				n := int(c.A)
 				for i := 0; i < n; i++ {
-					m.assignSlot(&mem[sp-2*n+i], mem[sp-n+i])
+					m.assignSlot(&mem[sp-2*n+1+i], mem[sp-n+1+i])
 				}
-				mem = mem[:sp-2*n]
+				sp -= 2 * n
 
 			case AddStr:
-				mem[sp-2] = Value{ref: reflect.ValueOf(mem[sp-2].ref.String() + mem[sp-1].ref.String())}
-				mem = mem[:sp-1]
+				mem[sp-1] = Value{ref: reflect.ValueOf(mem[sp-1].ref.String() + mem[sp].ref.String())}
+				sp--
 
 			// Per-type Add.
 			case AddInt:
-				mem[sp-2].num = add[int](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[int](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint
+				sp--
 			case AddInt8:
-				mem[sp-2].num = add[int8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[int8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint8
+				sp--
 			case AddInt16:
-				mem[sp-2].num = add[int16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[int16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint16
+				sp--
 			case AddInt32:
-				mem[sp-2].num = add[int32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[int32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint32
+				sp--
 			case AddInt64:
-				mem[sp-2].num = add[int64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[int64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint64
+				sp--
 			case AddUint:
-				mem[sp-2].num = add[uint](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[uint](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint
+				sp--
 			case AddUint8:
-				mem[sp-2].num = add[uint8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[uint8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint8
+				sp--
 			case AddUint16:
-				mem[sp-2].num = add[uint16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[uint16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint16
+				sp--
 			case AddUint32:
-				mem[sp-2].num = add[uint32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[uint32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint32
+				sp--
 			case AddUint64:
-				mem[sp-2].num = add[uint64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = add[uint64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint64
+				sp--
 			case AddFloat64:
-				mem[sp-2].num = addf[float64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zfloat64
-				mem = mem[:sp-1]
+				mem[sp-1].num = addf[float64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zfloat64
+				sp--
 			case AddFloat32:
-				mem[sp-2].num = addf[float32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zfloat32
-				mem = mem[:sp-1]
+				mem[sp-1].num = addf[float32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zfloat32
+				sp--
 
 				// Per-type Sub.
 			case SubInt:
-				mem[sp-2].num = sub[int](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[int](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint
+				sp--
 			case SubInt8:
-				mem[sp-2].num = sub[int8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[int8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint8
+				sp--
 			case SubInt16:
-				mem[sp-2].num = sub[int16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[int16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint16
+				sp--
 			case SubInt32:
-				mem[sp-2].num = sub[int32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[int32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint32
+				sp--
 			case SubInt64:
-				mem[sp-2].num = sub[int64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[int64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint64
+				sp--
 			case SubUint:
-				mem[sp-2].num = sub[uint](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[uint](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint
+				sp--
 			case SubUint8:
-				mem[sp-2].num = sub[uint8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[uint8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint8
+				sp--
 			case SubUint16:
-				mem[sp-2].num = sub[uint16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[uint16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint16
+				sp--
 			case SubUint32:
-				mem[sp-2].num = sub[uint32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[uint32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint32
+				sp--
 			case SubUint64:
-				mem[sp-2].num = sub[uint64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = sub[uint64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint64
+				sp--
 			case SubFloat64:
-				mem[sp-2].num = subf[float64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zfloat64
-				mem = mem[:sp-1]
+				mem[sp-1].num = subf[float64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zfloat64
+				sp--
 			case SubFloat32:
-				mem[sp-2].num = subf[float32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zfloat32
-				mem = mem[:sp-1]
+				mem[sp-1].num = subf[float32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zfloat32
+				sp--
 
 				// Per-type Mul.
 			case MulInt:
-				mem[sp-2].num = mul[int](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[int](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint
+				sp--
 			case MulInt8:
-				mem[sp-2].num = mul[int8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[int8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint8
+				sp--
 			case MulInt16:
-				mem[sp-2].num = mul[int16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[int16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint16
+				sp--
 			case MulInt32:
-				mem[sp-2].num = mul[int32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[int32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint32
+				sp--
 			case MulInt64:
-				mem[sp-2].num = mul[int64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[int64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint64
+				sp--
 			case MulUint:
-				mem[sp-2].num = mul[uint](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[uint](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint
+				sp--
 			case MulUint8:
-				mem[sp-2].num = mul[uint8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[uint8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint8
+				sp--
 			case MulUint16:
-				mem[sp-2].num = mul[uint16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[uint16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint16
+				sp--
 			case MulUint32:
-				mem[sp-2].num = mul[uint32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[uint32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint32
+				sp--
 			case MulUint64:
-				mem[sp-2].num = mul[uint64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = mul[uint64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint64
+				sp--
 			case MulFloat64:
-				mem[sp-2].num = mulf[float64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zfloat64
-				mem = mem[:sp-1]
+				mem[sp-1].num = mulf[float64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zfloat64
+				sp--
 			case MulFloat32:
-				mem[sp-2].num = mulf[float32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zfloat32
-				mem = mem[:sp-1]
+				mem[sp-1].num = mulf[float32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zfloat32
+				sp--
 
 				// Per-type Neg.
 			case NegInt:
-				mem[sp-1].num = neg[int](mem[sp-1].num)
-				mem[sp-1].ref = zint
+				mem[sp].num = neg[int](mem[sp].num)
+				mem[sp].ref = zint
 			case NegInt8:
-				mem[sp-1].num = neg[int8](mem[sp-1].num)
-				mem[sp-1].ref = zint8
+				mem[sp].num = neg[int8](mem[sp].num)
+				mem[sp].ref = zint8
 			case NegInt16:
-				mem[sp-1].num = neg[int16](mem[sp-1].num)
-				mem[sp-1].ref = zint16
+				mem[sp].num = neg[int16](mem[sp].num)
+				mem[sp].ref = zint16
 			case NegInt32:
-				mem[sp-1].num = neg[int32](mem[sp-1].num)
-				mem[sp-1].ref = zint32
+				mem[sp].num = neg[int32](mem[sp].num)
+				mem[sp].ref = zint32
 			case NegInt64:
-				mem[sp-1].num = neg[int64](mem[sp-1].num)
-				mem[sp-1].ref = zint64
+				mem[sp].num = neg[int64](mem[sp].num)
+				mem[sp].ref = zint64
 			case NegUint:
-				mem[sp-1].num = neg[uint](mem[sp-1].num)
-				mem[sp-1].ref = zuint
+				mem[sp].num = neg[uint](mem[sp].num)
+				mem[sp].ref = zuint
 			case NegUint8:
-				mem[sp-1].num = neg[uint8](mem[sp-1].num)
-				mem[sp-1].ref = zuint8
+				mem[sp].num = neg[uint8](mem[sp].num)
+				mem[sp].ref = zuint8
 			case NegUint16:
-				mem[sp-1].num = neg[uint16](mem[sp-1].num)
-				mem[sp-1].ref = zuint16
+				mem[sp].num = neg[uint16](mem[sp].num)
+				mem[sp].ref = zuint16
 			case NegUint32:
-				mem[sp-1].num = neg[uint32](mem[sp-1].num)
-				mem[sp-1].ref = zuint32
+				mem[sp].num = neg[uint32](mem[sp].num)
+				mem[sp].ref = zuint32
 			case NegUint64:
-				mem[sp-1].num = neg[uint64](mem[sp-1].num)
-				mem[sp-1].ref = zuint64
+				mem[sp].num = neg[uint64](mem[sp].num)
+				mem[sp].ref = zuint64
 			case NegFloat64:
-				mem[sp-1].num = negf[float64](mem[sp-1].num)
-				mem[sp-1].ref = zfloat64
+				mem[sp].num = negf[float64](mem[sp].num)
+				mem[sp].ref = zfloat64
 			case NegFloat32:
-				mem[sp-1].num = negf[float32](mem[sp-1].num)
-				mem[sp-1].ref = zfloat32
+				mem[sp].num = negf[float32](mem[sp].num)
+				mem[sp].ref = zfloat32
 
 			// Per-type Greater.
 			case GreaterInt, GreaterInt8, GreaterInt16, GreaterInt32, GreaterInt64:
-				mem[sp-2] = boolVal(int64(mem[sp-2].num) > int64(mem[sp-1].num)) //nolint:gosec
-				mem = mem[:sp-1]
+				mem[sp-1] = boolVal(int64(mem[sp-1].num) > int64(mem[sp].num)) //nolint:gosec
+				sp--
 			case GreaterUint, GreaterUint8, GreaterUint16, GreaterUint32, GreaterUint64:
-				mem[sp-2] = boolVal(mem[sp-2].num > mem[sp-1].num)
-				mem = mem[:sp-1]
+				mem[sp-1] = boolVal(mem[sp-1].num > mem[sp].num)
+				sp--
 			case GreaterFloat32, GreaterFloat64:
-				mem[sp-2] = boolVal(math.Float64frombits(mem[sp-2].num) > math.Float64frombits(mem[sp-1].num))
-				mem = mem[:sp-1]
+				mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) > math.Float64frombits(mem[sp].num))
+				sp--
 
 			// Per-type Lower.
 			case LowerInt, LowerInt8, LowerInt16, LowerInt32, LowerInt64:
-				mem[sp-2] = boolVal(int64(mem[sp-2].num) < int64(mem[sp-1].num)) //nolint:gosec
-				mem = mem[:sp-1]
+				mem[sp-1] = boolVal(int64(mem[sp-1].num) < int64(mem[sp].num)) //nolint:gosec
+				sp--
 			case LowerUint, LowerUint8, LowerUint16, LowerUint32, LowerUint64:
-				mem[sp-2] = boolVal(mem[sp-2].num < mem[sp-1].num)
-				mem = mem[:sp-1]
+				mem[sp-1] = boolVal(mem[sp-1].num < mem[sp].num)
+				sp--
 			case LowerFloat32, LowerFloat64:
-				mem[sp-2] = boolVal(math.Float64frombits(mem[sp-2].num) < math.Float64frombits(mem[sp-1].num))
-				mem = mem[:sp-1]
+				mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) < math.Float64frombits(mem[sp].num))
+				sp--
 
 				// Per-type Div.
 			case DivInt:
-				mem[sp-2].num = div[int](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[int](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint
+				sp--
 			case DivInt8:
-				mem[sp-2].num = div[int8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[int8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint8
+				sp--
 			case DivInt16:
-				mem[sp-2].num = div[int16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[int16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint16
+				sp--
 			case DivInt32:
-				mem[sp-2].num = div[int32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[int32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint32
+				sp--
 			case DivInt64:
-				mem[sp-2].num = div[int64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[int64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint64
+				sp--
 			case DivUint:
-				mem[sp-2].num = div[uint](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[uint](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint
+				sp--
 			case DivUint8:
-				mem[sp-2].num = div[uint8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[uint8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint8
+				sp--
 			case DivUint16:
-				mem[sp-2].num = div[uint16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[uint16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint16
+				sp--
 			case DivUint32:
-				mem[sp-2].num = div[uint32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = div[uint32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint32
+				sp--
 			case DivUint64:
-				mem[sp-2].num = div[uint64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint64
+				mem[sp-1].num = div[uint64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint64
 			case DivFloat64:
-				mem[sp-2].num = divf[float64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zfloat64
-				mem = mem[:sp-1]
+				mem[sp-1].num = divf[float64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zfloat64
+				sp--
 			case DivFloat32:
-				mem[sp-2].num = divf[float32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zfloat32
-				mem = mem[:sp-1]
+				mem[sp-1].num = divf[float32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zfloat32
+				sp--
 
 				// Per-type Rem (integer only).
 			case RemInt:
-				mem[sp-2].num = rem[int](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[int](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint
+				sp--
 			case RemInt8:
-				mem[sp-2].num = rem[int8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[int8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint8
+				sp--
 			case RemInt16:
-				mem[sp-2].num = rem[int16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[int16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint16
+				sp--
 			case RemInt32:
-				mem[sp-2].num = rem[int32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[int32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint32
+				sp--
 			case RemInt64:
-				mem[sp-2].num = rem[int64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[int64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zint64
+				sp--
 			case RemUint:
-				mem[sp-2].num = rem[uint](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[uint](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint
+				sp--
 			case RemUint8:
-				mem[sp-2].num = rem[uint8](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint8
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[uint8](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint8
+				sp--
 			case RemUint16:
-				mem[sp-2].num = rem[uint16](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint16
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[uint16](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint16
+				sp--
 			case RemUint32:
-				mem[sp-2].num = rem[uint32](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint32
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[uint32](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint32
+				sp--
 			case RemUint64:
-				mem[sp-2].num = rem[uint64](mem[sp-2].num, mem[sp-1].num)
-				mem[sp-2].ref = zuint64
-				mem = mem[:sp-1]
+				mem[sp-1].num = rem[uint64](mem[sp-1].num, mem[sp].num)
+				mem[sp-1].ref = zuint64
+				sp--
 
 			// Immediate operand ops: right-hand constant is in Arg[0].
 			case AddIntImm:
-				mem[sp-1].num = uint64(int(mem[sp-1].num) + int(c.A)) //nolint:gosec
-				mem[sp-1].ref = zint
+				mem[sp].num = uint64(int(mem[sp].num) + int(c.A)) //nolint:gosec
+				mem[sp].ref = zint
 			case SubIntImm:
-				mem[sp-1].num = uint64(int(mem[sp-1].num) - int(c.A)) //nolint:gosec
-				mem[sp-1].ref = zint
+				mem[sp].num = uint64(int(mem[sp].num) - int(c.A)) //nolint:gosec
+				mem[sp].ref = zint
 			case MulIntImm:
-				mem[sp-1].num = uint64(int(mem[sp-1].num) * int(c.A)) //nolint:gosec
-				mem[sp-1].ref = zint
+				mem[sp].num = uint64(int(mem[sp].num) * int(c.A)) //nolint:gosec
+				mem[sp].ref = zint
 			case GreaterIntImm:
-				mem[sp-1] = boolVal(int(mem[sp-1].num) > int(c.A)) //nolint:gosec
+				mem[sp] = boolVal(int(mem[sp].num) > int(c.A)) //nolint:gosec
 			case GreaterUintImm:
-				mem[sp-1] = boolVal(uint(mem[sp-1].num) > uint(int(c.A))) //nolint:gosec
+				mem[sp] = boolVal(uint(mem[sp].num) > uint(int(c.A))) //nolint:gosec
 			case LowerIntImm:
-				mem[sp-1] = boolVal(int(mem[sp-1].num) < int(c.A)) //nolint:gosec
+				mem[sp] = boolVal(int(mem[sp].num) < int(c.A)) //nolint:gosec
 			case LowerUintImm:
-				mem[sp-1] = boolVal(uint(mem[sp-1].num) < uint(int(c.A))) //nolint:gosec
+				mem[sp] = boolVal(uint(mem[sp].num) < uint(int(c.A))) //nolint:gosec
 			}
 			ip++
 		}
-		sp = len(mem)
+		// Shrink mem to sp+1 for sentinel handlers that still use append / slice.
+		mem = mem[:sp+1]
 		// Negative ip is a sentinel for special handlers.
 		if ip == panicUnwindIP {
 			// Panic unwind: dispatch deferred calls in current frame, then tear down.
@@ -1456,9 +1587,11 @@ func (m *Machine) Run() (err error) {
 					}
 					funcVal.ref.Call(rin)
 					retBase := dh - narg - 3
-					clear(mem[retBase:sp])
+					clear(mem[retBase:])
 					mem = mem[:retBase]
 					mem[fp-3].num = uint64(prevHead) //nolint:gosec
+					sp = len(mem) - 1
+					mem = mem[:cap(mem)]
 					continue
 				}
 				// VM defer: store panicUnwindIP as return address, push frame.
@@ -1492,6 +1625,8 @@ func (m *Machine) Run() (err error) {
 				mem = append(mem, Value{}, Value{num: deferSentinelBits}, Value{num: defFPVal})
 				fp = base + 1 + narg + 3
 				ip = nip
+				sp = len(mem) - 1
+				mem = mem[:cap(mem)]
 				continue
 			}
 			// No more defers in this frame.
@@ -1518,6 +1653,8 @@ func (m *Machine) Run() (err error) {
 				clear(mem[newBase:newSP]) // clear return slots
 				clear(mem[newSP:])        // clear stale slots
 				mem = mem[:newSP]
+				sp = len(mem) - 1
+				mem = mem[:cap(mem)]
 				continue
 			}
 			// Still panicking: tear down frame, continue unwinding parent.
@@ -1542,12 +1679,16 @@ func (m *Machine) Run() (err error) {
 			newBase := ofp - numIn - 3 - 1 // below func slot
 			clear(mem[newBase:])
 			mem = mem[:newBase]
+			sp = len(mem) - 1
+			mem = mem[:cap(mem)]
 			continue
 		}
 		if ip == trapIP {
 			m.mem, m.ip, m.fp = mem, m.trapOrig, fp
 			m.enterDebug()
 			mem, ip, fp = m.mem, m.ip, m.fp
+			sp = len(mem) - 1
+			mem = mem[:cap(mem)]
 			continue
 		}
 		// ip == deferSentinelIP: restore outer frame after a deferred VM call returns.
@@ -1561,10 +1702,12 @@ func (m *Machine) Run() (err error) {
 		for i := 0; i < nret; i++ { // move return values down
 			mem[retBase+i] = mem[dh+1+i]
 		}
-		clear(mem[retBase+nret : sp]) // clear stale slots
+		clear(mem[retBase+nret:]) // clear stale slots
 		mem = mem[:retBase+nret]
 		mem[fp-3].num = uint64(prevHead) //nolint:gosec
 		ip = returnIP
+		sp = len(mem) - 1
+		mem = mem[:cap(mem)]
 		continue
 	}
 }
