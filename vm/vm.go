@@ -1027,16 +1027,7 @@ func (m *Machine) Run() (err error) {
 			default:
 				copy(mem[newBase:], mem[sp-nret+1:sp+1])
 			}
-			newSP := newBase + nret - 1
-			// Scalar clear for small frames to avoid runtime.memclrHasPointers call.
-			if n := sp - newSP; n <= 8 {
-				for i := newSP + 1; i <= sp; i++ {
-					mem[i] = Value{}
-				}
-			} else {
-				clear(mem[newSP+1 : sp+1])
-			}
-			sp = newSP
+			sp = newBase + nret - 1
 			continue
 		case Slice:
 			low := int(mem[sp-1].num) //nolint:gosec
