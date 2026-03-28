@@ -325,6 +325,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 	jumpDepth := map[string]int{} // expected compile-stack depth at short-circuit merge labels
 	growPos := []int{}            // code positions of Grow instructions per function scope
 	maxExprDepth := []int{}       // max expression depth above locals per function scope
+	hasDefer := []bool{}          // whether current function scope uses defer
 
 	push := func(s *symbol.Symbol) {
 		stack = append(stack, s)
@@ -429,7 +430,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			if isInt64Kind(typ) || isUint64Kind(typ) {
 				if n, ok := c.retractPush(right); ok {
-					c.emit(t, vm.AddIntImm, n)
+					if !c.fuseGetLocal(vm.GetLocalAddIntImm, n) {
+						c.emit(t, vm.AddIntImm, n)
+					}
 					break
 				}
 			}
@@ -446,7 +449,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
 			if isInt64Kind(typ) || isUint64Kind(typ) {
 				if n, ok := c.retractPush(right); ok {
-					c.emit(t, vm.MulIntImm, n)
+					if !c.fuseGetLocal(vm.GetLocalMulIntImm, n) {
+						c.emit(t, vm.MulIntImm, n)
+					}
 					break
 				}
 			}
@@ -463,7 +468,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
 			if isInt64Kind(typ) || isUint64Kind(typ) {
 				if n, ok := c.retractPush(right); ok {
-					c.emit(t, vm.SubIntImm, n)
+					if !c.fuseGetLocal(vm.GetLocalSubIntImm, n) {
+						c.emit(t, vm.SubIntImm, n)
+					}
 					break
 				}
 			}
@@ -614,12 +621,16 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
 			if isInt64Kind(typ) {
 				if n, ok := c.retractPush(s2); ok {
-					c.emit(t, vm.GreaterIntImm, n)
+					if !c.fuseGetLocal(vm.GetLocalGreaterIntImm, n) {
+						c.emit(t, vm.GreaterIntImm, n)
+					}
 					break
 				}
 			} else if isUint64Kind(typ) {
 				if n, ok := c.retractPush(s2); ok {
-					c.emit(t, vm.GreaterUintImm, n)
+					if !c.fuseGetLocal(vm.GetLocalGreaterUintImm, n) {
+						c.emit(t, vm.GreaterUintImm, n)
+					}
 					break
 				}
 			}
@@ -634,12 +645,16 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
 			if isInt64Kind(typ) {
 				if n, ok := c.retractPush(s2); ok {
-					c.emit(t, vm.LowerIntImm, n)
+					if !c.fuseGetLocal(vm.GetLocalLowerIntImm, n) {
+						c.emit(t, vm.LowerIntImm, n)
+					}
 					break
 				}
 			} else if isUint64Kind(typ) {
 				if n, ok := c.retractPush(s2); ok {
-					c.emit(t, vm.LowerUintImm, n)
+					if !c.fuseGetLocal(vm.GetLocalLowerUintImm, n) {
+						c.emit(t, vm.LowerUintImm, n)
+					}
 					break
 				}
 			}
@@ -962,6 +977,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Grow:
 			growPos = append(growPos, len(c.Code))
 			maxExprDepth = append(maxExprDepth, 0)
+			hasDefer = append(hasDefer, false)
 			c.emit(t, vm.Grow, t.Arg[0].(int))
 
 		case lang.Define:
@@ -1199,7 +1215,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			// Regular local or global access.
 			// Type symbols are always in global Data.
 			if s.Kind == symbol.LocalVar {
-				c.emit(t, vm.GetLocal, s.Index)
+				if !c.fuseGetLocal(vm.GetLocal2, s.Index) {
+					c.emit(t, vm.GetLocal, s.Index)
+				}
 			} else {
 				if s.Index == symbol.UnsetAddr {
 					// Type or value symbol discovered during Phase 2 code generation.
@@ -1270,6 +1288,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 							c.Code[gp].B = int32(maxExprDepth[len(maxExprDepth)-1]) //nolint:gosec
 							growPos = growPos[:len(growPos)-1]
 							maxExprDepth = maxExprDepth[:len(maxExprDepth)-1]
+							hasDefer = hasDefer[:len(hasDefer)-1]
 						}
 						// Exit function: restore caller stack and function name tracking.
 						l := popflen()
@@ -1574,6 +1593,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 
 		case lang.Defer:
+			if len(hasDefer) > 0 {
+				hasDefer[len(hasDefer)-1] = true
+			}
 			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
 			if s.Kind == symbol.Type {
@@ -1601,7 +1623,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emitIfaceWrapAt(t, funcType.ReturnType(i), stackSym.Type, numOut-1-i)
 				}
 			}
-			c.emit(t, vm.Return)
+			if len(hasDefer) == 0 || hasDefer[len(hasDefer)-1] || !c.fuseGetLocal(vm.GetLocalReturn, 0) {
+				c.emit(t, vm.Return)
+			}
 
 		case lang.Slice:
 			var coll *symbol.Symbol
@@ -1687,6 +1711,19 @@ func shiftLeftType(left *symbol.Symbol, intTyp *vm.Type) *vm.Type {
 
 // retractPush removes the most recently emitted Push if s is a constant,
 // returning (immediate value, true). Used for immediate-operand peephole.
+
+// fuseGetLocal checks if the last emitted instruction is GetLocal. If so, it
+// replaces it with the fused superinstruction (op) and stores the immediate in B.
+// Returns true if fusion occurred.
+func (c *Compiler) fuseGetLocal(op vm.Op, imm int) bool {
+	if len(c.Code) == 0 || c.Code[len(c.Code)-1].Op != vm.GetLocal {
+		return false
+	}
+	c.Code[len(c.Code)-1].Op = op
+	c.Code[len(c.Code)-1].B = int32(imm) //nolint:gosec
+	return true
+}
+
 func (c *Compiler) retractPush(s *symbol.Symbol) (int, bool) {
 	if s.Kind != symbol.Const || len(c.Code) == 0 || c.Code[len(c.Code)-1].Op != vm.Push {
 		return 0, false

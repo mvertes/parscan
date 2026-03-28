@@ -230,6 +230,18 @@ const (
 	GetLocal   // -- value ; value = mem[$1+fp-1] (local variable, no scope check)
 	GetGlobal  // -- value ; value = mem[$1] (global variable, syncs num from ref if needed)
 	NextLocal  // -- ; iterator next, set K (local scope); like Next but scope is always Local
+
+	// Fused GetLocal + operation superinstructions.
+	// $1 = local offset (as in GetLocal), $2 = immediate operand.
+	GetLocal2              // -- v1 v2 ; push two locals: mem[$1+fp-1] then mem[$2+fp-1]
+	GetLocalAddIntImm      // -- n+$2 ; push local $1 then add immediate $2
+	GetLocalSubIntImm      // -- n-$2 ; push local $1 then subtract immediate $2
+	GetLocalMulIntImm      // -- n*$2 ; push local $1 then multiply by immediate $2
+	GetLocalLowerIntImm    // -- cond ; push local $1 then compare < immediate $2 (signed)
+	GetLocalLowerUintImm   // -- cond ; push local $1 then compare < immediate $2 (unsigned)
+	GetLocalGreaterIntImm  // -- cond ; push local $1 then compare > immediate $2 (signed)
+	GetLocalGreaterUintImm // -- cond ; push local $1 then compare > immediate $2 (unsigned)
+	GetLocalReturn         // -- ; push local $1 then return (nret/frameBase from frame)
 )
 
 // Memory attributes.
@@ -461,6 +473,69 @@ func (m *Machine) Run() (err error) {
 		case GetLocal:
 			sp++
 			mem[sp] = mem[int(c.A)+fp-1]
+		case GetLocal2:
+			mem[sp+1] = mem[int(c.A)+fp-1]
+			mem[sp+2] = mem[int(c.B)+fp-1]
+			sp += 2
+		case GetLocalAddIntImm:
+			sp++
+			v := mem[int(c.A)+fp-1]
+			v.num = uint64(int(v.num) + int(c.B)) //nolint:gosec
+			v.ref = zint
+			mem[sp] = v
+		case GetLocalSubIntImm:
+			sp++
+			v := mem[int(c.A)+fp-1]
+			v.num = uint64(int(v.num) - int(c.B)) //nolint:gosec
+			v.ref = zint
+			mem[sp] = v
+		case GetLocalMulIntImm:
+			sp++
+			v := mem[int(c.A)+fp-1]
+			v.num = uint64(int(v.num) * int(c.B)) //nolint:gosec
+			v.ref = zint
+			mem[sp] = v
+		case GetLocalLowerIntImm:
+			sp++
+			mem[sp] = boolVal(int(mem[int(c.A)+fp-1].num) < int(c.B)) //nolint:gosec
+		case GetLocalLowerUintImm:
+			sp++
+			mem[sp] = boolVal(uint(mem[int(c.A)+fp-1].num) < uint(int(c.B))) //nolint:gosec
+		case GetLocalGreaterIntImm:
+			sp++
+			mem[sp] = boolVal(int(mem[int(c.A)+fp-1].num) > int(c.B)) //nolint:gosec
+		case GetLocalGreaterUintImm:
+			sp++
+			mem[sp] = boolVal(uint(mem[int(c.A)+fp-1].num) > uint(int(c.B))) //nolint:gosec
+		case GetLocalReturn:
+			sp++
+			mem[sp] = mem[int(c.A)+fp-1]
+			retIPInfo := mem[fp-2].num
+			frameBase := int(retIPInfo >> 48)
+			ip = int(int32(retIPInfo)) //nolint:gosec
+			ofp := fp
+			fpVal := mem[fp-1].num
+			if fpVal&envSavedFlag != 0 {
+				fp = int(fpVal &^ envSavedFlag) //nolint:gosec
+				top := len(m.frames) - 1
+				m.env = m.frames[top]
+				m.frames[top] = nil // clear for GC
+				m.frames = m.frames[:top]
+			} else {
+				fp = int(fpVal) //nolint:gosec
+				m.env = nil
+			}
+			newBase := ofp - frameBase
+			nret := int((retIPInfo >> 32) & 0xFFFF)
+			switch nret {
+			case 0:
+			case 1:
+				mem[newBase] = mem[sp]
+			default:
+				copy(mem[newBase:], mem[sp-nret+1:sp+1])
+			}
+			sp = newBase + nret - 1
+			continue
 		case GetGlobal:
 			// Global slots written via SetS update ref through a shared pointer without
 			// updating num in the original slot; sync num from ref before copying.
