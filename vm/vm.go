@@ -242,6 +242,15 @@ const (
 	GetLocalGreaterIntImm  // -- cond ; push local $1 then compare > immediate $2 (signed)
 	GetLocalGreaterUintImm // -- cond ; push local $1 then compare > immediate $2 (unsigned)
 	GetLocalReturn         // -- ; push local $1 then return (nret/frameBase from frame)
+
+	// Fused compare + conditional-jump superinstructions.
+	// Avoid materializing a boolean value on the stack.
+	// Only LowerInt variants are needed; compiler rewrites Greater comparisons
+	// using the identity: a > imm ≡ a >= imm+1 ≡ !(a < imm+1).
+	LowerIntImmJumpFalse         // n -- ; if n >= $2 { ip += $1 } ; sp--
+	LowerIntImmJumpTrue          // n -- ; if n < $2 { ip += $1 } ; sp--
+	GetLocalLowerIntImmJumpFalse // -- ; if local >= imm { ip += $1 } ; $2 = localOff<<16 | imm&0xFFFF
+	GetLocalLowerIntImmJumpTrue  // -- ; if local < imm { ip += $1 } ; $2 = localOff<<16 | imm&0xFFFF
 )
 
 // Memory attributes.
@@ -328,15 +337,11 @@ func packRetIP(retIP, nret, frameBase int) uint64 {
 	return uint64(uint32(retIP)) | uint64(nret)<<32 | uint64(frameBase)<<48 //nolint:gosec
 }
 
-// growStack ensures mem has room for at least sp+1+need elements, where sp is
-// the index of the current top-of-stack element.
-// Returns the (possibly reallocated) slice extended to its full capacity.
+// growStack allocates a new stack with room for at least sp+1+need elements.
+// Callers must check capacity before calling. Returns the new slice extended
+// to its full capacity.
 func growStack(mem []Value, sp, need int) []Value {
-	required := sp + 1 + need
-	if required <= len(mem) {
-		return mem
-	}
-	n := max(len(mem)*2, required+256)
+	n := max(len(mem)*2, sp+1+need+256)
 	newMem := make([]Value, n)
 	copy(newMem, mem[:sp+1])
 	return newMem
@@ -440,23 +445,22 @@ func (m *Machine) Run() (err error) {
 		case CallImm:
 			narg := int(c.B) >> 16
 			nret := int(c.B) & 0xFFFF
-			nip := int(mem[int(c.A)].num) //nolint:gosec
-			prevEnv := m.env
 			fpVal := uint64(fp) //nolint:gosec
-			if prevEnv != nil {
-				m.frames = append(m.frames, prevEnv)
+			if m.env != nil {
+				// preserve caller closure context
+				m.frames = append(m.frames, m.env)
 				fpVal |= envSavedFlag
+				m.env = nil
 			}
-			m.env = nil
 			if sp+3 >= len(mem) {
 				mem = growStack(mem, sp, 3)
 			}
-			mem[sp+1] = Value{}
+			mem[sp+1] = Value{} // clear deferHead slot
 			mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg+3)}
 			mem[sp+3] = Value{num: fpVal}
-			sp += 3 // deferHead, retIP+info, prevFP+envFlag
-			ip = nip
+			sp += 3
 			fp = sp + 1
+			ip = int(mem[int(c.A)].num) //nolint:gosec
 			continue
 		case Deref:
 			r := mem[sp].ref.Elem()
@@ -536,6 +540,28 @@ func (m *Machine) Run() (err error) {
 			}
 			sp = newBase + nret - 1
 			continue
+		case LowerIntImmJumpFalse:
+			sp--
+			if int(mem[sp+1].num) >= int(c.B) { //nolint:gosec
+				ip += int(c.A)
+				continue
+			}
+		case LowerIntImmJumpTrue:
+			sp--
+			if int(mem[sp+1].num) < int(c.B) { //nolint:gosec
+				ip += int(c.A)
+				continue
+			}
+		case GetLocalLowerIntImmJumpFalse:
+			if int(mem[int(c.B>>16)+fp-1].num) >= int(int16(c.B)) { //nolint:gosec
+				ip += int(c.A)
+				continue
+			}
+		case GetLocalLowerIntImmJumpTrue:
+			if int(mem[int(c.B>>16)+fp-1].num) < int(int16(c.B)) { //nolint:gosec
+				ip += int(c.A)
+				continue
+			}
 		case GetGlobal:
 			// Global slots written via SetS update ref through a shared pointer without
 			// updating num in the original slot; sync num from ref before copying.

@@ -184,6 +184,40 @@ func TestFunc(t *testing.T) {
 	})
 }
 
+func TestFusedOps(t *testing.T) {
+	run(t, []etest{
+		// GetLocalSubIntImm: local - immediate
+		{n: "sub_imm", src: "func f(a int) int { return a - 3 }; f(10)", res: "7"},
+		{n: "sub_imm_neg", src: "func f(a int) int { return a - 1 }; f(0)", res: "-1"},
+		// GetLocalAddIntImm: local + immediate
+		{n: "add_imm", src: "func f(a int) int { return a + 5 }; f(3)", res: "8"},
+		// GetLocalMulIntImm: local * immediate
+		{n: "mul_imm", src: "func f(a int) int { return a * 4 }; f(7)", res: "28"},
+		// GetLocalLowerIntImm + JumpFalse (fused to GetLocalLowerIntImmJumpFalse)
+		{n: "lower_jf", src: "func f(a int) int { if a < 5 { return 1 }; return 0 }; f(3)", res: "1"},
+		{n: "lower_jf_false", src: "func f(a int) int { if a < 5 { return 1 }; return 0 }; f(5)", res: "0"},
+		{n: "lower_jf_edge", src: "func f(a int) int { if a < 5 { return 1 }; return 0 }; f(4)", res: "1"},
+		// GetLocalGreaterIntImm + JumpFalse (fused to GetLocalLowerIntImmJumpTrue via imm+1)
+		{n: "greater_jf", src: "func f(a int) int { if a > 5 { return 1 }; return 0 }; f(6)", res: "1"},
+		{n: "greater_jf_false", src: "func f(a int) int { if a > 5 { return 1 }; return 0 }; f(5)", res: "0"},
+		{n: "greater_jf_edge", src: "func f(a int) int { if a > 5 { return 1 }; return 0 }; f(4)", res: "0"},
+		// GetLocalReturn: return a local variable
+		{n: "ret_local", src: "func f(a int) int { return a }; f(42)", res: "42"},
+		{n: "ret_local_expr", src: "func f(a int) int { b := a * 2; return b }; f(5)", res: "10"},
+		// GetLocal2: two consecutive local reads before a binop
+		{n: "get2_add", src: "func f(a, b int) int { return a + b }; f(3, 4)", res: "7"},
+		{n: "get2_sub", src: "func f(a, b int) int { return a - b }; f(10, 3)", res: "7"},
+		// Recursion exercises multiple fusions together
+		{n: "fib", src: "func fib(n int) int { if n < 2 { return n }; return fib(n-1) + fib(n-2) }; fib(10)", res: "55"},
+		// Greater comparison with boundary values
+		{n: "greater_zero", src: "func f(a int) int { if a > 0 { return 1 }; return 0 }; f(0)", res: "0"},
+		{n: "greater_neg", src: "func f(a int) int { if a > -1 { return 1 }; return 0 }; f(-1)", res: "0"},
+		{n: "greater_neg2", src: "func f(a int) int { if a > -1 { return 1 }; return 0 }; f(0)", res: "1"},
+		// Loop combining multiple fused ops
+		{n: "loop", src: "func f(n int) int { s := 0; for i := 0; i < n; i++ { s = s + i }; return s }; f(5)", res: "10"},
+	})
+}
+
 func TestOutOfOrder(t *testing.T) {
 	run(t, []etest{
 		// function declared after use

@@ -1307,6 +1307,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if err := checkTopN(1); err != nil {
 				return err
 			}
+			if c.fuseCmpJump(t, &fixList, vm.LowerIntImm, vm.LowerIntImmJumpFalse,
+				vm.GetLocalLowerIntImm, vm.GetLocalLowerIntImmJumpFalse, 0) ||
+				c.fuseCmpJump(t, &fixList, vm.GreaterIntImm, vm.LowerIntImmJumpTrue,
+					vm.GetLocalGreaterIntImm, vm.GetLocalLowerIntImmJumpTrue, 1) {
+				break
+			}
 			var i int
 			if s, ok := c.Symbols[t.Str]; !ok {
 				t.Arg = []any{len(c.Code)} // current code location
@@ -1721,6 +1727,49 @@ func (c *Compiler) fuseGetLocal(op vm.Op, imm int) bool {
 	}
 	c.Code[len(c.Code)-1].Op = op
 	c.Code[len(c.Code)-1].B = int32(imm) //nolint:gosec
+	return true
+}
+
+// fuseCmpJump fuses a comparison+jump pair into a single instruction.
+// It checks if the previous instruction is cmpOp or getLocalCmpOp and replaces
+// it with the corresponding fused variant. immAdj is added to the comparison
+// immediate (used to rewrite Greater as Lower via a>imm ≡ a>=imm+1 ≡ !(a<imm+1)).
+// The jump offset is resolved from the token's label (or added to fixList for
+// forward references).
+func (c *Compiler) fuseCmpJump(t goparser.Token, fixList *goparser.Tokens,
+	cmpOp, fusedOp, getLocalCmpOp, getLocalFusedOp vm.Op, immAdj int32,
+) bool {
+	if len(c.Code) == 0 {
+		return false
+	}
+	prev := &c.Code[len(c.Code)-1]
+	var fused vm.Op
+	var newB int32
+	switch prev.Op {
+	case cmpOp:
+		fused = fusedOp
+		newB = prev.A + immAdj // immediate moves to B; A will hold jump offset
+	case getLocalCmpOp:
+		imm := prev.B + immAdj
+		if imm < -32768 || imm > 32767 {
+			return false // immediate doesn't fit in int16 after adjustment
+		}
+		fused = getLocalFusedOp
+		newB = (prev.A << 16) | (imm & 0xFFFF) // pack localOff<<16 | imm
+	default:
+		return false
+	}
+	loc := len(c.Code) - 1
+	var jumpOff int32
+	if s, ok := c.Symbols[t.Str]; !ok {
+		t.Arg = []any{loc} // fixup at the fused instruction's position
+		*fixList = append(*fixList, t)
+	} else {
+		jumpOff = int32(int(s.Value.Int()) - loc) //nolint:gosec
+	}
+	prev.Op = fused
+	prev.A = jumpOff
+	prev.B = newB
 	return true
 }
 
