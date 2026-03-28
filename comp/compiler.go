@@ -323,8 +323,17 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 	flen := []int{}               // stack length according to function scopes
 	funcStack := []string{}       // names of functions currently being compiled
 	jumpDepth := map[string]int{} // expected compile-stack depth at short-circuit merge labels
+	growPos := []int{}            // code positions of Grow instructions per function scope
+	maxExprDepth := []int{}       // max expression depth above locals per function scope
 
-	push := func(s *symbol.Symbol) { stack = append(stack, s) }
+	push := func(s *symbol.Symbol) {
+		stack = append(stack, s)
+		if len(maxExprDepth) > 0 {
+			if d := len(stack) - flen[len(flen)-1]; d > maxExprDepth[len(maxExprDepth)-1] {
+				maxExprDepth[len(maxExprDepth)-1] = d
+			}
+		}
+	}
 	top := func() *symbol.Symbol { return stack[len(stack)-1] }
 	pop := func() *symbol.Symbol { l := len(stack) - 1; s := stack[l]; stack = stack[:l]; return s }
 	// checkTopN returns ErrUndefined if any of the top n stack entries is an unresolved
@@ -951,6 +960,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Composite:
 
 		case lang.Grow:
+			growPos = append(growPos, len(c.Code))
+			maxExprDepth = append(maxExprDepth, 0)
 			c.emit(t, vm.Grow, t.Arg[0].(int))
 
 		case lang.Define:
@@ -1253,6 +1264,13 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			} else {
 				if strings.HasSuffix(t.Str, "_end") {
 					if s, ok = c.Symbols[strings.TrimSuffix(t.Str, "_end")]; ok && s.Kind == symbol.Func {
+						// Patch the Grow instruction with max expression depth for bounds-check-free GetLocal.
+						if len(growPos) > 0 {
+							gp := growPos[len(growPos)-1]
+							c.Code[gp].B = int32(maxExprDepth[len(maxExprDepth)-1]) //nolint:gosec
+							growPos = growPos[:len(growPos)-1]
+							maxExprDepth = maxExprDepth[:len(maxExprDepth)-1]
+						}
 						// Exit function: restore caller stack and function name tracking.
 						l := popflen()
 						stack = stack[:l]

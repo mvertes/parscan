@@ -1169,9 +1169,11 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	if err != nil {
 		return out, err
 	}
-	if l := p.framelen[p.funcScope] - 1; l > 0 {
-		out = append(out, newGrow(l, in[0].Pos))
+	l := p.framelen[p.funcScope] - 1
+	if l < 0 {
+		l = 0
 	}
+	out = append(out, newGrow(l, in[0].Pos))
 	out = append(out, toks...)
 	if out[len(out)-1].Tok != lang.Return {
 		// Ensure that a return statement is always added at end of function.

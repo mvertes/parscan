@@ -459,9 +459,6 @@ func (m *Machine) Run() (err error) {
 			numSet(ptr.ref.Elem(), val)
 			sp -= 2
 		case GetLocal:
-			if sp+1 >= len(mem) {
-				mem = growStack(mem, sp, 1)
-			}
 			sp++
 			mem[sp] = mem[int(c.A)+fp-1]
 		case GetGlobal:
@@ -851,7 +848,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp+2] = ValueOf(stop)
 			sp += 2
 		case Grow:
-			if n := int(c.A); sp+n >= len(mem) {
+			if n := int(c.A) + int(c.B); sp+n >= len(mem) {
 				mem = growStack(mem, sp, n)
 			}
 			sp += int(c.A)
