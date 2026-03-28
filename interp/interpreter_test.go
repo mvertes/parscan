@@ -166,8 +166,8 @@ func TestFunc(t *testing.T) {
 		{n: "#07", src: "func f(a, b, c int) int {return a+b-c} ; f(7, 1, 3)", res: "5"},
 		{n: "#08", src: "var a int; func f() {a = a+2}; f(); a", res: "2"},
 		{n: "#09", src: "var f = func(a int) int {return a+3}; f(2)", res: "5"},
-		{n: "#10", src: "var a int; func f(a int) {a = a+2}; f(); a", res: "0"},
-		{n: "#11", src: "func f(a int) {a = a+2}; a := 1; f(); a", res: "1"},
+		{n: "#10", src: "var a int; func f(a int) {a = a+2}; f(0); a", res: "0"},
+		{n: "#11", src: "func f(a int) {a = a+2}; a := 1; f(0); a", res: "1"},
 		// local variables
 		{n: "#12", src: "func f(a int) int { b := a + 1; return b }; f(3)", res: "4"},
 		{n: "#13", src: "func f(a int) int { var b int = a + 1; return b }; f(3)", res: "4"},

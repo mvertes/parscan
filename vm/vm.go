@@ -65,7 +65,7 @@ const (
 	Push                   // -- v
 	Pull                   // a -- a s n; pull iterator next and stop function
 	Pull2                  // a -- a s n; pull iterator next and stop function
-	Return                 // [r1 .. ri] -- ; exit frame, nret and callNarg from frames
+	Return                 // [r1 .. ri] -- ; exit frame, nret and frameBase from frames
 	Set                    // v --  ; mem[$1,$2] = v
 	SetS                   // dest val -- ; dest.Set(val)
 	Slice                  // a l h -- a; a = a [l:h]
@@ -308,10 +308,12 @@ func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
 // envSavedFlag is set in the high bit of prevFP when the caller's env was saved to m.frames.
 const envSavedFlag = uint64(1) << 63
 
-// packRetIP packs the return IP, nret, and narg into a single uint64.
-// Layout: [narg:16 | nret:16 | retIP:32].
-func packRetIP(retIP, nret, narg int) uint64 {
-	return uint64(uint32(retIP)) | uint64(nret)<<32 | uint64(narg)<<48 //nolint:gosec
+// packRetIP packs the return IP, nret, and frameBase into a single uint64.
+// frameBase is the distance from fp to the bottom of the call frame
+// (args + overhead for CallImm, func + args + overhead for Call).
+// Layout: [frameBase:16 | nret:16 | retIP:32].
+func packRetIP(retIP, nret, frameBase int) uint64 {
+	return uint64(uint32(retIP)) | uint64(nret)<<32 | uint64(frameBase)<<48 //nolint:gosec
 }
 
 // growStack ensures mem has room for at least sp+1+need elements, where sp is
@@ -417,7 +419,7 @@ func (m *Machine) Run() (err error) {
 				mem = growStack(mem, sp, 3)
 			}
 			mem[sp+1] = Value{}
-			mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg)}
+			mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg+4)}
 			mem[sp+3] = Value{num: fpVal}
 			sp += 3 // deferHead, retIP+info, prevFP+envFlag
 			ip = nip
@@ -434,18 +436,11 @@ func (m *Machine) Run() (err error) {
 				fpVal |= envSavedFlag
 			}
 			m.env = nil
-			if sp+4 >= len(mem) {
-				mem = growStack(mem, sp, 4)
+			if sp+3 >= len(mem) {
+				mem = growStack(mem, sp, 3)
 			}
-			// Shift args up by 1 to insert a placeholder func slot below them,
-			// keeping the frame layout identical to Call.
-			for i := 0; i < narg; i++ {
-				mem[sp+1-i] = mem[sp-i]
-			}
-			mem[sp-narg+1] = Value{} // placeholder func slot
-			sp++
 			mem[sp+1] = Value{}
-			mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg)}
+			mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg+3)}
 			mem[sp+3] = Value{num: fpVal}
 			sp += 3 // deferHead, retIP+info, prevFP+envFlag
 			ip = nip
@@ -931,10 +926,10 @@ func (m *Machine) Run() (err error) {
 			}
 
 		case Return:
-			// Read nret and callNarg from the packed retIP slot.
+			// Read nret and frameBase from the packed retIP slot.
 			retIPInfo := mem[fp-2].num
 			nret := int((retIPInfo >> 32) & 0xFFFF)
-			callNarg := int(retIPInfo >> 48)
+			frameBase := int(retIPInfo >> 48)
 			// If there are pending defers in this frame, dispatch the top one (LIFO).
 			dh := int(mem[fp-3].num) //nolint:gosec
 			if dh != 0 {
@@ -1022,7 +1017,7 @@ func (m *Machine) Run() (err error) {
 				fp = int(fpVal) //nolint:gosec
 				m.env = nil
 			}
-			newBase := ofp - callNarg - 4
+			newBase := ofp - frameBase
 			// Inline copy for common small nret to avoid runtime.typedslicecopy.
 			switch nret {
 			case 0:
@@ -1663,7 +1658,7 @@ func (m *Machine) Run() (err error) {
 				// Recovered: tear down frame, return zero values to caller.
 				retIPInfo := mem[fp-2].num
 				nret := int((retIPInfo >> 32) & 0xFFFF)
-				numIn := int(retIPInfo >> 48)
+				frameBase := int(retIPInfo >> 48)
 				ip = int(int32(retIPInfo)) //nolint:gosec
 				ofp := fp
 				fpVal := mem[fp-1].num
@@ -1677,7 +1672,7 @@ func (m *Machine) Run() (err error) {
 					fp = int(fpVal) //nolint:gosec
 					m.env = nil
 				}
-				newBase := ofp - numIn - 4
+				newBase := ofp - frameBase
 				newSP := newBase + nret
 				clear(mem[newBase:newSP]) // clear return slots
 				clear(mem[newSP:])        // clear stale slots
@@ -1687,7 +1682,7 @@ func (m *Machine) Run() (err error) {
 				continue
 			}
 			// Still panicking: tear down frame, continue unwinding parent.
-			numIn := int(mem[fp-2].num >> 48)
+			frameBase := int(mem[fp-2].num >> 48)
 			ofp := fp
 			fpVal := mem[fp-1].num
 			if fpVal&envSavedFlag != 0 {
@@ -1705,7 +1700,7 @@ func (m *Machine) Run() (err error) {
 				m.mem, m.ip, m.fp = mem, 0, 0
 				return fmt.Errorf("panic: %v", m.panicVal.Interface())
 			}
-			newBase := ofp - numIn - 3 - 1 // below func slot
+			newBase := ofp - frameBase
 			clear(mem[newBase:])
 			mem = mem[:newBase]
 			sp = len(mem) - 1

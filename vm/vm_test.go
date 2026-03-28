@@ -76,30 +76,27 @@ var fibTypedCode = []Instruction{
 	{Op: Exit},               // 22
 }
 
-// fibImmCode is fib(20) rewritten with immediate-operand opcodes.
-// Saves 3 Push instructions from the function body.
-// fib function at addr 1, call site at addr 16.
+// fibImmCode is fib(20) rewritten with immediate-operand opcodes
+// including CallImm. Data slot 0 holds the fib code address (1).
+// fib function at addr 1, call site at addr 14.
 var fibImmCode = []Instruction{
-	{Op: Jump, A: 16},        // 0: skip to call site
-	{Op: GetLocal, A: -3},    // 1: push i
-	{Op: LowerIntImm, A: 2},  // 2: i < 2 (was: Push 2; LowerInt)
-	{Op: JumpTrue, A: 11},    // 3: if i<2 goto 14
-	{Op: Push, A: 1},         // 4: fib addr
-	{Op: GetLocal, A: -3},    // 5: push i
-	{Op: SubIntImm, A: 2},    // 6: i-2 (was: Push 2; SubInt)
-	{Op: Call, A: 1, B: 1},   // 7: fib(i-2)
-	{Op: Push, A: 1},         // 8: fib addr
-	{Op: GetLocal, A: -3},    // 9: push i
-	{Op: SubIntImm, A: 1},    // 10: i-1 (was: Push 1; SubInt)
-	{Op: Call, A: 1, B: 1},   // 11: fib(i-1)
-	{Op: AddInt},             // 12: sum
-	{Op: Return, A: 1, B: 1}, // 13: return (recursive)
-	{Op: GetLocal, A: -3},    // 14: base case
-	{Op: Return, A: 1, B: 1}, // 15: return i
-	{Op: Push, A: 1},         // 16: call site
-	{Op: Push, A: 20},        // 17: n=20
-	{Op: Call, A: 1, B: 1},   // 18
-	{Op: Exit},               // 19
+	{Op: Jump, A: 14},                 // 0: skip to call site
+	{Op: GetLocal, A: -3},             // 1: push i
+	{Op: LowerIntImm, A: 2},           // 2: i < 2
+	{Op: JumpTrue, A: 9},              // 3: if i<2 goto 12
+	{Op: GetLocal, A: -3},             // 4: push i
+	{Op: SubIntImm, A: 2},             // 5: i-2
+	{Op: CallImm, A: 0, B: 1<<16 | 1}, // 6: fib(i-2)
+	{Op: GetLocal, A: -3},             // 7: push i
+	{Op: SubIntImm, A: 1},             // 8: i-1
+	{Op: CallImm, A: 0, B: 1<<16 | 1}, // 9: fib(i-1)
+	{Op: AddInt},                      // 10: sum
+	{Op: Return},                      // 11: return (recursive)
+	{Op: GetLocal, A: -3},             // 12: base case
+	{Op: Return},                      // 13: return i
+	{Op: Push, A: 20},                 // 14: call site, push n=20
+	{Op: CallImm, A: 0, B: 1<<16 | 1}, // 15: fib(20)
+	{Op: Exit},                        // 16
 }
 
 func BenchmarkFibTyped(b *testing.B) {
@@ -115,6 +112,7 @@ func BenchmarkFibTyped(b *testing.B) {
 func BenchmarkFibImm(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		m := &Machine{}
+		m.Push(Value{num: 1}) // data slot 0: fib code address
 		m.PushCode(fibImmCode...)
 		if err := m.Run(); err != nil {
 			b.Fatal(err)
