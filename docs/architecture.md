@@ -68,14 +68,22 @@ Each call frame is laid out as:
                                   fp points here (past deferHead, retIP, prevFP)
 ```
 
-`frameOverhead = 3` accounts for the three bookkeeping slots. `deferHead`
-holds the index of the topmost deferred-call record (0 = none).
+`frameOverhead = 3` accounts for the three bookkeeping slots:
 
-A separate `frames []frame` slice tracks per-call metadata (caller closure
-env, nret/narg). See [vm](modules/vm.md#call-frame) for details.
+- `deferHead` -- index of the topmost deferred-call record (0 = none).
+- `retIP` -- packed `uint64`: `[frameBase:16 | nret:16 | retIP:32]`.
+  Encodes the return address, number of return values, and frame size
+  in a single slot, avoiding a separate metadata structure.
+- `prevFP` -- the caller's frame pointer. The high bit (`envSavedFlag`)
+  indicates whether the caller's closure env was saved to `frames`.
 
-- `Get Global N` reads `mem[N]`
-- `Get Local N` reads `mem[fp - 1 + N]`
+A side-channel `frames [][]*Value` slice saves caller closure environments.
+An entry is pushed only when the caller has a non-nil `env` (closure calls);
+plain function calls skip it entirely.
+See [vm](modules/vm.md#call-frame) for details.
+
+- `GetGlobal N` reads `mem[N]`
+- `GetLocal N` reads `mem[fp - 1 + N]`
 
 ## Key design decisions
 
@@ -106,10 +114,22 @@ env, nret/narg). See [vm](modules/vm.md#call-frame) for details.
    Immediate-operand variants fold `Push+BinOp` into one instruction.
    See [ADR-005](decisions/ADR-005-per-type-opcodes.md).
 
-6. **Native Go interop** -- parscan functions are wrapped via `WrapFunc`
+6. **Super instructions** -- the compiler fuses common multi-instruction
+   sequences into single opcodes to reduce dispatch overhead. Three levels
+   of fusion: `GetLocal+Op+Imm` (e.g. `GetLocalAddIntImm`),
+   `Compare+Jump` (e.g. `LowerIntImmJumpFalse`), and triple fusion
+   `GetLocal+Compare+Jump` (e.g. `GetLocalLowerIntImmJumpFalse`).
+   See [ADR-007](decisions/ADR-007-super-instructions.md).
+
+7. **Native Go interop** -- parscan functions are wrapped via `WrapFunc`
    and `reflect.MakeFunc` to be callable from native Go code. A `funcFields`
    side-table handles assignment to typed struct func fields.
    See [ADR-006](decisions/ADR-006-native-func-interop.md).
+
+8. **Flat instruction encoding** -- `Instruction` is a fixed-size 16-byte
+   struct `{Op Op; A, B int32; Pos Pos}` with two inline operands.
+   This avoids heap-allocating an `[]int` arg slice per instruction and
+   improves cache locality in the dispatch loop.
 
 ## Closure and interface dispatch
 

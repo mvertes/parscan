@@ -24,6 +24,7 @@ Parscan is an experimental Go interpreter built from a pipeline of composable pa
 - [ADR-004: Two-phase compilation with pre-allocated slots](decisions/ADR-004-lazy-fixpoint.md)
 - [ADR-005: Per-type opcodes with immediate variants](decisions/ADR-005-per-type-opcodes.md)
 - [ADR-006: Native Go function interop (WrapFunc / ParscanFunc)](decisions/ADR-006-native-func-interop.md)
+- [ADR-007: Super instructions and instruction fusion](decisions/ADR-007-super-instructions.md)
 
 ## Proposals
 

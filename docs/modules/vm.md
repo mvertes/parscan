@@ -14,15 +14,13 @@ value representation) and `Type` (runtime type metadata).
 ### Execution
 
 - **`Machine`** -- VM state: `code`, `mem`, `ip`, `fp`, closure `env`,
-  a `frames []frame` stack (caller env + packed nret/narg per call),
-  panic state (`panicking`, `panicVal`), two func-field side-tables
-  (`funcFields` keyed by reflect.Value address, `funcFieldsByFuncPtr`
-  keyed by the closure's function pointer -- used as a stable fallback
-  when a struct containing func fields is copied e.g. via `append`), a
-  `Symbols` map for name-to-mem-index lookup, and debug state.
-- **`frame`** -- per-call metadata saved on the caller side. Fields:
-  `env []*Value` (caller's closure env) and `info int` (packed
-  `nret | (narg << 16)`). Stored in `Machine.frames`.
+  a `frames [][]*Value` stack (saved caller closure envs, pushed only
+  for closure calls where `env != nil`), panic state (`panicking`,
+  `panicVal`), two func-field side-tables (`funcFields` keyed by
+  reflect.Value address, `funcFieldsByFuncPtr` keyed by the closure's
+  function pointer -- used as a stable fallback when a struct containing
+  func fields is copied e.g. via `append`), a `Symbols` map for
+  name-to-mem-index lookup, and debug state.
 - **`Symbols map[string]int`** -- maps symbol names to global memory
   indices. Populated by `interp.Eval` from the compiler symbol table
   after each compilation. Used for REPL resolution and `main` dispatch.
@@ -75,8 +73,9 @@ value representation) and `Type` (runtime type metadata).
 - **`Op`** (int enum) -- 200+ opcodes organized in groups:
   - Stack/control: `Nop`, `Pop`, `Push`, `Swap`, `Exit`, `Jump`,
     `JumpTrue`, `JumpFalse`, `JumpSetTrue`, `JumpSetFalse`, `Call`,
-    `Return`.
-  - Memory: `Get`, `Set`, `SetS`, `Addr`, `Deref`, `DerefSet`, `Grow`.
+    `CallImm`, `Return`.
+  - Memory: `Get`, `GetLocal`, `GetGlobal`, `Set`, `SetS`, `Addr`,
+    `Deref`, `DerefSet`, `Grow`.
   - Arithmetic -- no generic numeric opcodes remain; every arithmetic op
     is statically typed:
     - `Equal`, `EqualSet` (type-agnostic comparison via `Value.Equal`).
@@ -106,8 +105,23 @@ value representation) and `Type` (runtime type metadata).
   - Native interop: `WrapFunc` -- wraps a parscan function value in a
     `reflect.MakeFunc` adapter so it can be called by native Go code.
     Produces a `ParscanFunc` on the stack.
-  - Range: `Next`, `Next0`, `Next2`, `Pull`, `Pull2`, `Stop`, `Stop0`.
-    `Next0`/`Stop0` are used when the range variable is blank or absent.
+  - Range: `Next`, `Next0`, `Next2`, `NextLocal`, `Pull`, `Pull2`,
+    `Stop`, `Stop0`. `Next0`/`Stop0` are used when the range variable
+    is blank or absent. `NextLocal` is a fast path for local-scope
+    iterators.
+  - Super instructions (fused multi-op sequences):
+    - `GetLocal2` -- push two locals in one dispatch.
+    - `GetLocalAddIntImm`, `GetLocalSubIntImm`, `GetLocalMulIntImm` --
+      load local + arithmetic with immediate.
+    - `GetLocalLowerIntImm`, `GetLocalLowerUintImm`,
+      `GetLocalGreaterIntImm`, `GetLocalGreaterUintImm` --
+      load local + compare with immediate.
+    - `GetLocalReturn` -- load local + return.
+    - `LowerIntImmJumpFalse`, `LowerIntImmJumpTrue` -- compare with
+      immediate + conditional jump (no boolean materialized on stack).
+    - `GetLocalLowerIntImmJumpFalse`, `GetLocalLowerIntImmJumpTrue` --
+      triple fusion: load local + compare + jump. `B` packs
+      `localOff<<16 | imm&0xFFFF`.
   - Exceptions: `Panic`, `Recover`, `DeferPush`, `DeferRet`.
   - Debug: `Trap`.
 
@@ -129,19 +143,25 @@ mem[dataLen ..]        call stack (grows upward)
 ```
 
 `Call` pushes `deferHead`, `retIP`, and `prevFP` onto the stack, then sets
-`fp` past all three. It also pushes a `frame{env, info}` entry onto
-`Machine.frames` to save the caller's closure env and the packed
-`nret | (narg << 16)` value. `Return` inspects `deferHead` (at
-`mem[fp-3]`) for pending deferred calls, then pops `frames` to restore
-`env` and recover nret/narg.
+`fp` past all three. If the caller has a non-nil closure `env`, it is
+saved to `Machine.frames` and the high bit of `prevFP` is set
+(`envSavedFlag`). `Return` inspects `deferHead` (at `mem[fp-3]`) for
+pending deferred calls, unpacks nret/frameBase from `retIP`, and
+restores `env` from `frames` if the env flag is set.
 
 - `mem[fp-3]` -- `deferHead`: index of the topmost deferred-call record
   (0 = none). Updated by `DeferPush`.
-- `mem[fp-2]` -- `retIP`: return address (or the address of the `DeferRet`
-  sentinel instruction for a deferred frame).
-- `mem[fp-1]` -- `prevFP`: the caller's frame pointer.
-- `frames[top]` -- `frame{env, info}`: the caller's closure env and
-  packed nret/narg (side-channel, not on the value stack).
+- `mem[fp-2]` -- packed `retIP`: `[frameBase:16 | nret:16 | retIP:32]`.
+  Encodes the return address, number of return values, and frame size
+  (distance from fp to bottom of frame) in a single `uint64`.
+  `packRetIP(retIP, nret, frameBase)` constructs the value.
+- `mem[fp-1]` -- `prevFP`: the caller's frame pointer. High bit
+  (`envSavedFlag = 1<<63`) indicates a closure env was saved to `frames`.
+
+`CallImm` is a specialized variant for direct calls to known functions.
+It avoids loading the function value from memory and skips runtime type
+dispatch. `A` holds the data index of the function; `B` packs
+`narg<<16 | nret`.
 
 ### Per-type numeric ops
 
@@ -165,6 +185,84 @@ opcode rather than a typed numeric block.
 The helper functions `add[T]`, `sub[T]`, etc. in `numops.go` use Go
 generics internally; each typed opcode dispatches to exactly one
 instantiation with zero runtime branching.
+
+### Instruction encoding
+
+`Instruction` is a fixed-size 16-byte struct:
+
+```go
+type Instruction struct {
+    Op   Op    // opcode
+    A, B int32 // up to 2 immediate operands (0 when unused)
+    Pos  Pos   // source position
+}
+```
+
+Earlier versions used `{Op Op; Arg []int}`, which heap-allocated an arg
+slice per instruction. The flat layout avoids allocation and improves
+cache locality in the dispatch loop. Super instructions that need more
+than two operands pack them into `A` and `B` (e.g. `GetLocalLowerIntImmJumpFalse`
+packs `localOff<<16 | imm&0xFFFF` into `B`).
+
+### Get specialization
+
+`Get` dispatches on a scope flag (`Global` vs `Local`) at runtime.
+Two specialized opcodes avoid this branch:
+
+- `GetLocal` -- reads `mem[A + fp - 1]` directly.
+- `GetGlobal` -- reads `mem[A]` and syncs `num` from `ref` for
+  addressable slots (needed when `SetS` updated `ref` without touching
+  `num`).
+
+The compiler emits `GetLocal`/`GetGlobal` whenever the scope is known
+statically. `Get` remains for cases requiring runtime scope resolution.
+
+### Super instructions
+
+The compiler fuses common multi-instruction sequences into single
+opcodes that perform multiple operations in one dispatch cycle. Three
+levels of fusion exist:
+
+**Level 1 -- GetLocal + operation:**
+
+| Opcode | Equivalent sequence |
+|--------|---------------------|
+| `GetLocal2` | `GetLocal A; GetLocal B` |
+| `GetLocalAddIntImm` | `GetLocal A; Push B; AddInt` |
+| `GetLocalSubIntImm` | `GetLocal A; Push B; SubInt` |
+| `GetLocalMulIntImm` | `GetLocal A; Push B; MulInt` |
+| `GetLocalLowerIntImm` | `GetLocal A; Push B; LowerInt` |
+| `GetLocalGreaterIntImm` | `GetLocal A; Push B; GreaterInt` |
+| `GetLocalReturn` | `GetLocal A; Return` |
+
+**Level 2 -- compare + jump:**
+
+| Opcode | Effect |
+|--------|--------|
+| `LowerIntImmJumpFalse` | `if n >= B { ip += A }; sp--` |
+| `LowerIntImmJumpTrue` | `if n < B { ip += A }; sp--` |
+
+These avoid materializing a boolean on the stack. The compiler rewrites
+`Greater` comparisons using the identity `a > imm` = `!(a < imm+1)`.
+
+**Level 3 -- triple fusion (GetLocal + compare + jump):**
+
+| Opcode | Effect |
+|--------|--------|
+| `GetLocalLowerIntImmJumpFalse` | `if local >= imm { ip += A }` |
+| `GetLocalLowerIntImmJumpTrue` | `if local < imm { ip += A }` |
+
+`B` packs `localOff<<16 | imm&0xFFFF`. No stack operations at all --
+the local is read, compared, and the branch is taken in a single
+dispatch.
+
+### Stack growth pre-computation
+
+The compiler tracks the maximum expression depth per function and stores
+it in the `Grow` instruction's `B` field. At function entry, `Grow`
+pre-allocates `A + B` slots (locals + max expression depth). This
+guarantees that `GetLocal` and the fused super instructions can access
+stack slots without bounds checks within the function body.
 
 ### Closure dispatch
 

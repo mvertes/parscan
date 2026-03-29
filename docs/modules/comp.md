@@ -59,12 +59,45 @@ inside the `case lang.Call` handler using the compile-time symbolic stack.
 Builtin symbols (`Kind: Builtin`) are intercepted by `compileBuiltin`
 before either path is reached.
 
-### Peephole optimization
+### Peephole optimization and instruction fusion
 
-After emitting a binary op, the compiler checks whether the preceding
-instruction was a `Push` of an integer constant. If so, it folds both into
-a single immediate-operand instruction (e.g. `Push 1; AddInt` becomes
-`AddIntImm 1`). This reduces dispatch overhead in tight loops by ~20-30%.
+The compiler applies several layers of instruction fusion after emission,
+each building on the previous:
+
+1. **Immediate folding** (`retractPush`). If the preceding instruction was
+   a `Push` of an integer constant, folds it into the binary op
+   (e.g. `Push 1; AddInt` becomes `AddIntImm 1`).
+
+2. **GetLocal fusion** (`fuseGetLocal`). If the instruction before the
+   immediate op is `GetLocal`, replaces both with a super instruction
+   (e.g. `GetLocal 2; AddIntImm 1` becomes `GetLocalAddIntImm A=2 B=1`).
+   Also fuses `GetLocal + Return` into `GetLocalReturn` and consecutive
+   `GetLocal` pairs into `GetLocal2`.
+
+3. **Compare + jump fusion** (`fuseCmpJump`). When emitting `JumpFalse`
+   after a comparison immediate, fuses both into a single opcode
+   (e.g. `LowerIntImm; JumpFalse` becomes `LowerIntImmJumpFalse`).
+   Also handles the GetLocal-fused variants, producing triple-fused
+   instructions like `GetLocalLowerIntImmJumpFalse`. The compiler rewrites
+   `GreaterIntImm; JumpFalse` as `LowerIntImmJumpTrue` using the identity
+   `a > imm` = `!(a < imm+1)`, keeping only `Lower`-based fused ops.
+
+### CallImm
+
+When calling a declared function (not a closure, not a variable), the
+compiler emits `CallImm` instead of loading the function value and
+emitting `Call`. `CallImm` encodes the data index in `A` and packs
+`narg<<16 | nret` in `B`, skipping the runtime function-value dispatch
+entirely. `removeGetGlobal` retracts the preceding `GetGlobal` that
+loaded the function address.
+
+### Stack growth computation
+
+The compiler tracks `maxExprDepth` per function scope -- the high-water
+mark of the expression stack above the local variable area. At function
+end, it patches the `Grow` instruction's `B` field with this value so
+the VM can pre-allocate `locals + maxExprDepth` slots at function entry,
+enabling bounds-check-free stack access within the function body.
 
 ### Two-phase compilation
 
