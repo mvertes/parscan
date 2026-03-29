@@ -153,9 +153,9 @@ var GoSpec = &lang.Spec{
 		lang.Addr:         {Precedence: 6},
 		lang.BitComp:      {Precedence: 6},
 		lang.Not:          {Precedence: 6},
-		lang.Call:         {Precedence: 7},
+		lang.Call:         {Precedence: 8},
 		lang.Index:        {Precedence: 8},
-		lang.Period:       {Precedence: 7},
+		lang.Period:       {Precedence: 8},
 		lang.Colon:        {Precedence: 0},
 		lang.Inc:          {SkipSemi: true},
 		lang.Dec:          {SkipSemi: true},
@@ -174,7 +174,7 @@ var GoSpec = &lang.Spec{
 		lang.Interface:    {SkipSemi: true},
 		lang.Map:          {SkipSemi: true},
 		lang.Package:      {SkipSemi: true},
-		lang.Range:        {SkipSemi: true, Precedence: 0}, // must be lower than postfix ops (Period=7, Index=8, Call=7) so its operand evaluates first
+		lang.Range:        {SkipSemi: true, Precedence: 0}, // must be lower than postfix ops (Period=8, Index=8, Call=8) so its operand evaluates first
 		lang.Select:       {SkipSemi: true, HasInit: true},
 		lang.Struct:       {SkipSemi: true},
 		lang.Switch:       {SkipSemi: true, HasInit: true},

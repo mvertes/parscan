@@ -174,6 +174,12 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				if len(name) > 0 && unicode.IsLower(rune(name[0])) {
 					pkgPath = p.pkgName
 				}
+				// A struct field whose type is a placeholder (not yet finalized via SetFields)
+				// means the containing struct's size cannot be computed yet. Return ErrUndefined
+				// so the retry loop defers this declaration until the placeholder is finalized.
+				if types[i].Rtype.Kind() == reflect.Struct && types[i].Placeholder {
+					return nil, 0, ErrUndefined{types[i].Name}
+				}
 				// Copy parscan-level type (preserving Params, IfaceMethods, etc.) and set field name.
 				ft := *types[i]
 				ft.Name = name

@@ -676,6 +676,18 @@ type F func(a *A)
 type A struct { Name string; F }
 a := &A{"hello", func(a *A) {}}
 a.Name`, res: "hello"},
+
+		{n: "slice_field_index", src: `
+type Node struct { Name string; Child []*Node }
+n := &Node{Name: "parent"}
+n.Child = append(n.Child, &Node{Name: "child"})
+n.Child[0].Name`, res: "child"},
+
+		{n: "value_order", src: `
+type A struct { B; X int }
+type B struct { Y int }
+a := A{B: B{Y: 10}, X: 20}
+a.Y + a.X`, res: "30"},
 	})
 }
 

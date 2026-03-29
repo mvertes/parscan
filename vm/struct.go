@@ -66,7 +66,7 @@ func NewStructType() *Type {
 	// multiple struct types are patched concurrently.
 	n := placeholderSeq.Add(1)
 	sf := []reflect.StructField{{Name: "P" + strconv.FormatUint(n, 10), Type: intRtype}}
-	return &Type{Rtype: reflect.StructOf(sf)}
+	return &Type{Rtype: reflect.StructOf(sf), Placeholder: true}
 }
 
 // SetFields finalizes a forward-declared struct type using src's definition.
@@ -76,4 +76,5 @@ func (t *Type) SetFields(src *Type) {
 	patchRtype(t.Rtype, src.Rtype)
 	t.Fields = src.Fields
 	t.Embedded = src.Embedded
+	t.Placeholder = false
 }

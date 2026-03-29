@@ -27,6 +27,7 @@ type Type struct {
 	PkgPath      string
 	Name         string
 	Rtype        reflect.Type
+	Placeholder  bool            // true for forward-declared struct placeholders until SetFields is called
 	IfaceMethods []IfaceMethod   // non-nil for interface types: required method signatures
 	Methods      []Method        // concrete types: methods[methodID] = code location + receiver path
 	Embedded     []EmbeddedField // parscan types of anonymous (embedded) fields, for promoted method lookup

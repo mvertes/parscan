@@ -186,30 +186,26 @@ func (c *Compiler) typeIndex(typ *vm.Type) int {
 // Placeholders are added without tracking, so they survive retry-loop cleanup.
 func (c *Compiler) preRegisterStructTypes(decls []goparser.Tokens) {
 	for _, decl := range decls {
-		c.preRegisterStructTypesInDecl(decl)
-	}
-}
-
-func (c *Compiler) preRegisterStructTypesInDecl(decl goparser.Tokens) {
-	if len(decl) < 2 || decl[0].Tok != lang.Type {
-		return
-	}
-	if decl[1].Tok == lang.ParenBlock {
-		// Grouped: type ( A struct{...}; B struct{...} )
-		inner, err := c.Scan(decl[1].Block(), false)
-		if err != nil {
-			return
+		if len(decl) < 2 || decl[0].Tok != lang.Type {
+			continue
 		}
-		for _, lt := range inner.Split(lang.Semicolon) {
-			if len(lt) >= 2 && lt[0].Tok == lang.Ident && lt[1].Tok == lang.Struct {
-				c.registerStructPlaceholder(lt[0].Str)
+		if decl[1].Tok == lang.ParenBlock {
+			// Grouped: type ( A struct{...}; B struct{...} )
+			inner, err := c.Scan(decl[1].Block(), false)
+			if err != nil {
+				continue
 			}
+			for _, lt := range inner.Split(lang.Semicolon) {
+				if len(lt) >= 2 && lt[0].Tok == lang.Ident && lt[1].Tok == lang.Struct {
+					c.registerStructPlaceholder(lt[0].Str)
+				}
+			}
+			continue
 		}
-		return
-	}
-	// Single: type A struct{...}
-	if len(decl) >= 3 && decl[1].Tok == lang.Ident && decl[2].Tok == lang.Struct {
-		c.registerStructPlaceholder(decl[1].Str)
+		// Single: type A struct{...}
+		if len(decl) >= 3 && decl[1].Tok == lang.Ident && decl[2].Tok == lang.Struct {
+			c.registerStructPlaceholder(decl[1].Str)
+		}
 	}
 }
 
