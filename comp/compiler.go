@@ -26,10 +26,11 @@ type Compiler struct {
 	Data    []vm.Value // produced data, will be at the bottom of VM stack
 	Entry   int        // offset in Code to start execution from
 
-	strings   map[string]int   // locations of strings in Data
-	methodIDs map[string]int   // global method ID by method name
-	typeIdxs  map[*vm.Type]int // dedup cache for typeIndex, keyed by parscan type pointer
-	posBase   int              // base offset for current source (from Sources.Add)
+	strings   map[string]int                  // locations of strings in Data
+	methodIDs map[string]int                  // global method ID by method name
+	typeIdxs  map[*vm.Type]int                // dedup cache for typeIndex, keyed by parscan type pointer
+	typeSyms  map[reflect.Type]*symbol.Symbol // dedup cache for typeSym, keyed by reflect.Type
+	posBase   int                             // base offset for current source (from Sources.Add)
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
@@ -40,6 +41,7 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 		strings:   map[string]int{},
 		methodIDs: map[string]int{},
 		typeIdxs:  map[*vm.Type]int{},
+		typeSyms:  map[reflect.Type]*symbol.Symbol{},
 	}
 }
 
@@ -59,6 +61,11 @@ func (c *Compiler) Compile(name, src string) error {
 	if err != nil {
 		return err
 	}
+
+	// Pre-register struct type placeholders so that forward and mutual
+	// references (e.g., type F func(*A); type A struct{F}) can resolve.
+	// Placeholders are untracked: they survive the retry loop cleanup.
+	c.preRegisterStructTypes(decls)
 
 	// Phase 1: resolve all declarations (no code generation).
 	// Retry until no undefined declaration remains, or no progress is made.
@@ -171,6 +178,48 @@ func (c *Compiler) typeIndex(typ *vm.Type) int {
 	c.Data = append(c.Data, vm.ValueOf(typ))
 	c.typeIdxs[typ] = i
 	return i
+}
+
+// preRegisterStructTypes scans declarations for struct type definitions and
+// registers placeholder types in the symbol table. This enables forward and
+// mutual references between types (e.g., type F func(*A); type A struct{F}).
+// Placeholders are added without tracking, so they survive retry-loop cleanup.
+func (c *Compiler) preRegisterStructTypes(decls []goparser.Tokens) {
+	for _, decl := range decls {
+		c.preRegisterStructTypesInDecl(decl)
+	}
+}
+
+func (c *Compiler) preRegisterStructTypesInDecl(decl goparser.Tokens) {
+	if len(decl) < 2 || decl[0].Tok != lang.Type {
+		return
+	}
+	if decl[1].Tok == lang.ParenBlock {
+		// Grouped: type ( A struct{...}; B struct{...} )
+		inner, err := c.Scan(decl[1].Block(), false)
+		if err != nil {
+			return
+		}
+		for _, lt := range inner.Split(lang.Semicolon) {
+			if len(lt) >= 2 && lt[0].Tok == lang.Ident && lt[1].Tok == lang.Struct {
+				c.registerStructPlaceholder(lt[0].Str)
+			}
+		}
+		return
+	}
+	// Single: type A struct{...}
+	if len(decl) >= 3 && decl[1].Tok == lang.Ident && decl[2].Tok == lang.Struct {
+		c.registerStructPlaceholder(decl[1].Str)
+	}
+}
+
+func (c *Compiler) registerStructPlaceholder(name string) {
+	if _, ok := c.Symbols[name]; ok {
+		return // Already registered (e.g., from a previous Compile call).
+	}
+	ph := vm.NewStructType()
+	ph.Name = name
+	c.SymAdd(symbol.UnsetAddr, name, vm.NewValue(ph.Rtype), symbol.Type, ph)
 }
 
 // findTypeSym searches the symbol table for the parscan *vm.Type registered under rtype.
@@ -2112,10 +2161,15 @@ func (c *Compiler) compileBuiltin(
 }
 
 func (c *Compiler) typeSym(t *vm.Type) *symbol.Symbol {
-	tsym, ok := c.Symbols[t.Rtype.String()]
+	// Use c.typeSyms (keyed by reflect.Type pointer equality) instead of
+	// c.Symbols[t.Rtype.String()]: calling String() on heap-allocated rtypes
+	// created by reflect.StructOf and then patched in-place by patchRtype
+	// crashes in resolveNameOff because the rtype address is not in any
+	// module's type section.
+	tsym, ok := c.typeSyms[t.Rtype]
 	if !ok {
 		tsym = &symbol.Symbol{Index: symbol.UnsetAddr, Kind: symbol.Type, Type: t}
-		c.SymSet(t.Rtype.String(), tsym)
+		c.typeSyms[t.Rtype] = tsym
 	}
 	if tsym.Index == symbol.UnsetAddr {
 		tsym.Index = len(c.Data)

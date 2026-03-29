@@ -648,6 +648,37 @@ func TestStruct(t *testing.T) {
 	})
 }
 
+func TestRecursiveStruct(t *testing.T) {
+	run(t, []etest{
+		{n: "linked_list", src: `
+type Node struct { V int; Next *Node }
+a := &Node{V: 1, Next: &Node{V: 2, Next: &Node{V: 3}}}
+a.Next.Next.V`, res: "3"},
+
+		{n: "nil_field", src: `
+type Node struct { V int; Next *Node }
+var n Node
+n.Next == nil`, res: "true"},
+
+		{n: "binary_tree", src: `
+type Tree struct { V int; Left, Right *Tree }
+t := &Tree{V: 1, Left: &Tree{V: 2}, Right: &Tree{V: 3}}
+t.Left.V + t.Right.V`, res: "5"},
+
+		{n: "assign_field", src: `
+type Node struct { V int; Next *Node }
+n := Node{V: 1}
+n.Next = &Node{V: 42}
+n.Next.V`, res: "42"},
+
+		{n: "mutual_recurse", src: `
+type F func(a *A)
+type A struct { Name string; F }
+a := &A{"hello", func(a *A) {}}
+a.Name`, res: "hello"},
+	})
+}
+
 func TestEmbeddedStruct(t *testing.T) {
 	run(t, []etest{
 		{n: "field", src: `

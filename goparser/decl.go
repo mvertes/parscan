@@ -423,13 +423,38 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	if isAlias {
 		toks = toks[1:]
 	}
+
+	// For struct types, use a forward-declared placeholder to enable
+	// self-references (*Node) and mutual references between types.
+	name := p.scopedName(in[0].Str)
+	var placeholder *vm.Type
+	if !isAlias && len(toks) > 0 && toks[0].Tok == lang.Struct {
+		if s, ok := p.Symbols[name]; ok && s.Kind == symbol.Type {
+			// Reuse placeholder pre-registered by the compiler.
+			placeholder = s.Type
+		} else {
+			placeholder = vm.NewStructType()
+			placeholder.Name = in[0].Str
+			p.SymAdd(symbol.UnsetAddr, name, vm.NewValue(placeholder.Rtype), symbol.Type, placeholder)
+		}
+	}
+
 	typ, _, err := p.parseTypeExpr(toks)
 	if err != nil {
 		return out, err
 	}
-	typ.Name = in[0].Str
-	// Use scoped name so local type declarations don't overwrite outer-scope types.
-	p.SymAdd(symbol.UnsetAddr, p.scopedName(in[0].Str), vm.NewValue(typ.Rtype), symbol.Type, typ)
+
+	if placeholder != nil {
+		// Finalize: patches the internal reflect type in place so derived
+		// types (e.g., *Node via PointerTo) see the real struct layout.
+		placeholder.SetFields(typ)
+		if s, ok := p.Symbols[name]; ok {
+			s.Value = vm.NewValue(placeholder.Rtype)
+		}
+	} else {
+		typ.Name = in[0].Str
+		p.SymAdd(symbol.UnsetAddr, name, vm.NewValue(typ.Rtype), symbol.Type, typ)
+	}
 	return out, err
 }
 

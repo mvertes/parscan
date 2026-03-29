@@ -158,6 +158,12 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			}
 			types, names, _, err := p.parseParamTypes(lt, parseTypeType)
 			if err != nil {
+				// A lone ident that failed embedded-field lookup and param-type
+				// parsing is likely a forward-declared type. Return ErrUndefined
+				// so the lazy fixpoint loop can retry after the type is defined.
+				if errors.Is(err, ErrMissingType) && len(lt) == 1 && lt[0].Tok == lang.Ident {
+					return nil, 0, ErrUndefined{lt[0].Str}
+				}
 				return nil, 0, err
 			}
 			for i, name := range names {
