@@ -189,17 +189,31 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		}
 		return vm.StructOf(fields, embedded), 2, nil
 
+	case lang.Arrow:
+		// "<-chan T" is recv-only; require chan keyword next.
+		if len(in) < 3 || in[1].Tok != lang.Chan {
+			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
+		}
+		elemTyp, i, err := p.parseTypeExpr(in[2:])
+		if err != nil {
+			return nil, 0, err
+		}
+		return vm.ChanOf(reflect.RecvDir, elemTyp), 2 + i, nil
+
 	case lang.Chan:
 		if len(in) < 2 {
 			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
-		// Handle "chan<-" (send-only) and "<-chan" (recv-only) directional channels.
-		// For now we treat all as bidirectional.
-		elemTyp, i, err := p.parseTypeExpr(in[1:])
+		dir := reflect.BothDir
+		rest, skip := in[1:], 1
+		if len(rest) > 0 && rest[0].Tok == lang.Arrow {
+			dir, rest, skip = reflect.SendDir, rest[1:], 2 // skip <- in chan<-
+		}
+		elemTyp, i, err := p.parseTypeExpr(rest)
 		if err != nil {
 			return nil, 0, err
 		}
-		return vm.ChanOf(reflect.BothDir, elemTyp), 1 + i, nil
+		return vm.ChanOf(dir, elemTyp), skip + i, nil
 
 	case lang.Map:
 		if len(in) < 3 || in[1].Tok != lang.BracketBlock {
@@ -452,11 +466,12 @@ func (p *Parser) parseEmbeddedField(lt Tokens) (fieldType, origType *vm.Type) {
 	if !ok || s.Kind != symbol.Type {
 		return nil, nil
 	}
-	rtyp := s.Type.Rtype
+	ft := *s.Type
+	ft.Name = toks[0].Str
 	if isPtr {
-		rtyp = reflect.PointerTo(rtyp)
+		return vm.PointerTo(&ft), s.Type
 	}
-	return &vm.Type{Name: toks[0].Str, Rtype: rtyp}, s.Type
+	return &ft, s.Type
 }
 
 // hasFirstParam returns true if the first token of a list is a parameter name.

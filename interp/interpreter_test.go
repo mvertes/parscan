@@ -1949,6 +1949,14 @@ func TestGoroutine(t *testing.T) {
 		{n: "make_chan_buffered", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; (<-ch) + (<-ch) + (<-ch)`, res: "6"},
 		// GoCallImm path: named func called via go, parent must still push to stack after goroutine launch.
 		{n: "goroutine_named_func_unbuffered", src: `func send(c chan string) { c <- "ping" }; ch := make(chan string); go send(ch); <-ch`, res: "ping"},
+		// Directional channel types: chan<- (send-only) and <-chan (recv-only).
+		{n: "send_only_chan_param", src: `func send(c chan<- string) { c <- "ping" }; ch := make(chan string); go send(ch); <-ch`, res: "ping"},
+		{n: "recv_only_chan_param", src: `func recv(c <-chan string) string { return <-c }; ch := make(chan string, 1); ch <- "ping"; recv(ch)`, res: "ping"},
+		// Non-default element type coercion on send.
+		{n: "send_int32_chan", src: `func send(c chan<- int32) { c <- 123 }; ch := make(chan int32); go send(ch); <-ch`, res: "123"},
+		// Named channel type embedded in struct.
+		{n: "named_chan_type", src: `type Channel chan string; func send(c Channel) { c <- "ping" }; ch := make(Channel); go send(ch); <-ch`, res: "ping"},
+		{n: "embedded_named_chan", src: `type Channel chan string; type T struct { Channel }; t := T{make(Channel)}; go func() { t.Channel <- "ping" }(); <-t.Channel`, res: "ping"},
 	})
 }
 

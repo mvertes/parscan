@@ -1045,7 +1045,12 @@ func (m *Machine) Run() (err error) {
 			mem[sp] = Value{ref: reflect.MakeChan(chanType, bufSize)}
 
 		case ChanSend:
-			mem[sp-1].ref.Send(mem[sp].Reflect())
+			ch := mem[sp-1].ref
+			v := mem[sp].Reflect()
+			if elemType := ch.Type().Elem(); v.Type() != elemType {
+				v = v.Convert(elemType)
+			}
+			ch.Send(v)
 			sp -= 2
 
 		case ChanRecv:
