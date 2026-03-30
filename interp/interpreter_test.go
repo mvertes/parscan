@@ -1947,6 +1947,8 @@ func TestGoroutine(t *testing.T) {
 		{n: "close_and_recv", src: `ch := make(chan int, 1); ch <- 5; close(ch); v, ok := <-ch; ok`, res: "true"},
 		{n: "recv_closed_ok_false", src: `ch := make(chan int, 1); close(ch); _, ok := <-ch; ok`, res: "false"},
 		{n: "make_chan_buffered", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; (<-ch) + (<-ch) + (<-ch)`, res: "6"},
+		// GoCallImm path: named func called via go, parent must still push to stack after goroutine launch.
+		{n: "goroutine_named_func_unbuffered", src: `func send(c chan string) { c <- "ping" }; ch := make(chan string); go send(ch); <-ch`, res: "ping"},
 	})
 }
 

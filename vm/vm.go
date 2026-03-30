@@ -1010,7 +1010,7 @@ func (m *Machine) Run() (err error) {
 				defer m.wg.Done()
 				_ = child.Run()
 			}()
-			mem = m.mem
+			mem = m.mem[:cap(m.mem)]
 
 		case GoCallImm:
 			narg := int(c.B)
@@ -1028,7 +1028,7 @@ func (m *Machine) Run() (err error) {
 				defer m.wg.Done()
 				_ = child.Run()
 			}()
-			mem = m.mem
+			mem = m.mem[:cap(m.mem)]
 
 		case MkChan:
 			elemType := m.globals[int(c.A)].ref.Type()
