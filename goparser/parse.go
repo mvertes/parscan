@@ -391,6 +391,9 @@ func (p *Parser) ParseOneStmt(toks Tokens) (Tokens, error) {
 // ParseDecl resolves a declaration's symbols (Phase 1) without emitting code.
 // Returns handled=true if fully resolved, false if code generation is needed.
 func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
+	for len(toks) > 0 && toks[len(toks)-1].Tok == lang.Comment {
+		toks = toks[:len(toks)-1]
+	}
 	if len(toks) == 0 {
 		return true, nil
 	}
@@ -588,6 +591,9 @@ func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
 }
 
 func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
+	for len(in) > 0 && in[len(in)-1].Tok == lang.Comment {
+		in = in[:len(in)-1]
+	}
 	if len(in) == 0 {
 		return nil, nil
 	}

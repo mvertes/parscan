@@ -827,9 +827,6 @@ func (m *Machine) Run() (err error) {
 			}
 
 		case Exit:
-			if m.wg != nil && !m.isGoroutine {
-				m.wg.Wait()
-			}
 			return err
 		case Fnew:
 			if sp+1 >= len(mem) {
