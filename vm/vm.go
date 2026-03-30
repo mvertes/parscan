@@ -26,6 +26,20 @@ type Closure struct {
 	Env  []*Value // heap-allocated cells, one per captured variable
 }
 
+// SelectCaseInfo describes one case of a select statement.
+type SelectCaseInfo struct {
+	Dir    reflect.SelectDir // SelectSend, SelectRecv, or SelectDefault
+	Slot   int               // local/global index for received value (-1 if unused)
+	OkSlot int               // local/global index for ok bool (-1 if unused)
+	Local  bool              // true if slots are local (frame-relative), false for global
+}
+
+// SelectMeta holds metadata for a select statement, stored in the data section.
+type SelectMeta struct {
+	Cases    []SelectCaseInfo
+	TotalPop int // precomputed number of stack slots consumed by channel/value entries
+}
+
 // Byte-code instruction set.
 const (
 	// Instruction effect on stack: values consumed -- values produced.
@@ -102,12 +116,13 @@ const (
 	AddStr                 // s1 s2 -- s ; s = s1 + s2 (string concatenation)
 
 	// Goroutine and channel opcodes.
-	GoCall    // f [a1..ai] -- ; spawn goroutine; $0=narg
-	GoCallImm // [a1..ai] -- ; spawn goroutine to known func; $0=dataIdx, $1=narg
-	MkChan    // -- ch ; create channel; $0=elemTypeIdx, $1=bufsize (-1=from stack)
-	ChanSend  // ch v -- ; send to channel
-	ChanRecv  // ch -- v [ok] ; receive from channel; $0=1 for ok-form
-	ChanClose // ch -- ; close channel
+	GoCall     // f [a1..ai] -- ; spawn goroutine; $0=narg
+	GoCallImm  // [a1..ai] -- ; spawn goroutine to known func; $0=dataIdx, $1=narg
+	MkChan     // -- ch ; create channel; $0=elemTypeIdx, $1=bufsize (-1=from stack)
+	ChanSend   // ch v -- ; send to channel
+	ChanRecv   // ch -- v [ok] ; receive from channel; $0=1 for ok-form
+	ChanClose  // ch -- ; close channel
+	SelectExec // ch0 [v0] .. chN [vN] -- chosenIdx ; $0=metaIdx, $1=ncase; calls reflect.Select
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -1068,6 +1083,52 @@ func (m *Machine) Run() (err error) {
 		case ChanClose:
 			mem[sp].ref.Close()
 			sp--
+
+		case SelectExec:
+			meta := m.globals[int(c.A)].ref.Interface().(*SelectMeta)
+			ncase := int(c.B)
+			base := sp - meta.TotalPop + 1
+			cases := make([]reflect.SelectCase, ncase)
+			idx := base
+			for i, ci := range meta.Cases {
+				switch ci.Dir {
+				case reflect.SelectRecv:
+					cases[i] = reflect.SelectCase{Dir: reflect.SelectRecv, Chan: mem[idx].ref}
+					idx++
+				case reflect.SelectSend:
+					ch := mem[idx].ref
+					val := mem[idx+1].Reflect()
+					if elemType := ch.Type().Elem(); val.Type() != elemType {
+						val = val.Convert(elemType)
+					}
+					cases[i] = reflect.SelectCase{Dir: reflect.SelectSend, Chan: ch, Send: val}
+					idx += 2
+				case reflect.SelectDefault:
+					cases[i] = reflect.SelectCase{Dir: reflect.SelectDefault}
+				}
+			}
+			chosen, recv, recvOK := reflect.Select(cases)
+			sp = base
+			ci := meta.Cases[chosen]
+			if ci.Dir == reflect.SelectRecv {
+				if ci.Slot >= 0 {
+					v := fromReflect(recv)
+					if ci.Local {
+						mem[fp-1+ci.Slot] = v
+					} else {
+						m.assignSlot(&m.globals[ci.Slot], v)
+					}
+				}
+				if ci.OkSlot >= 0 {
+					v := boolVal(recvOK)
+					if ci.Local {
+						mem[fp-1+ci.OkSlot] = v
+					} else {
+						m.assignSlot(&m.globals[ci.OkSlot], v)
+					}
+				}
+			}
+			mem[sp] = Value{num: uint64(chosen), ref: zint} //nolint:gosec
 
 		case WrapFunc:
 			// Wrap the parscan func value on the stack in a reflect.MakeFunc for native Go callbacks.

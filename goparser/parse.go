@@ -4,6 +4,7 @@ package goparser
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -623,7 +624,7 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	case lang.Go:
 		return p.parseGo(in)
 	case lang.Select:
-		return out, fmt.Errorf("not yet implemented: %v", t.Tok)
+		return p.parseSelect(in)
 	case lang.Goto:
 		return p.parseGoto(in)
 	case lang.If:
@@ -1624,6 +1625,192 @@ func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch, prev
 		out = append(out, newGoto(p.scope+"e", 0))
 	}
 	return out, hasFallthrough, err
+}
+
+// SelectCaseDesc describes one case of a select statement for the compiler.
+type SelectCaseDesc struct {
+	Dir     reflect.SelectDir
+	ValName string // scoped name of recv value var ("" if none)
+	OkName  string // scoped name of recv ok var ("" if none)
+}
+
+// parseSelect parses a select statement: select { case <-ch: ... case ch <- v: ... default: ... }.
+func (p *Parser) parseSelect(in Tokens) (out Tokens, err error) {
+	if len(in) < 2 || in[len(in)-1].Tok != lang.BraceBlock {
+		return nil, errors.New("invalid select statement")
+	}
+	pos := in[0].Pos
+
+	pendingLabel := p.takePendingLabel()
+	label := "select" + strconv.Itoa(p.labelCount[p.scope])
+	p.labelCount[p.scope]++
+	breakLabel := p.breakLabel
+	p.pushScope(label)
+	p.breakLabel = p.scope + "e"
+	if pendingLabel != "" {
+		p.labeledJump[pendingLabel] = [2]string{"", p.breakLabel}
+	}
+	defer func() {
+		p.breakLabel = breakLabel
+		p.popScope()
+	}()
+
+	clauses, err := p.Scan(in[len(in)-1].Block(), true)
+	if err != nil {
+		return nil, err
+	}
+	caseClauses := clauses.SplitStart(lang.Case)
+
+	// Move default clause to last position.
+	lsc := len(caseClauses) - 1
+	for i, cl := range caseClauses {
+		if cl[1].Tok == lang.Colon && i != lsc {
+			caseClauses[i], caseClauses[lsc] = caseClauses[lsc], caseClauses[i]
+			break
+		}
+	}
+
+	type selectCase struct {
+		dir      reflect.SelectDir
+		chanToks Tokens
+		sendToks Tokens
+		body     Tokens
+		valName  string
+		okName   string
+	}
+	cases := make([]selectCase, len(caseClauses))
+	for i, cl := range caseClauses {
+		tl := cl.Split(lang.Colon)
+		if len(tl) != 2 {
+			return nil, errors.New("invalid select case clause")
+		}
+		header := tl[0][1:] // skip "case" token
+		ci := &cases[i]
+
+		if len(header) == 0 {
+			ci.dir = reflect.SelectDefault
+			ci.body, err = p.parseStmts(append(tl[1], newSemicolon(pos)))
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		arrowIdx := header.Index(lang.Arrow)
+		defIdx := header.Index(lang.Define)
+		assIdx := header.Index(lang.Assign)
+
+		if arrowIdx > 0 && (defIdx < 0 || arrowIdx < defIdx) && (assIdx < 0 || arrowIdx < assIdx) {
+			ci.dir = reflect.SelectSend
+			if ci.chanToks, err = p.parseExpr(header[:arrowIdx], ""); err != nil {
+				return nil, err
+			}
+			if ci.sendToks, err = p.parseExpr(header[arrowIdx+1:], ""); err != nil {
+				return nil, err
+			}
+			ci.body, err = p.parseStmts(append(tl[1], newSemicolon(pos)))
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			ci.dir = reflect.SelectRecv
+			assignIdx := defIdx
+			if assignIdx < 0 {
+				assignIdx = assIdx
+			}
+			var chExpr Tokens
+			if assignIdx >= 0 {
+				isDefine := defIdx >= 0
+				// Per-case scope so each case's variables are independent.
+				p.pushScope(fmt.Sprintf("c%d", i))
+				lhsToks := header[:assignIdx].Split(lang.Comma)
+				for j, lt := range lhsToks {
+					if len(lt) != 1 || lt[0].Tok != lang.Ident {
+						p.popScope()
+						return nil, errors.New("invalid select recv assignment")
+					}
+					name := lt[0].Str
+					if name == "_" {
+						continue
+					}
+					var scopedName string
+					if isDefine {
+						if p.funcScope != "" {
+							scopedName = p.addLocalVar(name)
+						} else {
+							scopedName = p.addGlobalVar(name)
+						}
+					} else {
+						if _, sn, ok := p.Symbols.Get(name, p.scope); ok {
+							scopedName = sn
+						} else {
+							scopedName = p.scopedName(name)
+						}
+					}
+					if j == 0 {
+						ci.valName = scopedName
+					} else {
+						ci.okName = scopedName
+					}
+				}
+				chExpr = header[assignIdx+1:]
+			} else {
+				chExpr = header
+			}
+			if len(chExpr) == 0 || chExpr[0].Tok != lang.Arrow {
+				if assignIdx >= 0 {
+					p.popScope()
+				}
+				return nil, errors.New("select recv case requires <-")
+			}
+			if ci.chanToks, err = p.parseExpr(chExpr[1:], ""); err != nil {
+				if assignIdx >= 0 {
+					p.popScope()
+				}
+				return nil, err
+			}
+			// Parse body after creating recv variables so the body can reference them.
+			ci.body, err = p.parseStmts(append(tl[1], newSemicolon(pos)))
+			if assignIdx >= 0 {
+				p.popScope()
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	descs := make([]SelectCaseDesc, len(cases))
+	for i := range cases {
+		descs[i] = SelectCaseDesc{Dir: cases[i].dir, ValName: cases[i].valName, OkName: cases[i].okName}
+		switch cases[i].dir {
+		case reflect.SelectRecv:
+			out = append(out, cases[i].chanToks...)
+		case reflect.SelectSend:
+			out = append(out, cases[i].chanToks...)
+			out = append(out, cases[i].sendToks...)
+		}
+	}
+
+	out = append(out, newToken(lang.Select, "", pos, descs))
+
+	// Emit condSwitch-style dispatch on chosen index.
+	nc := len(cases) - 1
+	for i, c := range cases {
+		out = append(out, newLabel(fmt.Sprintf("%sc%d.0", p.scope, i), 0))
+		if i < nc {
+			out = append(out, newToken(lang.Int, strconv.Itoa(i), pos))
+			out = append(out, newEqualSet(pos))
+			out = append(out, newJumpFalse(fmt.Sprintf("%sc%d.0", p.scope, i+1), pos))
+		}
+		out = append(out, c.body...)
+		if i < nc {
+			out = append(out, newGoto(p.breakLabel, 0))
+		}
+	}
+
+	out = append(out, newLabel(p.breakLabel, pos))
+	return out, nil
 }
 
 func (p *Parser) parseLabel(in Tokens) (out Tokens, err error) {

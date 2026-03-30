@@ -1986,6 +1986,53 @@ ch = ch1
 	})
 }
 
+func TestSelect(t *testing.T) {
+	run(t, []etest{
+		{n: "select_recv_buffered", src: `ch := make(chan int, 1); ch <- 42; r := 0; select { case v := <-ch: r = v }; r`, res: "42"},
+		{n: "select_default", src: `ch := make(chan int); r := 0; select { case v := <-ch: r = v; default: r = 99 }; r`, res: "99"},
+		{n: "select_send", src: `
+ch := make(chan int, 1)
+select { case ch <- 7: }
+<-ch`, res: "7"},
+		{n: "select_recv_ok", src: `
+ch := make(chan int, 1)
+ch <- 5
+close(ch)
+r := false
+select { case _, ok := <-ch: r = ok }
+r`, res: "true"},
+		{n: "select_recv_closed_ok_false", src: `
+ch := make(chan int)
+close(ch)
+r := false
+select { case _, ok := <-ch: r = ok }
+r`, res: "false"},
+		{n: "select_with_goroutine", src: `
+ch := make(chan string)
+go func() { ch <- "hello" }()
+r := ""
+select { case v := <-ch: r = v }
+r`, res: "hello"},
+		{n: "select_in_loop", src: `
+ch := make(chan int, 3)
+ch <- 10; ch <- 20; ch <- 30
+sum := 0
+for i := 0; i < 3; i++ { select { case v := <-ch: sum = sum + v } }
+sum`, res: "60"},
+		{n: "select_bare_recv", src: `ch := make(chan int, 1); ch <- 1; select { case <-ch: }; 42`, res: "42"},
+		{n: "select_multiple_cases", src: `
+ch1 := make(chan int, 1)
+ch2 := make(chan string, 1)
+ch2 <- "ok"
+r := ""
+select {
+case v := <-ch1: r = "int"
+case v := <-ch2: r = v
+}
+r`, res: "ok"},
+	})
+}
+
 func TestPackageDecl(t *testing.T) {
 	run(t, []etest{
 		// File-level comment before package declaration (was: "package already set").

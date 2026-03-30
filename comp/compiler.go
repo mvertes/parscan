@@ -1759,6 +1759,59 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtype}})
 
+		case lang.Select:
+			descs := t.Arg[0].([]goparser.SelectCaseDesc)
+			meta := &vm.SelectMeta{Cases: make([]vm.SelectCaseInfo, len(descs))}
+			// initSlot initializes a variable slot and returns its index.
+			initSlot := func(name string, typ *vm.Type) int {
+				s := c.Symbols[name]
+				s.Type = typ
+				switch {
+				case s.Kind == symbol.LocalVar:
+					c.emit(t, vm.New, s.Index, c.typeSym(typ).Index)
+				case s.Index == symbol.UnsetAddr:
+					s.Index = len(c.Data)
+					c.Data = append(c.Data, vm.NewValue(typ.Rtype))
+				default:
+					c.Data[s.Index] = vm.NewValue(typ.Rtype)
+				}
+				return s.Index
+			}
+			// Pop stack entries in reverse (LIFO) to collect channel element types.
+			chanTypes := make([]*vm.Type, len(descs))
+			for i := len(descs) - 1; i >= 0; i-- {
+				switch descs[i].Dir {
+				case reflect.SelectSend:
+					pop() // value
+					pop() // channel
+				case reflect.SelectRecv:
+					chanTypes[i] = pop().Type.ElemType
+				}
+			}
+			for i, d := range descs {
+				ci := vm.SelectCaseInfo{Dir: d.Dir, Slot: -1, OkSlot: -1}
+				switch d.Dir {
+				case reflect.SelectRecv:
+					if d.ValName != "" {
+						ci.Local = c.Symbols[d.ValName].Kind == symbol.LocalVar
+						ci.Slot = initSlot(d.ValName, chanTypes[i])
+					}
+					if d.OkName != "" {
+						ci.OkSlot = initSlot(d.OkName, c.Symbols["bool"].Type)
+					}
+				case reflect.SelectSend:
+					meta.TotalPop += 2
+				}
+				if d.Dir == reflect.SelectRecv {
+					meta.TotalPop++
+				}
+				meta.Cases[i] = ci
+			}
+			metaIdx := len(c.Data)
+			c.Data = append(c.Data, vm.ValueOf(meta))
+			push(&symbol.Symbol{Kind: symbol.Value, Type: c.Symbols["int"].Type})
+			c.emit(t, vm.SelectExec, metaIdx, len(descs))
+
 		default:
 			return fmt.Errorf("generate: unsupported token %v", t)
 		}
