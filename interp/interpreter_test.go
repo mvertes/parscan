@@ -1957,6 +1957,43 @@ func TestGoroutine(t *testing.T) {
 		// Named channel type embedded in struct.
 		{n: "named_chan_type", src: `type Channel chan string; func send(c Channel) { c <- "ping" }; ch := make(Channel); go send(ch); <-ch`, res: "ping"},
 		{n: "embedded_named_chan", src: `type Channel chan string; type T struct { Channel }; t := T{make(Channel)}; go func() { t.Channel <- "ping" }(); <-t.Channel`, res: "ping"},
+		// Inline end-of-line comment after a go statement (was: "go requires a function call").
+		{n: "go_inline_comment", src: `
+ch := make(chan int, 1)
+go func() { ch <- 7 }() // launch
+<-ch`, res: "7"},
+		// Channel variable reassigned after goroutine start: goroutine must keep the original channel.
+		{n: "chan_reassign_after_goroutine", src: `
+func sendTo(ch chan<- int, v int) { ch <- v }
+ch := make(chan int)
+go sendTo(ch, 42)
+orig := ch
+ch = make(chan int)
+<-orig`, res: "42"},
+		// Daisy-chain goroutines (sieve-style): channel pipeline where ch is reassigned each iteration.
+		{n: "goroutine_chan_pipeline", src: `
+func filter(in <-chan int, out chan<- int, prime int) {
+	for { i := <-in; if i%prime != 0 { out <- i } }
+}
+func generate(ch chan<- int) { for i := 2; ; i++ { ch <- i } }
+ch := make(chan int)
+go generate(ch)
+prime := <-ch
+ch1 := make(chan int)
+go filter(ch, ch1, prime)
+ch = ch1
+<-ch`, res: "3"},
+	})
+}
+
+func TestPackageDecl(t *testing.T) {
+	run(t, []etest{
+		// File-level comment before package declaration (was: "package already set").
+		{n: "comment_before_package", src: `
+// A file-level comment
+package main
+func answer() int { return 42 }
+answer()`, res: "42"},
 	})
 }
 

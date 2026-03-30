@@ -207,7 +207,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		dir := reflect.BothDir
 		rest, skip := in[1:], 1
 		if len(rest) > 0 && rest[0].Tok == lang.Arrow {
-			dir, rest, skip = reflect.SendDir, rest[1:], 2 // skip <- in chan<-
+			dir, rest, skip = reflect.SendDir, rest[1:], 2 // chan<-: send-only, skip both chan and <- tokens
 		}
 		elemTyp, i, err := p.parseTypeExpr(rest)
 		if err != nil {

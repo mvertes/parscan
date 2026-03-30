@@ -995,7 +995,9 @@ func (m *Machine) Run() (err error) {
 			narg := int(c.A)
 			fval := mem[sp-narg]
 			args := make([]Value, narg)
-			copy(args, mem[sp-narg+1:sp+1])
+			for i := range args {
+				args[i] = snapshotArg(mem[sp-narg+1+i])
+			}
 			sp -= narg + 1
 			if m.wg == nil {
 				m.wg = new(sync.WaitGroup)
@@ -1013,7 +1015,9 @@ func (m *Machine) Run() (err error) {
 			narg := int(c.B)
 			fval := m.globals[int(c.A)]
 			args := make([]Value, narg)
-			copy(args, mem[sp-narg+1:sp+1])
+			for i := range args {
+				args[i] = snapshotArg(mem[sp-narg+1+i])
+			}
 			sp -= narg
 			if m.wg == nil {
 				m.wg = new(sync.WaitGroup)
@@ -2050,6 +2054,17 @@ func (m *Machine) newGoroutine(fval Value, args []Value) *Machine {
 	child.mem = append(child.mem, args...)
 	child.ip = callIP
 	return child
+}
+
+// snapshotArg returns a goroutine-safe copy of v. For non-numeric addressable
+// (indirect) values such as channels and maps, it extracts the current value
+// from the backing allocation so the goroutine arg is independent of any later
+// reassignment to the variable in the parent frame.
+func snapshotArg(v Value) Value {
+	if !isNum(v.ref.Kind()) && v.ref.CanAddr() {
+		v.ref = reflect.ValueOf(v.ref.Interface())
+	}
+	return v
 }
 
 // Top returns (but not remove)  the value on the top of machine stack.
