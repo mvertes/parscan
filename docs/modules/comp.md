@@ -82,7 +82,7 @@ each building on the previous:
    `GreaterIntImm; JumpFalse` as `LowerIntImmJumpTrue` using the identity
    `a > imm` = `!(a < imm+1)`, keeping only `Lower`-based fused ops.
 
-### CallImm
+### CallImm and GoCallImm
 
 When calling a declared function (not a closure, not a variable), the
 compiler emits `CallImm` instead of loading the function value and
@@ -90,6 +90,42 @@ emitting `Call`. `CallImm` encodes the data index in `A` and packs
 `narg<<16 | nret` in `B`, skipping the runtime function-value dispatch
 entirely. `removeGetGlobal` retracts the preceding `GetGlobal` that
 loaded the function address.
+
+`GoCallImm` applies the same optimization to `go` statements: if the
+target is a named non-closure function, `removeGetGlobal` retracts the
+`GetGlobal` and the compiler emits `GoCallImm` with `A` = globals index,
+`B` = narg. Otherwise it emits `GoCall narg`, which reads the function
+value from the stack at runtime.
+
+### Goroutine and channel compilation
+
+**`go` statements.** `lang.Go` tokens are emitted by the parser's
+`parseGo`, which reuses `parseExpr` for the callee expression and
+`parseBlock` for arguments. The result is the callee postfix output
+followed by argument tokens followed by a `lang.Go{narg}` token --
+the same shape as a call statement but with `lang.Go` instead of
+`lang.Call`. The compiler's `case lang.Go` handler applies `GoCallImm`
+when possible (named non-closure function), otherwise emits `GoCall`.
+
+**Channel send.** `parseChanSend(in, arrowIdx)` splits the statement at
+`<-`, parses both sides as expressions, and appends a `lang.ChanSend`
+token. The compiler's `case lang.ChanSend` handler emits `vm.ChanSend`.
+
+**Channel receive.** `<-ch` in an expression is handled as a unary
+operator (`lang.Arrow`) during `parseExpr`. The compiler's
+`case lang.Arrow` handler emits `vm.ChanRecv A=0` (single-value form)
+or `vm.ChanRecv A=1` (two-result form `v, ok := <-ch`). The ok-form
+is signalled by the parser setting `t.Arg[0] = 1` on the `Arrow` token.
+
+**Channel type.** `parseTypeExpr` recognises `chan T` and calls
+`vm.ChanOf(reflect.BothDir, elemType)`. Directional channels
+(`chan<-`, `<-chan`) are parsed but currently treated as bidirectional.
+
+**`make(chan T[, n])`.** `compileBuiltin` for `make` dispatches on the
+reflect kind of the first argument's type. For `reflect.Chan` it emits
+`MkChan` with the elem type index and buffer size. An explicit size
+argument leaves its value on the stack; the opcode reads it by passing
+`B = -1`. An absent size argument uses `B = 0` (unbuffered).
 
 ### Stack growth computation
 
@@ -158,7 +194,8 @@ builtin emits a dedicated opcode:
 | `copy` | `CopySlice` | Returns element count |
 | `delete` | `DeleteMap` + `Pop` | Void; extra `Pop` discards the map value |
 | `new` | `PtrNew` | Removes the `Fnew` emitted for the type argument |
-| `make` | `MkSlice` (negative n) / `MkMap` | Reuses `MkSlice` with negative `Arg[0]` for make mode |
+| `make` | `MkSlice` (negative n) / `MkMap` / `MkChan` | Reuses `MkSlice` with negative `Arg[0]` for make-slice mode; `MkChan` for `make(chan T[, n])` |
+| `close` | `ChanClose` | Pops channel; closes it via `reflect.Value.Close` |
 | `panic` | `Panic` | |
 | `recover` | `Recover` | |
 | `trap` | `Trap` | Zero arguments; pauses VM and enters interactive debug mode |

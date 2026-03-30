@@ -100,6 +100,7 @@ var GoSpec = &lang.Spec{
 		"<=":          lang.LessEqual,
 		">=":          lang.GreaterEqual,
 		"->":          lang.Arrow,
+		"<-":          lang.Arrow,
 		"!":           lang.Not,
 		"++":          lang.Inc,
 		"--":          lang.Dec,
@@ -148,6 +149,7 @@ var GoSpec = &lang.Spec{
 		lang.Greater:      {Precedence: 3},
 		lang.Land:         {Precedence: 1},
 		lang.Lor:          {Precedence: 0},
+		lang.Arrow:        {Precedence: 6}, // unary channel receive <-ch
 		lang.Minus:        {Precedence: 6},
 		lang.Deref:        {Precedence: 6},
 		lang.Addr:         {Precedence: 6},

@@ -447,6 +447,11 @@ func MapOf(k, e *Type) *Type {
 	return &Type{Rtype: reflect.MapOf(k.Rtype, e.Rtype), ElemType: e}
 }
 
+// ChanOf returns the channel type with the given direction and element type.
+func ChanOf(dir reflect.ChanDir, elem *Type) *Type {
+	return &Type{Rtype: reflect.ChanOf(dir, elem.Rtype), ElemType: elem}
+}
+
 // FuncOf returns the function type with the given argument and result types.
 func FuncOf(arg, ret []*Type, variadic bool) *Type {
 	a := make([]reflect.Type, len(arg))

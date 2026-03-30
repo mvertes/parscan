@@ -92,6 +92,32 @@ detects a leading `BraceBlock` token, pushes a synthetic `block<n>` scope
 label, parses the block body, then pops the scope on exit. This matches Go
 semantics for variable shadowing inside bare blocks.
 
+### Goroutine and channel syntax
+
+**`go` statements.** `parseGo` validates that the statement is
+`go expr(args)` -- it requires the last token of the function expression
+to be a `ParenBlock`. It parses the callee expression with `parseExpr`,
+then the argument block with `parseBlock`, and appends a `lang.Go{narg}`
+token. The resulting token stream mirrors the shape of a call statement
+and is handled symmetrically by the compiler.
+
+**Channel send statements.** `parseStmt` detects `<-` with a positive
+index before any `=` or `:=`, which unambiguously identifies a send
+statement. It calls `parseChanSend(in, arrowIdx)`, which parses the
+channel expression and value expression separately and appends a
+`lang.ChanSend` token.
+
+**Unary channel receive.** In `parseExpr`, `lang.Arrow` (`<-`) is
+treated as a unary prefix operator with precedence 6 (equal to unary
+minus). In a two-result assignment (`v, ok := <-ch`), `parseAssign`
+sets `t.Arg[0] = 1` on the trailing `Arrow` token to signal the ok-form
+to the compiler.
+
+**Channel types.** `parseTypeExpr` handles `chan T` by recursively
+calling itself for the element type and constructing a `vm.ChanOf` type.
+Directional channels (`chan<-`, `<-chan`) are syntactically accepted but
+mapped to bidirectional channels.
+
 ### Closure analysis
 
 When a function literal references a variable from an outer scope, the

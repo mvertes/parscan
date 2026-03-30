@@ -206,13 +206,14 @@ var tests = []struct {
 		{Op: Exit},
 	},
 	start: 0, end: 1, mem: "[3]",
-}, { // #10 -- Assign a variable.
+}, { // #10 -- Assign a local variable (frame-relative slot).
 	sym: []Value{ValueOf(0)},
 	code: []Instruction{
 		{Op: Grow, A: 1},
 		{Op: New, A: 2, B: 0},
 		{Op: Push, A: 2},
-		{Op: Set, A: 0, B: 1},
+		{Op: SetLocal, A: 2}, // mem[fp-1+2] = mem[sp]
+		{Op: GetLocal, A: 2}, // push mem[fp-1+2] = mem[1] = 2
 		{Op: Exit},
 	},
 	start: 1, end: 2, mem: "[2]",
@@ -224,7 +225,7 @@ var tests = []struct {
 		{Op: Call, A: 1},
 		{Op: Exit},
 	},
-	start: 2, end: 4, mem: "[6 <nil>]",
+	start: 0, end: 2, mem: "[6 <nil>]",
 }, { // #12 -- Defining and calling a function in VM.
 	code: []Instruction{
 		{Op: Jump, A: 3},         // 0
@@ -240,7 +241,7 @@ var tests = []struct {
 	code: []Instruction{
 		{Op: Jump, A: 5},         // 0
 		{Op: Push, A: 3},         // 1
-		{Op: Set, A: 1, B: -3},   // 2
+		{Op: SetLocal, A: -3},    // 2
 		{Op: GetLocal, A: -3},    // 3
 		{Op: Return, A: 1, B: 1}, // 4
 		{Op: Push, A: 1},         // 5

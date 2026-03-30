@@ -112,6 +112,7 @@ const (
 
 	// Internal virtual machine tokens (no corresponding keyword).
 	Call
+	ChanSend // ch v -- ; channel send statement
 	Composite
 	EqualSet
 	Grow

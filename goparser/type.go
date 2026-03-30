@@ -189,6 +189,18 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		}
 		return vm.StructOf(fields, embedded), 2, nil
 
+	case lang.Chan:
+		if len(in) < 2 {
+			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
+		}
+		// Handle "chan<-" (send-only) and "<-chan" (recv-only) directional channels.
+		// For now we treat all as bidirectional.
+		elemTyp, i, err := p.parseTypeExpr(in[1:])
+		if err != nil {
+			return nil, 0, err
+		}
+		return vm.ChanOf(reflect.BothDir, elemTyp), 1 + i, nil
+
 	case lang.Map:
 		if len(in) < 3 || in[1].Tok != lang.BracketBlock {
 			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
@@ -460,7 +472,7 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 	// a type expression, treat the ident as a field/param name (e.g. rune [N]T).
 	if len(in) > 1 {
 		switch in[1].Tok {
-		case lang.BracketBlock, lang.Mul, lang.Func, lang.Ident, lang.Struct, lang.Map, lang.Interface:
+		case lang.BracketBlock, lang.Mul, lang.Func, lang.Ident, lang.Struct, lang.Map, lang.Interface, lang.Chan:
 			return true
 		}
 	}

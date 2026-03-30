@@ -1912,6 +1912,17 @@ func TestBuiltin(t *testing.T) {
 	})
 }
 
+func TestGoroutine(t *testing.T) {
+	run(t, []etest{
+		{n: "buffered_chan", src: `ch := make(chan int, 1); ch <- 42; <-ch`, res: "42"},
+		{n: "goroutine_func_lit", src: `ch := make(chan int, 1); go func() { ch <- 42 }(); <-ch`, res: "42"},
+		{n: "goroutine_with_arg", src: `ch := make(chan int, 1); go func(n int) { ch <- n * 2 }(21); <-ch`, res: "42"},
+		{n: "close_and_recv", src: `ch := make(chan int, 1); ch <- 5; close(ch); v, ok := <-ch; ok`, res: "true"},
+		{n: "recv_closed_ok_false", src: `ch := make(chan int, 1); close(ch); _, ok := <-ch; ok`, res: "false"},
+		{n: "make_chan_buffered", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; (<-ch) + (<-ch) + (<-ch)`, res: "6"},
+	})
+}
+
 // TestRepl exercises the re-entrant interpreter (REPL mode), where a single
 // Interp is used across multiple sequential Eval calls.
 func TestRepl(t *testing.T) {

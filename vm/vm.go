@@ -9,6 +9,7 @@ import (
 	"math" // for float arithmetic
 	"reflect"
 	"strings"
+	"sync"
 	"unsafe" // to allow setting unexported struct fields //nolint:depguard
 )
 
@@ -66,7 +67,8 @@ const (
 	Pull                   // a -- a s n; pull iterator next and stop function
 	Pull2                  // a -- a s n; pull iterator next and stop function
 	Return                 // [r1 .. ri] -- ; exit frame, nret and frameBase from frames
-	Set                    // v --  ; mem[$1,$2] = v
+	SetLocal               // v -- ; mem[fp-1+$1] = v
+	SetGlobal              // v -- ; mem[$1] = v (globals)
 	SetS                   // dest val -- ; dest.Set(val)
 	Slice                  // a l h -- a; a = a [l:h]
 	Slice3                 // a l h m -- a; a = a[l:h:m]
@@ -98,6 +100,14 @@ const (
 	Trap                   // -- ; pause VM execution and enter debug mode
 	WrapFunc               // parscanFuncVal -- ParscanFunc ; wrap parscan func in reflect.MakeFunc for native callbacks; $0=typeIdx
 	AddStr                 // s1 s2 -- s ; s = s1 + s2 (string concatenation)
+
+	// Goroutine and channel opcodes.
+	GoCall    // f [a1..ai] -- ; spawn goroutine; $0=narg
+	GoCallImm // [a1..ai] -- ; spawn goroutine to known func; $0=dataIdx, $1=narg
+	MkChan    // -- ch ; create channel; $0=elemTypeIdx, $1=bufsize (-1=from stack)
+	ChanSend  // ch v -- ; send to channel
+	ChanRecv  // ch -- v [ok] ; receive from channel; $0=1 for ok-form
+	ChanClose // ch -- ; close channel
 
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
@@ -291,14 +301,18 @@ type Code []Instruction
 // Machine is a stack-based virtual machine that executes bytecode instructions.
 type Machine struct {
 	code    Code       // code to execute
-	mem     []Value    // memory, as a stack
+	globals []Value    // global variable storage, shared across goroutines (set by Push)
+	mem     []Value    // stack only (no globals; indices are frame-relative)
 	ip, fp  int        // instruction pointer and frame pointer
-	dataLen int        // number of global data slots in mem (set by Push)
 	env     []*Value   // active closure's captured cells (nil for plain functions)
 	frames  [][]*Value // saved caller envs (only for closure calls where env != nil)
 
 	panicking bool  // true while unwinding due to panic
 	panicVal  Value // value passed to panic()
+
+	wg          *sync.WaitGroup // shared WaitGroup; nil until first goroutine spawn
+	isGoroutine bool            // true if this machine was spawned via a go statement
+	baseCodeLen int             // len(code) before Run() appends sentinel instructions
 
 	// funcFields maps struct func field addresses to parscan func values (int code addresses
 	// or Closures). Parscan funcs cannot be stored directly in typed Go func fields via reflect.
@@ -351,6 +365,7 @@ func growStack(mem []Value, sp, need int) []Value {
 func (m *Machine) Run() (err error) {
 	// Append sentinel instructions so negative-IP handlers become normal opcodes.
 	sentBase := len(m.code)
+	m.baseCodeLen = sentBase
 	m.code = append(m.code, Instruction{Op: DeferRet}, Instruction{Op: PanicUnwind})
 	deferRetAddr := sentBase
 	panicAddr := sentBase + 1
@@ -380,8 +395,11 @@ func (m *Machine) Run() (err error) {
 				// Materialize via Reflect() to get an addressable value, then take its address.
 				mem[sp] = Value{ref: v.Reflect().Addr()}
 			}
-		case Set:
-			m.assignSlot(&mem[int(c.A)*(fp-1)+int(c.B)], mem[sp])
+		case SetLocal:
+			m.assignSlot(&mem[fp-1+int(c.A)], mem[sp])
+			sp--
+		case SetGlobal:
+			m.assignSlot(&m.globals[int(c.A)], mem[sp])
 			sp--
 		case Call:
 			narg := int(c.A)
@@ -460,7 +478,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp+3] = Value{num: fpVal}
 			sp += 3
 			fp = sp + 1
-			ip = int(mem[int(c.A)].num) //nolint:gosec
+			ip = int(m.globals[int(c.A)].num) //nolint:gosec
 			continue
 		case Deref:
 			r := mem[sp].ref.Elem()
@@ -565,7 +583,7 @@ func (m *Machine) Run() (err error) {
 		case GetGlobal:
 			// Global slots written via SetS update ref through a shared pointer without
 			// updating num in the original slot; sync num from ref before copying.
-			v := mem[int(c.A)]
+			v := m.globals[int(c.A)]
 			if isNum(v.ref.Kind()) && v.ref.CanAddr() {
 				v.num = numBits(v.ref)
 			}
@@ -582,7 +600,7 @@ func (m *Machine) Run() (err error) {
 				sp++
 				mem[sp] = mem[int(c.B)+fp-1]
 			} else {
-				v := mem[int(c.B)]
+				v := m.globals[int(c.B)]
 				if isNum(v.ref.Kind()) && v.ref.CanAddr() {
 					v.num = numBits(v.ref)
 				}
@@ -593,7 +611,7 @@ func (m *Machine) Run() (err error) {
 				mem[sp] = v
 			}
 		case New:
-			mem[int(c.A)+fp-1] = NewValue(mem[int(c.B)].ref.Type())
+			mem[int(c.A)+fp-1] = NewValue(m.globals[int(c.B)].ref.Type())
 		case Equal:
 			mem[sp-1] = boolVal(mem[sp-1].Equal(mem[sp]))
 			sp--
@@ -610,7 +628,7 @@ func (m *Machine) Run() (err error) {
 		case Convert:
 			idx := sp - int(c.B)
 			v := mem[idx]
-			dstType := mem[int(c.A)].ref.Type()
+			dstType := m.globals[int(c.A)].ref.Type()
 			dstKind := dstType.Kind()
 			if !v.ref.IsValid() {
 				// nil source: zero value of destination type.
@@ -691,7 +709,7 @@ func (m *Machine) Run() (err error) {
 			}
 
 		case IfaceWrap:
-			typ := mem[int(c.A)].ref.Interface().(*Type)
+			typ := m.globals[int(c.A)].ref.Interface().(*Type)
 			idx := sp - int(c.B)
 			mem[idx] = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: mem[idx]})}
 
@@ -710,7 +728,7 @@ func (m *Machine) Run() (err error) {
 				ifc = fromReflect(rv).IfaceVal()
 				method = ifc.Typ.Methods[int(c.A)]
 			}
-			codeAddr := int(mem[method.Index].num) //nolint:gosec
+			codeAddr := int(m.globals[method.Index].num) //nolint:gosec
 			// Build a closure with the concrete receiver as Env[0], replacing the
 			// interface value on the stack. Same result as HAlloc+Get+Swap+MkClosure.
 			// For promoted methods, extract the embedded field as receiver.
@@ -729,7 +747,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Env: []*Value{cell}})}
 
 		case TypeAssert:
-			dstTyp := mem[int(c.A)].ref.Interface().(*Type)
+			dstTyp := m.globals[int(c.A)].ref.Interface().(*Type)
 			okForm := int(c.B) == 1
 			ifc := mem[sp]
 			if !ifc.IsIface() {
@@ -796,7 +814,7 @@ func (m *Machine) Run() (err error) {
 				matched = !ifc.IsIface()
 			} else if ifc.IsIface() {
 				ctyp := ifc.IfaceVal().Typ
-				dtyp := mem[int(c.B)].ref.Interface().(*Type)
+				dtyp := m.globals[int(c.B)].ref.Interface().(*Type)
 				if dtyp.IsInterface() {
 					matched = ctyp.Implements(dtyp)
 				} else {
@@ -809,19 +827,22 @@ func (m *Machine) Run() (err error) {
 			}
 
 		case Exit:
+			if m.wg != nil && !m.isGoroutine {
+				m.wg.Wait()
+			}
 			return err
 		case Fnew:
 			if sp+1 >= len(mem) {
 				mem = growStack(mem, sp, 1)
 			}
 			sp++
-			mem[sp] = NewValue(mem[int(c.A)].ref.Type(), int(c.B))
+			mem[sp] = NewValue(m.globals[int(c.A)].ref.Type(), int(c.B))
 		case FnewE:
 			if sp+1 >= len(mem) {
 				mem = growStack(mem, sp, 1)
 			}
 			sp++
-			mem[sp] = NewValue(mem[int(c.A)].ref.Type().Elem(), int(c.B))
+			mem[sp] = NewValue(m.globals[int(c.A)].ref.Type().Elem(), int(c.B))
 		case Field:
 			fv := forceSettable(fieldByAB(reflect.Indirect(mem[sp].ref), int(c.A), int(c.B)))
 			switch {
@@ -882,7 +903,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp] = ValueOf(mem[sp-1-int(c.A)].ref.Len())
 		case Next:
 			if k, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, bool))(); ok {
-				m.assignSlot(&mem[int(c.B)], fromReflect(k))
+				m.assignSlot(&m.globals[int(c.B)], fromReflect(k))
 			} else {
 				ip += int(c.A)
 				continue
@@ -902,8 +923,8 @@ func (m *Machine) Run() (err error) {
 		case Next2:
 			if k, v, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
 				kAddr, vAddr := int(int16(c.B)), int(int16(c.B>>16)) //nolint:gosec
-				m.assignSlot(&mem[kAddr], fromReflect(k))
-				m.assignSlot(&mem[vAddr], fromReflect(v))
+				m.assignSlot(&m.globals[kAddr], fromReflect(k))
+				m.assignSlot(&m.globals[vAddr], fromReflect(v))
 			} else {
 				ip += int(c.A)
 				continue
@@ -973,12 +994,82 @@ func (m *Machine) Run() (err error) {
 			sp += 3
 			mem[fp-3].num = uint64(sp) //nolint:gosec // dh = index of returnIP slot
 
+		case GoCall:
+			narg := int(c.A)
+			fval := mem[sp-narg]
+			args := make([]Value, narg)
+			copy(args, mem[sp-narg+1:sp+1])
+			sp -= narg + 1
+			if m.wg == nil {
+				m.wg = new(sync.WaitGroup)
+			}
+			m.wg.Add(1)
+			m.mem = mem[:sp+1]
+			child := m.newGoroutine(fval, args)
+			go func() {
+				defer m.wg.Done()
+				_ = child.Run()
+			}()
+			mem = m.mem
+
+		case GoCallImm:
+			narg := int(c.B)
+			fval := m.globals[int(c.A)]
+			args := make([]Value, narg)
+			copy(args, mem[sp-narg+1:sp+1])
+			sp -= narg
+			if m.wg == nil {
+				m.wg = new(sync.WaitGroup)
+			}
+			m.wg.Add(1)
+			m.mem = mem[:sp+1]
+			child := m.newGoroutine(fval, args)
+			go func() {
+				defer m.wg.Done()
+				_ = child.Run()
+			}()
+			mem = m.mem
+
+		case MkChan:
+			elemType := m.globals[int(c.A)].ref.Type()
+			chanType := reflect.ChanOf(reflect.BothDir, elemType)
+			bufSize := int(c.B)
+			if bufSize < 0 {
+				bufSize = int(mem[sp].num) //nolint:gosec
+				sp--
+			}
+			if sp+1 >= len(mem) {
+				mem = growStack(mem, sp, 1)
+			}
+			sp++
+			mem[sp] = Value{ref: reflect.MakeChan(chanType, bufSize)}
+
+		case ChanSend:
+			mem[sp-1].ref.Send(mem[sp].Reflect())
+			sp -= 2
+
+		case ChanRecv:
+			ch := mem[sp]
+			v, ok := ch.ref.Recv()
+			mem[sp] = fromReflect(v)
+			if int(c.A) == 1 {
+				if sp+1 >= len(mem) {
+					mem = growStack(mem, sp, 1)
+				}
+				sp++
+				mem[sp] = boolVal(ok)
+			}
+
+		case ChanClose:
+			mem[sp].ref.Close()
+			sp--
+
 		case WrapFunc:
 			// Wrap the parscan func value on the stack in a reflect.MakeFunc for native Go callbacks.
 			// The original parscan func is preserved in ParscanFunc.Val for fast in-VM dispatch.
 			// CallFunc is re-entrant for single-threaded synchronous callbacks; concurrent goroutine
 			// calls to different wrapped functions on the same Machine are NOT safe.
-			typ := mem[int(c.A)].ref.Interface().(*Type)
+			typ := m.globals[int(c.A)].ref.Interface().(*Type)
 			fval := mem[sp]
 			mem[sp] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: m.wrapForFunc(fval, typ.Rtype)})}
 
@@ -1222,7 +1313,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp] = clo
 		case MkSlice:
 			n := int(c.A)
-			elemType := mem[int(c.B)].ref.Type()
+			elemType := m.globals[int(c.B)].ref.Type()
 			sliceType := reflect.SliceOf(elemType)
 			switch {
 			case n < 0:
@@ -1250,8 +1341,8 @@ func (m *Machine) Run() (err error) {
 				sp -= n - 1
 			}
 		case MkMap:
-			keyType := mem[int(c.A)].ref.Type()
-			valType := mem[int(c.B)].ref.Type()
+			keyType := m.globals[int(c.A)].ref.Type()
+			valType := m.globals[int(c.B)].ref.Type()
 			mapType := reflect.MapOf(keyType, valType)
 			if sp+1 >= len(mem) {
 				mem = growStack(mem, sp, 1)
@@ -1283,7 +1374,7 @@ func (m *Machine) Run() (err error) {
 			sp++
 			mem[sp] = ValueOf(mem[sp-1-int(c.A)].ref.Cap())
 		case PtrNew:
-			typ := mem[int(c.A)].ref.Type()
+			typ := m.globals[int(c.A)].ref.Type()
 			if sp+1 >= len(mem) {
 				mem = growStack(mem, sp, 1)
 			}
@@ -1823,13 +1914,11 @@ func (m *Machine) PushCode(code ...Instruction) (p int) {
 // SetIP sets the value of machine instruction pointer to given index.
 func (m *Machine) SetIP(ip int) { m.ip = ip }
 
-// Push pushes data values on top of machine memory stack.
-// It also records the new length as the global data boundary (dataLen),
-// since globals are always loaded via Push before Run is called.
+// Push pushes data values into the machine's global storage.
+// Globals are always loaded via Push before Run is called.
 func (m *Machine) Push(v ...Value) (l int) {
-	l = len(m.mem)
-	m.mem = append(m.mem, v...)
-	m.dataLen = len(m.mem)
+	l = len(m.globals)
+	m.globals = append(m.globals, v...)
 	return l
 }
 
@@ -1861,12 +1950,10 @@ func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 	})
 }
 
-// TrimStack removes leftover stack values from a previous Run, restoring mem
-// to the global data boundary. Call before pushing new global data on re-entry.
+// TrimStack removes leftover stack values from a previous Run.
+// Call before pushing new global data on re-entry.
 func (m *Machine) TrimStack() {
-	if len(m.mem) > m.dataLen {
-		m.mem = m.mem[:m.dataLen]
-	}
+	m.mem = m.mem[:0]
 }
 
 // CallFunc executes a parscan function value with the given arguments and returns the results.
@@ -1874,6 +1961,7 @@ func (m *Machine) TrimStack() {
 // (reflect.MakeFunc wrappers) even while Run is in progress (single-threaded re-entrancy).
 func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Value) ([]reflect.Value, error) {
 	// Save all volatile execution state.
+	savedGlobals := m.globals
 	savedMem := m.mem
 	savedIP := m.ip
 	savedFP := m.fp
@@ -1884,6 +1972,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	savedCodeLen := len(m.code)
 
 	defer func() {
+		m.globals = savedGlobals
 		m.mem = savedMem
 		m.ip = savedIP
 		m.fp = savedFP
@@ -1900,10 +1989,12 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	m.panicking = false
 	m.panicVal = Value{}
 
-	// Fresh stack: copy globals to a new backing array so the outer Run's mem is unaffected.
-	m.mem = append([]Value(nil), m.mem[:m.dataLen]...)
+	// Copy globals to a new backing array so the callback's global writes
+	// don't affect the outer Run's globals.
+	m.globals = append([]Value(nil), m.globals...)
 
-	// Push func value and args.
+	// Fresh stack with func value and args.
+	m.mem = nil
 	m.mem = append(m.mem, fval)
 	for _, a := range args {
 		m.mem = append(m.mem, fromReflect(a))
@@ -1922,18 +2013,48 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 		return nil, err
 	}
 
-	// Return values land at m.mem[dataLen:dataLen+nret] after the call frame tears down.
+	// Return values land at m.mem[0:nret] after the call frame tears down.
 	out := make([]reflect.Value, nret)
 	for i := range out {
-		out[i] = m.mem[m.dataLen+i].Reflect()
+		out[i] = m.mem[i].Reflect()
 	}
 	return out, nil
+}
+
+// newGoroutine creates a child Machine to run fval(args...) concurrently.
+// The child shares the parent's globals slice (same backing array) and WaitGroup.
+// It gets a private copy of the code with a Call+Exit epilogue appended.
+func (m *Machine) newGoroutine(fval Value, args []Value) *Machine {
+	child := &Machine{
+		globals:     m.globals, // shared backing array — true globals sharing
+		wg:          m.wg,
+		isGoroutine: true,
+	}
+	// Private code copy: [0..baseCodeLen) + Call narg 0 + Exit epilogue.
+	narg := len(args)
+	childCode := make(Code, m.baseCodeLen+2)
+	copy(childCode, m.code[:m.baseCodeLen])
+	callIP := m.baseCodeLen
+	childCode[callIP] = Instruction{Op: Call, A: int32(narg), B: 0} //nolint:gosec
+	childCode[callIP+1] = Instruction{Op: Exit}
+	child.code = childCode
+	// Fresh stack: func value followed by args.
+	child.mem = make([]Value, 0, narg+16)
+	child.mem = append(child.mem, fval)
+	child.mem = append(child.mem, args...)
+	child.ip = callIP
+	return child
 }
 
 // Top returns (but not remove)  the value on the top of machine stack.
 func (m *Machine) Top() (v Value) {
 	if l := len(m.mem); l > 0 {
 		v = m.mem[l-1]
+	} else if l := len(m.globals); l > 0 {
+		// When the stack is empty (e.g. after a pure global assignment), return
+		// the last global. In the pre-split layout globals were in m.mem and
+		// Top() naturally returned the last one; preserve that behaviour.
+		v = m.globals[l-1]
 	}
 	return v
 }

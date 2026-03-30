@@ -5,28 +5,34 @@
 ## Overview
 
 The `vm` package executes compiled bytecode. `Machine.Run()` interprets a
-`Code` (slice of `Instruction`) over a flat `mem []Value` that holds both
-globals and the call stack. The package also defines `Value` (the runtime
-value representation) and `Type` (runtime type metadata).
+`Code` (slice of `Instruction`) over two separate slices: `globals []Value`
+(module-level vars and function addresses, shared across goroutines) and
+`mem []Value` (the per-goroutine call stack). The package also defines
+`Value` (the runtime value representation) and `Type` (runtime type
+metadata).
 
 ## Key types and functions
 
 ### Execution
 
-- **`Machine`** -- VM state: `code`, `mem`, `ip`, `fp`, closure `env`,
-  a `frames [][]*Value` stack (saved caller closure envs, pushed only
-  for closure calls where `env != nil`), panic state (`panicking`,
-  `panicVal`), two func-field side-tables (`funcFields` keyed by
+- **`Machine`** -- VM state: `code`, `globals []Value` (shared with child
+  goroutines), `mem []Value` (per-goroutine call stack), `ip`, `fp`,
+  closure `env`, a `frames [][]*Value` stack (saved caller closure envs,
+  pushed only for closure calls where `env != nil`), panic state
+  (`panicking`, `panicVal`), goroutine state (`wg *sync.WaitGroup`,
+  `isGoroutine bool`), two func-field side-tables (`funcFields` keyed by
   reflect.Value address, `funcFieldsByFuncPtr` keyed by the closure's
   function pointer -- used as a stable fallback when a struct containing
   func fields is copied e.g. via `append`), a `Symbols` map for
-  name-to-mem-index lookup, and debug state.
+  name-to-globals-index lookup, and debug state.
 - **`Symbols map[string]int`** -- maps symbol names to global memory
   indices. Populated by `interp.Eval` from the compiler symbol table
   after each compilation. Used for REPL resolution and `main` dispatch.
 - **`Run() error`** -- main execution loop. Dispatches on `Op` via a
   switch statement.
-- **`Push(vals ...Value)`** / **`Pop() Value`** -- stack manipulation.
+- **`Push(vals ...Value)`** -- append values to `globals` (used before
+  `Run` to load the data segment). Returns the start index.
+- **`Pop() Value`** -- remove the last value from `globals`.
 - **`PushCode(instrs ...Instruction)`** -- append instructions (for
   incremental evaluation).
 
@@ -51,8 +57,8 @@ value representation) and `Type` (runtime type metadata).
   `Fields []*Type`, `ElemType *Type`.
   `ElemType` preserves the parscan-level element type for
   map/slice/array/pointer/chan composites, propagated by `PointerTo`,
-  `ArrayOf`, `SliceOf`, and `MapOf`. `Elem()` returns `ElemType` when
-  set, falling back to a bare `reflect.Type` wrapper.
+  `ArrayOf`, `SliceOf`, `MapOf`, and `ChanOf`. `Elem()` returns
+  `ElemType` when set, falling back to a bare `reflect.Type` wrapper.
 - **`(*Type).SameAs(u *Type) bool`** -- reports whether two types
   represent the same concrete type (same `Rtype` and `Name`). Used by
   `TypeBranch` for type-switch comparison and by `TypeAssert`.
@@ -105,6 +111,19 @@ value representation) and `Type` (runtime type metadata).
   - Native interop: `WrapFunc` -- wraps a parscan function value in a
     `reflect.MakeFunc` adapter so it can be called by native Go code.
     Produces a `ParscanFunc` on the stack.
+  - Goroutines and channels:
+    - `GoCall` -- pop function + N args, spawn a child `Machine` via
+      `go` and return immediately; `A` = narg.
+    - `GoCallImm` -- like `GoCall` but for a known non-closure function
+      (avoids loading the function value from the stack); `A` = globals
+      index of the function, `B` = narg.
+    - `MkChan` -- create a channel; `A` = globals index of elem type,
+      `B` = buffer size (negative means read size from stack).
+    - `ChanSend` -- pop channel and value, send synchronously via
+      `reflect.Value.Send`.
+    - `ChanRecv` -- pop channel, push received value; if `A` == 1 also
+      push the ok bool (two-result form `v, ok := <-ch`).
+    - `ChanClose` -- pop channel, call `reflect.Value.Close`.
   - Range: `Next`, `Next0`, `Next2`, `NextLocal`, `Pull`, `Pull2`,
     `Stop`, `Stop0`. `Next0`/`Stop0` are used when the range variable
     is blank or absent. `NextLocal` is a fast path for local-scope
@@ -130,9 +149,15 @@ value representation) and `Type` (runtime type metadata).
 ### Memory layout
 
 ```
-mem[0 .. dataLen-1]    globals (vars, func code addresses, string literals)
-mem[dataLen ..]        call stack (grows upward)
+globals[0 .. dataLen-1]   global vars, func code addresses, string literals
+                          (shared backing array across all goroutines)
+mem[0 ..]                 per-goroutine call stack (frame-relative indices only)
 ```
+
+The two slices were previously unified in a single `mem`. They were split so
+that goroutines can share `globals` while running independent stacks.
+`Push()` appends to `globals`; `GetGlobal`/`Set` (global scope) index into
+`globals`; `GetLocal`/`Set` (local scope) index into `mem` relative to `fp`.
 
 ### Call frame
 
@@ -270,6 +295,32 @@ When a closure is called, `Machine` swaps in its `Env` (saved heap cells)
 and restores the caller's env on return. `HGet`/`HSet` read/write through
 `env[i]` pointers.
 
+### Goroutines and channels
+
+`GoCall` and `GoCallImm` both call `newGoroutine(fval, args)`, which creates
+a child `Machine` with:
+
+- `globals` pointing to the parent's `globals` slice (same backing array --
+  writes in either direction are immediately visible to the other).
+- A fresh `mem` slice containing the function value and argument copies.
+- A private copy of `code` with a `Call + Exit` epilogue appended at
+  `baseCodeLen`, so the goroutine's entry point is a normal call sequence.
+- `wg` pointing to the parent's `*sync.WaitGroup`.
+
+The goroutine runs via `go func() { child.Run() }()`. The parent does not
+wait for it; instead, `Run` waits for all spawned goroutines at exit via
+`m.wg.Wait()` when `!m.isGoroutine` (the top-level machine only).
+
+Channel operations delegate entirely to `reflect`: `reflect.MakeChan`,
+`reflect.Value.Send`, `reflect.Value.Recv`, and `reflect.Value.Close`.
+The channel value is stored as a `Value{ref: reflect.Value}` on the stack
+and in variable slots like any other composite type.
+
+`GoCallImm` applies the same optimization as `CallImm` for regular calls:
+when the target is a named non-closure function, the compiler removes the
+preceding `GetGlobal` and encodes the globals index directly in the
+instruction, avoiding one stack read.
+
 ### Panic / defer / recover
 
 - `DeferPush` saves a sentinel frame pointing to a deferred function.
@@ -311,8 +362,13 @@ stack, pushes the function value and arguments, appends a temporary
 via `defer`), all saved state is restored.
 
 This is safe for single-threaded synchronous callbacks (e.g. an HTTP
-handler calling back into the interpreter). Concurrent goroutines
-calling different wrapped functions on the same `Machine` are not safe.
+handler calling back into the interpreter). Concurrent goroutines calling
+different wrapped functions on the same `Machine` are not safe.
+
+Note that `CallFunc` saves and restores `globals` as well: it copies the
+current `globals` slice to a fresh backing array so inner writes don't
+affect the outer run's globals. This differs from `newGoroutine`, which
+intentionally shares the same backing array.
 
 ### Trap and interactive debug mode
 

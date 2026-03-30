@@ -614,7 +614,9 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		return out, errors.New("fallthrough statement out of place")
 	case lang.Defer:
 		return p.parseDefer(in)
-	case lang.Go, lang.Select:
+	case lang.Go:
+		return p.parseGo(in)
+	case lang.Select:
 		return out, fmt.Errorf("not yet implemented: %v", t.Tok)
 	case lang.Goto:
 		return p.parseGoto(in)
@@ -652,6 +654,14 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	case lang.Ident:
 		if in.Index(lang.Colon) == 1 {
 			return p.parseLabel(in)
+		}
+		if i := in.Index(lang.Arrow); i > 0 {
+			// Only a send statement (ch <- v) if the arrow precedes any assignment.
+			defIdx := in.Index(lang.Define)
+			assIdx := in.Index(lang.Assign)
+			if (defIdx < 0 || i < defIdx) && (assIdx < 0 || i < assIdx) {
+				return p.parseChanSend(in, i)
+			}
 		}
 		if i := in.Index(lang.Assign); i > 0 {
 			return p.parseAssign(in, i)
@@ -707,6 +717,8 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 				case lang.TypeAssert:
 					toks[len(toks)-1].Arg[0] = 1
 				case lang.Index:
+					toks[len(toks)-1].Arg = []any{1}
+				case lang.Arrow:
 					toks[len(toks)-1].Arg = []any{1}
 				}
 			}
@@ -911,6 +923,43 @@ func (p *Parser) parseDefer(in Tokens) (out Tokens, err error) {
 	out = append(out, argToks...)
 	out = append(out, newDefer(callTok.Pos, narg))
 	return out, nil
+}
+
+func (p *Parser) parseGo(in Tokens) (out Tokens, err error) {
+	if len(in) < 2 {
+		return nil, errors.New("invalid go statement")
+	}
+	expr := in[1:]
+	last := len(expr) - 1
+	if last < 0 || expr[last].Tok != lang.ParenBlock {
+		return nil, errors.New("go requires a function call")
+	}
+	callTok := expr[last]
+	narg := p.numItems(callTok.Block(), lang.Comma)
+
+	if out, err = p.parseExpr(expr[:last], ""); err != nil {
+		return out, err
+	}
+	argToks, err := p.parseBlock(callTok, "")
+	if err != nil {
+		return out, err
+	}
+	out = append(out, argToks...)
+	out = append(out, newGo(callTok.Pos, narg))
+	return out, nil
+}
+
+func (p *Parser) parseChanSend(in Tokens, arrowIdx int) (out Tokens, err error) {
+	if out, err = p.parseExpr(in[:arrowIdx], ""); err != nil {
+		return
+	}
+	val, err := p.parseExpr(in[arrowIdx+1:], "")
+	if err != nil {
+		return
+	}
+	out = append(out, val...)
+	out = append(out, newChanSend(in[arrowIdx].Pos))
+	return
 }
 
 func (p *Parser) parseBreak(in Tokens) (out Tokens, err error) {

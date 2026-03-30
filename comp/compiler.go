@@ -819,6 +819,25 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			c.emit(t, vm.BitComp)
 
+		case lang.Arrow: // unary channel receive: <-ch
+			if err := checkTopN(1); err != nil {
+				return err
+			}
+			okForm := 0
+			if len(t.Arg) > 0 {
+				okForm = t.Arg[0].(int)
+			}
+			ch := pop()
+			elemType := ch.Type.ElemType
+			if elemType == nil {
+				return errorf("invalid channel receive: not a channel type")
+			}
+			push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
+			if okForm == 1 {
+				push(&symbol.Symbol{Kind: symbol.Value, Type: c.Symbols["bool"].Type})
+			}
+			c.emit(t, vm.ChanRecv, okForm)
+
 		case lang.Call:
 			narg := t.Arg[0].(int)
 			spread := len(t.Arg) > 1 && t.Arg[1].(int) != 0
@@ -1053,7 +1072,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					lhs[i].Used = true
 				}
 				for i := n - 1; i >= 0; i-- {
-					c.emit(t, vm.Set, vm.Local, lhs[i].Index)
+					c.emit(t, vm.SetLocal, lhs[i].Index, 0)
 				}
 				c.emit(t, vm.Pop, n)
 				break
@@ -1102,11 +1121,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emitIfaceWrap(t, lhss[i].Type, rhss[i].Type)
 					switch {
 					case lhss[i].Kind == symbol.LocalVar:
-						c.emit(t, vm.Set, vm.Local, lhss[i].Index)
+						c.emit(t, vm.SetLocal, lhss[i].Index, 0)
 						slotCount++
 						namedAbove++
 					case lhss[i].Index != symbol.UnsetAddr:
-						c.emit(t, vm.Set, vm.Global, lhss[i].Index)
+						c.emit(t, vm.SetGlobal, lhss[i].Index, 0)
 						slotCount++
 						namedAbove++
 					default:
@@ -1148,7 +1167,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				// Wrap concrete value in Iface when assigning to interface local.
 				c.emitIfaceWrap(t, lhs.Type, rhs.Type)
-				c.emit(t, vm.Set, 1, lhs.Index)
+				c.emit(t, vm.SetLocal, lhs.Index, 0)
 				c.emit(t, vm.Pop, 1) // pop stale lhs value left by Ident's Get
 				break
 			}
@@ -1662,6 +1681,27 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			c.emit(t, vm.DeferPush, narg, isX)
 
+		case lang.Go:
+			narg := t.Arg[0].(int)
+			s := stack[len(stack)-1-narg]
+			if s.Kind == symbol.Type {
+				return errorf("cannot use a type conversion as a goroutine")
+			}
+			pop() // function
+			for i := 0; i < narg; i++ {
+				pop()
+			}
+			if s.Kind == symbol.Func && len(s.FreeVars) == 0 && c.removeGetGlobal(s.Index) {
+				c.emit(t, vm.GoCallImm, s.Index, narg)
+			} else {
+				c.emit(t, vm.GoCall, narg)
+			}
+
+		case lang.ChanSend:
+			pop() // value
+			pop() // channel
+			c.emit(t, vm.ChanSend)
+
 		case lang.Return:
 			numOut := t.Arg[0].(int)
 			if err := checkTopN(numOut); err != nil {
@@ -1887,7 +1927,7 @@ func (c *Compiler) PrintCode() {
 			if d, ok := labels[i+int(l.A)]; ok {
 				extra = "// " + d[0]
 			}
-		case vm.Get, vm.GetLocal, vm.GetGlobal, vm.Set, vm.CallImm:
+		case vm.Get, vm.GetLocal, vm.GetGlobal, vm.SetLocal, vm.SetGlobal, vm.CallImm:
 			if d, ok := data[int(l.A)]; ok {
 				extra = "// " + d
 			}
@@ -2147,9 +2187,27 @@ func (c *Compiler) compileBuiltin(
 			valType := typeSym.Type.Rtype.Elem()
 			valIdx := c.typeSym(&vm.Type{Rtype: valType}).Index
 			c.emit(t, vm.MkMap, keyIdx, valIdx)
+		case reflect.Chan:
+			elemIdx := c.typeSym(typeSym.Type.ElemType).Index
+			if narg == 2 {
+				// make(chan T, bufSize): buffer size is already on stack
+				c.emit(t, vm.MkChan, elemIdx, -1)
+			} else {
+				// make(chan T): unbuffered
+				c.emit(t, vm.MkChan, elemIdx, 0)
+			}
 		default:
 			return true, fmt.Errorf("cannot make type %s", typeSym.Type.Rtype)
 		}
+		return true, nil
+
+	case "close":
+		if narg != 1 {
+			return true, errors.New("invalid argument count for close")
+		}
+		pop() // channel
+		pop() // close symbol
+		c.emit(t, vm.ChanClose)
 		return true, nil
 	}
 

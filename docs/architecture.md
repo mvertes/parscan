@@ -42,8 +42,8 @@ flowchart TD
     subgraph "vm"
         M[Machine] -->|executes| Code
         M -->|uses| Data
-        M -->|manages| Mem["mem []Value\n(globals + stack)"]
-        M -->|name lookup| Syms["Symbols map\nname -> mem index"]
+        M -->|manages| Mem["globals []Value\n(shared)\nmem []Value\n(per-goroutine stack)"]
+        M -->|name lookup| Syms["Symbols map\nname -> globals index"]
     end
 ```
 
@@ -53,12 +53,16 @@ bytecode referencing data indices.
 
 ## Memory model
 
-The VM operates on a flat `[]Value` slice:
+The VM maintains two separate slices:
 
 ```
-mem[0 .. dataLen-1]   globals (module-level vars, function code addresses)
-mem[dataLen ..]       call stack (grows upward)
+globals[0 .. dataLen-1]   global variable storage (module-level vars, func addresses)
+mem[0 ..]                 call stack (grows upward; frame-relative indices only)
 ```
+
+The split exists so that goroutines can share `globals` safely while each
+goroutine runs its own private `mem` stack. Before the split, both lived in a
+single `mem` slice, which made goroutine isolation impossible without copying.
 
 Each call frame is laid out as:
 
@@ -82,7 +86,7 @@ An entry is pushed only when the caller has a non-nil `env` (closure calls);
 plain function calls skip it entirely.
 See [vm](modules/vm.md#call-frame) for details.
 
-- `GetGlobal N` reads `mem[N]`
+- `GetGlobal N` reads `globals[N]`
 - `GetLocal N` reads `mem[fp - 1 + N]`
 
 ## Key design decisions
@@ -150,8 +154,8 @@ before `Call`. The callee sees a normal slice parameter.
 ## Built-in functions
 
 Go builtins (`len`, `cap`, `append`, `copy`, `delete`, `new`, `make`,
-`panic`, `recover`) and the parscan-specific `trap` debugger builtin are
-registered in `symbol.SymMap` with `Kind: Builtin`.
+`close`, `panic`, `recover`) and the parscan-specific `trap` debugger builtin
+are registered in `symbol.SymMap` with `Kind: Builtin`.
 The compiler intercepts them by name in `compileBuiltin()` and emits
 dedicated opcodes rather than generating a function call. Because `Builtin`
 symbols skip the `Get` instruction in the `Ident` handler, they have no

@@ -257,6 +257,20 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			out = append(out, newIdent(ctype, t.Pos))
 			i += n - 1
 
+		case lang.Chan:
+			typ, n, err := p.parseTypeExpr(in[i:])
+			if err != nil {
+				return out, err
+			}
+			ctype = typ.String()
+			p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
+			out = append(out, newIdent(ctype, t.Pos))
+			i += n - 1
+
+		case lang.Arrow:
+			// Unary channel receive: <-ch
+			addop(t)
+
 		case lang.Comment:
 
 		case lang.Ellipsis:
