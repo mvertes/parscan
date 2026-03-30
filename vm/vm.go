@@ -972,13 +972,12 @@ func (m *Machine) Run() (err error) {
 			}
 			sp += int(c.A)
 		case DeferPush:
-			// Snapshot args in-place (detach addressable refs to prevent aliasing).
+			// Snapshot args in-place: detach from parent frame so deferred call
+			// sees the values at defer time, not at execution time.
 			narg := int(c.A)
 			isX := int(c.B)
 			for i := sp - narg + 1; i <= sp; i++ {
-				if isNum(mem[i].ref.Kind()) && mem[i].ref.CanAddr() {
-					mem[i].ref = reflect.Zero(mem[i].ref.Type())
-				}
+				mem[i] = snapshotArg(mem[i])
 			}
 			// Push 3-slot header: packed(narg/isX), prevHead link, returnIP placeholder.
 			prevHead := int(mem[fp-3].num) //nolint:gosec
@@ -2056,13 +2055,17 @@ func (m *Machine) newGoroutine(fval Value, args []Value) *Machine {
 	return child
 }
 
-// snapshotArg returns a goroutine-safe copy of v. For non-numeric addressable
-// (indirect) values such as channels and maps, it extracts the current value
-// from the backing allocation so the goroutine arg is independent of any later
-// reassignment to the variable in the parent frame.
+// snapshotArg returns a copy of v detached from any parent frame backing store,
+// so the copy is independent of later reassignment to the source variable.
+// Used for goroutine and deferred call arguments, which are evaluated at the
+// call site rather than at execution time.
 func snapshotArg(v Value) Value {
-	if !isNum(v.ref.Kind()) && v.ref.CanAddr() {
-		v.ref = reflect.ValueOf(v.ref.Interface())
+	if v.ref.CanAddr() {
+		if isNum(v.ref.Kind()) {
+			v.ref = reflect.Zero(v.ref.Type()) // value is in .num; drop the cell pointer
+		} else {
+			v.ref = reflect.ValueOf(v.ref.Interface()) // extract current value from cell
+		}
 	}
 	return v
 }
