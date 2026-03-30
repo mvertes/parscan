@@ -49,8 +49,8 @@ Go language support:
 - [x] arrays, slices
 - [x] maps
 - [ ] deterministic maps
-- [ ] channel types
-- [ ] channel operations
+- [x] channel types
+- [x] channel operations
 - [x] multi-assign expressions
 - [x] var defined by assign :=
 - [x] var assign =
@@ -63,7 +63,7 @@ Go language support:
 - [x] defer statement
 - [x] recover statement
 - [x] range clause
-- [ ] go statement
+- [x] go statement
 - [x] if statement (including else and else if)
 - [x] for statement
 - [x] switch statement

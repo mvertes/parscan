@@ -1879,6 +1879,14 @@ var s S
 s.F = func(n int) int { return n * 3 }
 s.F(5)`, res: "15"},
 
+		// Assigning a named func to a func field: nil check must see non-nil (struct35).
+		{n: "named_func_nil_check", src: `
+type T struct { f func(*T) }
+func f1(t *T) { t.f = f1 }
+t := &T{}
+f1(t)
+t.f != nil`, res: "true"},
+
 		// Closure in struct func field survives append (struct copy to new backing array).
 		{n: "append_copy", src: `
 type T struct{ F func() int }

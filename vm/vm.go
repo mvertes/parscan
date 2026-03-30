@@ -2117,24 +2117,27 @@ func (m *Machine) resolveFuncField(v Value) Value {
 	return v
 }
 
-// setFuncField stores val into a settable struct field fv.
-// If val is a ParscanFunc (from WrapFunc), the original parscan func goes into the
-// funcFields side table (for in-VM dispatch) and the Go func is set on the field
-// (for native Go callbacks). Handles both addressable and plain reflect.Func fields.
+// setGoFuncField sets fv to gf and registers val in funcFieldsByFuncPtr for post-copy lookup.
+func (m *Machine) setGoFuncField(fv, gf reflect.Value, val Value) {
+	fv.Set(gf)
+	if ptr := funcValuePtr(fv); ptr != 0 {
+		if m.funcFieldsByFuncPtr == nil {
+			m.funcFieldsByFuncPtr = make(map[uintptr]Value)
+		}
+		m.funcFieldsByFuncPtr[ptr] = val
+	}
+}
+
+// setFuncField stores val into an addressable struct func field fv.
+// The parscan value goes into funcFields (for in-VM dispatch) and a Go wrapper is
+// set on the field (for native Go callbacks and nil checks).
 func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 	if pf, ok := val.ref.Interface().(ParscanFunc); ok && fv.CanAddr() {
 		if m.funcFields == nil {
 			m.funcFields = make(map[uintptr]Value)
 		}
 		m.funcFields[fv.UnsafeAddr()] = pf.Val
-		fv.Set(pf.GF)
-		// Also register by funcValue ptr so Call can find it after a struct copy (e.g. append).
-		if ptr := funcValuePtr(fv); ptr != 0 {
-			if m.funcFieldsByFuncPtr == nil {
-				m.funcFieldsByFuncPtr = make(map[uintptr]Value)
-			}
-			m.funcFieldsByFuncPtr[ptr] = pf.Val
-		}
+		m.setGoFuncField(fv, pf.GF, pf.Val)
 		return
 	}
 	if fv.Kind() == reflect.Func && fv.CanAddr() {
@@ -2142,6 +2145,9 @@ func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 			m.funcFields = make(map[uintptr]Value)
 		}
 		m.funcFields[fv.UnsafeAddr()] = val
+		if gf := m.wrapForFunc(val, fv.Type()); gf.IsValid() {
+			m.setGoFuncField(fv, gf, val)
+		}
 		return
 	}
 	if isNum(fv.Kind()) && isNum(val.ref.Kind()) {
@@ -2163,15 +2169,17 @@ func (m *Machine) assignSlot(dst *Value, src Value) {
 		return
 	}
 	// Struct func fields can't hold parscan func values (int code addresses or Closures)
-	// via reflect.Set. Store them in a side table keyed by the field's memory address.
-	// funcFieldsByFuncPtr is not updated here: src is a raw Closure/int (not a ParscanFunc),
-	// so no Go func is stored in the field and the funcValuePtr fallback is not applicable.
+	// via reflect.Set. Store them in a side table keyed by the field's memory address,
+	// and also set the field to a non-nil wrapper so nil-checks work correctly.
 	if dst.ref.Kind() == reflect.Func && dst.ref.CanAddr() {
 		if m.funcFields == nil {
 			m.funcFields = make(map[uintptr]Value)
 		}
 		m.funcFields[dst.ref.UnsafeAddr()] = src
 		dst.num = src.num
+		if gf := m.wrapForFunc(src, dst.ref.Type()); gf.IsValid() {
+			m.setGoFuncField(dst.ref, gf, src)
+		}
 		return
 	}
 	if isNum(src.ref.Kind()) {
