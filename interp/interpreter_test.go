@@ -645,6 +645,7 @@ func TestStruct(t *testing.T) {
 		{n: "#02", src: "type T struct {a int}; var t T; t.a = 1; t.a", res: "1"},
 		{n: "#03", src: "type T struct {a int}; var t T = T{1}; t.a", res: "1"},
 		{n: "#04", src: "type T struct {a int}; var t *T = &T{1}; t.a", res: "1"},
+		{n: "field_name_matches_var", src: `type T struct{x int}; x := 42; t := T{x: x}; t.x`, res: "42"},
 	})
 }
 
@@ -688,6 +689,23 @@ type A struct { B; X int }
 type B struct { Y int }
 a := A{B: B{Y: 10}, X: 20}
 a.Y + a.X`, res: "30"},
+
+		{n: "mutual_map_append", src: `
+type S struct { ts map[string][]*T }
+type T struct { s *S }
+func (c *S) getT(addr string) (t *T, ok bool) {
+	cns, ok := c.ts[addr]
+	if !ok || len(cns) == 0 {
+		return nil, false
+	}
+	t = cns[len(cns)-1]
+	c.ts[addr] = cns[:len(cns)-1]
+	return t, true
+}
+s := &S{ts: map[string][]*T{}}
+s.ts["k"] = append(s.ts["k"], &T{s: s})
+t, ok := s.getT("k")
+t != nil && ok`, res: "true"},
 	})
 }
 
@@ -870,6 +888,7 @@ func TestMap(t *testing.T) {
 		{n: "ptr_elem", src: `type T struct{v int}; m := map[int]*T{0: {v: 2}}; m[0].v`, res: "2"},
 		{n: "iface_elem", src: `type I interface { Foo() int }; type S1 struct { i int }; func (s S1) Foo() int { return s.i }; type S2 struct{}; func (s *S2) Foo() int { return 42 }; Is := map[string]I{"foo": S1{21}, "bar": &S2{}}; n := 0; for _, s := range Is { n += s.Foo() }; n`, res: "63"},
 		{n: "iface_addr_lit", src: `type I interface { Foo() int }; type S struct{}; func (s *S) Foo() int { return 7 }; m := map[string]I{"k": &S{}}; m["k"].Foo()`, res: "7"},
+		{n: "append_missing_key", src: `m := map[string][]int{}; m["x"] = append(m["x"], 1); m["x"][0]`, res: "1"},
 	})
 }
 

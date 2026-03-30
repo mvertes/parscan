@@ -1400,7 +1400,11 @@ func (m *Machine) Run() (err error) {
 			slot.Set(m.wrapForFunc(mem[sp], slot.Type()))
 			sp -= 2
 		case MapIndex:
-			rv := mem[sp-1].ref.MapIndex(mem[sp].Reflect())
+			mapVal := mem[sp-1].ref
+			rv := mapVal.MapIndex(mem[sp].Reflect())
+			if !rv.IsValid() {
+				rv = reflect.Zero(mapVal.Type().Elem())
+			}
 			mem[sp-1] = fromReflect(rv)
 			sp--
 		case MapIndexOk:

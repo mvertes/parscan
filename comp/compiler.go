@@ -1034,6 +1034,30 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				c.emitIfaceWrap(t, ft, vs.Type)
 				c.emit(t, vm.FieldSet, j...)
+			case symbol.LocalVar, symbol.Var:
+				// Field name in struct literal coincides with a local/global variable.
+				// The Ident emitted a spurious GetLocal/GetGlobal — remove it.
+				if ts.Type == nil || ts.Type.Rtype.Kind() != reflect.Struct {
+					break
+				}
+				fieldName := ks.Name
+				if j := strings.LastIndex(fieldName, "/"); j >= 0 {
+					fieldName = fieldName[j+1:]
+				}
+				j, ft := ts.Type.FieldLookup(fieldName)
+				if j == nil {
+					break
+				}
+				if ks.Kind == symbol.LocalVar {
+					c.removeGetLocal(ks.Index)
+				} else {
+					c.removeGetGlobal(ks.Index)
+				}
+				if ft != nil && ft.Rtype.Kind() == reflect.Func {
+					c.emit(t, vm.WrapFunc, c.typeIndex(ft))
+				}
+				c.emitIfaceWrap(t, ft, vs.Type)
+				c.emit(t, vm.FieldSet, j...)
 			}
 
 		case lang.Composite:
@@ -2036,6 +2060,27 @@ func (c *Compiler) removeFnew(index int) {
 		if (op == vm.Fnew || op == vm.FnewE) && int(c.Code[i].A) == index {
 			copy(c.Code[i:], c.Code[i+1:])
 			c.Code = c.Code[:len(c.Code)-1]
+			return
+		}
+	}
+}
+
+// removeGetLocal removes the most recent GetLocal instruction for the given index.
+// If the instruction is GetLocal2 with A=index, it unfuses to GetLocal(B) to
+// preserve the value loaded at position B.
+func (c *Compiler) removeGetLocal(index int) {
+	for i := len(c.Code) - 1; i >= 0; i-- {
+		op := c.Code[i].Op
+		if op == vm.GetLocal && int(c.Code[i].A) == index {
+			copy(c.Code[i:], c.Code[i+1:])
+			c.Code = c.Code[:len(c.Code)-1]
+			return
+		}
+		if op == vm.GetLocal2 && int(c.Code[i].A) == index {
+			// Key is at A; value is at B. Unfuse: keep only GetLocal(B).
+			c.Code[i].Op = vm.GetLocal
+			c.Code[i].A = c.Code[i].B
+			c.Code[i].B = 0
 			return
 		}
 	}
