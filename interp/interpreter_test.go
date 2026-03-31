@@ -186,34 +186,24 @@ func TestFunc(t *testing.T) {
 
 func TestFusedOps(t *testing.T) {
 	run(t, []etest{
-		// GetLocalSubIntImm: local - immediate
 		{n: "sub_imm", src: "func f(a int) int { return a - 3 }; f(10)", res: "7"},
 		{n: "sub_imm_neg", src: "func f(a int) int { return a - 1 }; f(0)", res: "-1"},
-		// GetLocalAddIntImm: local + immediate
 		{n: "add_imm", src: "func f(a int) int { return a + 5 }; f(3)", res: "8"},
-		// GetLocalMulIntImm: local * immediate
 		{n: "mul_imm", src: "func f(a int) int { return a * 4 }; f(7)", res: "28"},
-		// GetLocalLowerIntImm + JumpFalse (fused to GetLocalLowerIntImmJumpFalse)
 		{n: "lower_jf", src: "func f(a int) int { if a < 5 { return 1 }; return 0 }; f(3)", res: "1"},
 		{n: "lower_jf_false", src: "func f(a int) int { if a < 5 { return 1 }; return 0 }; f(5)", res: "0"},
 		{n: "lower_jf_edge", src: "func f(a int) int { if a < 5 { return 1 }; return 0 }; f(4)", res: "1"},
-		// GetLocalGreaterIntImm + JumpFalse (fused to GetLocalLowerIntImmJumpTrue via imm+1)
 		{n: "greater_jf", src: "func f(a int) int { if a > 5 { return 1 }; return 0 }; f(6)", res: "1"},
 		{n: "greater_jf_false", src: "func f(a int) int { if a > 5 { return 1 }; return 0 }; f(5)", res: "0"},
 		{n: "greater_jf_edge", src: "func f(a int) int { if a > 5 { return 1 }; return 0 }; f(4)", res: "0"},
-		// GetLocalReturn: return a local variable
 		{n: "ret_local", src: "func f(a int) int { return a }; f(42)", res: "42"},
 		{n: "ret_local_expr", src: "func f(a int) int { b := a * 2; return b }; f(5)", res: "10"},
-		// GetLocal2: two consecutive local reads before a binop
 		{n: "get2_add", src: "func f(a, b int) int { return a + b }; f(3, 4)", res: "7"},
 		{n: "get2_sub", src: "func f(a, b int) int { return a - b }; f(10, 3)", res: "7"},
-		// Recursion exercises multiple fusions together
 		{n: "fib", src: "func fib(n int) int { if n < 2 { return n }; return fib(n-1) + fib(n-2) }; fib(10)", res: "55"},
-		// Greater comparison with boundary values
 		{n: "greater_zero", src: "func f(a int) int { if a > 0 { return 1 }; return 0 }; f(0)", res: "0"},
 		{n: "greater_neg", src: "func f(a int) int { if a > -1 { return 1 }; return 0 }; f(-1)", res: "0"},
 		{n: "greater_neg2", src: "func f(a int) int { if a > -1 { return 1 }; return 0 }; f(0)", res: "1"},
-		// Loop combining multiple fused ops
 		{n: "loop", src: "func f(n int) int { s := 0; for i := 0; i < n; i++ { s = s + i }; return s }; f(5)", res: "10"},
 	})
 }
@@ -299,22 +289,14 @@ a`, res: "hello world!"},
 
 func TestVariadic(t *testing.T) {
 	run(t, []etest{
-		// Variadic with multiple args.
 		{n: "#00", src: "func sum(a ...int) int { s := 0; for _, v := range a { s = s + v }; return s }; sum(1, 2, 3)", res: "6"},
-		// Variadic with zero args.
 		{n: "#01", src: "func sum(a ...int) int { s := 0; for _, v := range a { s = s + v }; return s }; sum()", res: "0"},
-		// Variadic with one arg.
 		{n: "#02", src: "func sum(a ...int) int { s := 0; for _, v := range a { s = s + v }; return s }; sum(42)", res: "42"},
-		// Fixed params before variadic.
 		{n: "#03", src: "func add(x int, rest ...int) int { s := x; for _, v := range rest { s = s + v }; return s }; add(10, 1, 2, 3)", res: "16"},
-		// Fixed param, no variadic args.
 		{n: "#04", src: "func add(x int, rest ...int) int { s := x; for _, v := range rest { s = s + v }; return s }; add(10)", res: "10"},
-		// Variadic void function.
 		{n: "#05", src: "var r int; func f(a ...int) { for _, v := range a { r = r + v } }; f(1, 2, 3); r", res: "6"},
-		// Spread: pass existing slice as variadic arg.
-		{n: "spread", src: `func sum(a ...int) int { s := 0; for _, v := range a { s += v }; return s }; x := []int{1, 2, 3}; sum(x...)`, res: "6"},
-		// Spread with fixed params before variadic.
-		{n: "spread_fixed", src: `func add(x int, rest ...int) int { s := x; for _, v := range rest { s += v }; return s }; r := []int{1, 2}; add(10, r...)`, res: "13"},
+		{n: "#06", src: `func sum(a ...int) int { s := 0; for _, v := range a { s += v }; return s }; x := []int{1, 2, 3}; sum(x...)`, res: "6"},
+		{n: "#07", src: `func add(x int, rest ...int) int { s := x; for _, v := range rest { s += v }; return s }; r := []int{1, 2}; add(10, r...)`, res: "13"},
 	})
 }
 
@@ -479,13 +461,9 @@ func TestConst(t *testing.T) {
 		{n: "#03", src: src0 + "c", res: "2"},
 		{n: "#04", src: `func f() string {return a}; const a = "hello"; f()`, res: "hello"},
 
-		// Forward references within a const block.
 		{n: "fwd_in_block", src: `const (a = 2; b = c + d; c = 4; d = 5); b`, res: "9"},
-		// Deep forward reference chain within a const block.
 		{n: "fwd_deep_chain", src: `const (a = 2; b = c + d; c = a + d; d = e + f; e = 3; f = 4); b`, res: "16"},
-		// Forward references across separate const blocks.
 		{n: "fwd_cross_block", src: `const b = c + 1; const c = 5; b`, res: "6"},
-		// Const used in array size, declared after the type.
 		{n: "fwd_array_size", src: `
 const maxN = 30
 const bufSize = maxN + 2
@@ -493,22 +471,17 @@ type T struct { pos uint8; size uint8 }
 type buf struct { data [bufSize]T }
 len(buf{}.data)`, res: "32"},
 
-		// Builtin len in const expression.
 		{n: "len_string", src: `const n = len("hello"); n`, res: "5"},
 		{n: "len_string_expr", src: `const n = len("hello") + 1; n`, res: "6"},
 
-		// Type conversions in const expressions.
 		{n: "conv_int", src: `const a = int(3.0); a`, res: "3"},
 		{n: "conv_float", src: `const a = float64(3) + 0.5; a`, res: "3.5"},
 		{n: "conv_string", src: `const a = string(65); a`, res: "A"},
 
-		// len/cap on array-typed variables in const expressions.
 		{n: "len_array_var", src: `var a = [3]int{1,2,3}; const n = len(a); n`, res: "3"},
 		{n: "cap_array_var", src: `var a = [...]int{1,2,3}; const n = cap(a); n`, res: "3"},
 
-		// Const expressions are also left-associative.
-		{n: "sub_add_chain", src: `const (a = 2; b = 10; c = b - a + 1); c`, res: "9"}, // right-assoc: 10-(2+1)=7
-		// Typed const: reproduces yaegi-issue-1175 (typed int8 constants in array size).
+		{n: "sub_add_chain", src: `const (a = 2; b = 10; c = b - a + 1); c`, res: "9"},                                        // right-assoc: 10-(2+1)=7
 		{n: "typed_sub_add", src: `type L int8; const (a L = -1; b L = 5; d = b - a + 1); type A [d]int; len(A{})`, res: "7"}, // right-assoc: b-(a+1)=5
 	})
 }
@@ -520,15 +493,12 @@ func TestArray(t *testing.T) {
 		{n: "#02", src: "type T [3]int; var t T; t[1]", res: "0"},
 		{n: "#03", src: "type T [3]int; var t T; t[1] = 2; t", res: "[0 2 0]"},
 
-		// [...] array syntax.
 		{n: "ellipsis", src: `a := [...]int{10, 20, 30}; len(a)`, res: "3"},
 
-		// Chained indexing: multi-dimensional arrays and slices.
 		{n: "2d_array", src: `a := [3][2]int{{1, 2}, {3, 4}, {5, 6}}; a[1][0]`, res: "3"},
 		{n: "2d_slice", src: `a := [][]int{{1, 2}, {3, 4}}; a[1][0]`, res: "3"},
 		{n: "2d_named", src: `type M [3][16]int; m := M{}; m[0][1] = 7; m[0][1]`, res: "7"},
 
-		// Pointer-to-array: Go allows indexing and ranging directly over *[N]T.
 		{n: "ptr_index", src: `type T [2]int; func f(t *T) int { return t[0] }; f(&T{1, 2})`, res: "1"},
 		{n: "ptr_index_set", src: `type T [2]int; t := &T{1, 2}; t[1] = 9; t[1]`, res: "9"},
 		{n: "ptr_range2", src: `
@@ -570,65 +540,22 @@ func TestPointer(t *testing.T) {
 		{n: "#01", src: "var a int; var b *int = &a; *b", res: "0"},
 		{n: "#02", src: "var a int = 2; var b *int = &a; *b", res: "2"},
 
-		// DerefAssign: *p = value (simple).
 		{n: "deref_assign_int", src: "var a int; p := &a; *p = 42; a", res: "42"},
 		{n: "deref_assign_string", src: "var s string; p := &s; *p = \"hello\"; s", res: "hello"},
-
-		// DerefAssign: *p = expr (RHS is an arithmetic expression).
 		{n: "deref_assign_expr", src: "var a int; p := &a; *p = 3 + 4; a", res: "7"},
-
-		// DerefAssign: *f() = value (pointer returned by function).
-		{n: "deref_assign_func", src: `
-var a int
-func f() *int { return &a }
-*f() = 99; a`, res: "99"},
-
-		// DerefAssign: *s[i] = value (pointer in a slice).
-		{n: "deref_assign_slice", src: `
-var a, b int
-s := []*int{&a, &b}
-*s[1] = 10; b`, res: "10"},
-
-		// Interior deref: (*p).field = value (deref is not outermost).
-		{n: "deref_field_assign", src: `
-type T struct { x int }
-p := &T{0}
-(*p).x = 5; p.x`, res: "5"},
-
-		// Interior deref: (*p)[i] = value.
-		{n: "deref_index_assign", src: `
-s := []int{1, 2, 3}
-p := &s
-(*p)[1] = 20; s[1]`, res: "20"},
-
-		// Auto-deref: p.field = value (Go implicit deref for field access).
-		{n: "auto_deref_field", src: `
-type T struct { x int }
-p := &T{0}
-p.x = 7; p.x`, res: "7"},
-
-		// Double pointer deref: **pp = value.
-		{n: "deref_double", src: `
-var a int
-p := &a
-pp := &p
-**pp = 33; a`, res: "33"},
-
-		// DerefAssign with new().
+		{n: "deref_assign_func", src: `var a int; func f() *int { return &a }; *f() = 99; a`, res: "99"},
+		{n: "deref_assign_slice", src: `var a, b int; s := []*int{&a, &b}; *s[1] = 10; b`, res: "10"},
+		{n: "deref_field_assign", src: `type T struct { x int }; p := &T{0}; (*p).x = 5; p.x`, res: "5"},
+		{n: "deref_index_assign", src: `s := []int{1, 2, 3}; p := &s; (*p)[1] = 20; s[1]`, res: "20"},
+		{n: "auto_deref_field", src: `type T struct { x int }; p := &T{0}; p.x = 7; p.x`, res: "7"},
+		{n: "deref_double", src: `var a int; p := &a; pp := &p; **pp = 33; a`, res: "33"},
 		{n: "deref_assign_new", src: "p := new(int); *p = 5; *p", res: "5"},
-
-		// Pointer inc/dec: *p++ and *p--.
 		{n: "deref_inc", src: "a := 2; p := &a; *p++; a", res: "3"},
 		{n: "deref_dec", src: "a := 2; p := &a; *p--; a", res: "1"},
-
-		// IIFE (immediately invoked function expression) returning a pointer.
 		{n: "iife_ptr", src: `var a = func() *bool { b := true; return &b }(); *a && true`, res: "true"},
-
-		// Address of slice/array element: &a[i] must alias the element, not copy it.
 		{n: "addr_slice_elem", src: `a := []int{1, 2, 3}; p := &a[1]; *p = 99; a[1]`, res: "99"},
 		{n: "addr_array_elem", src: `a := [3]int{1, 2, 3}; p := &a[1]; *p = 99; a[1]`, res: "99"},
 
-		// Address of 2D array element (yaegi-issue-1177).
 		{n: "addr_2d_elem", src: `
 type counters [3][16]int
 cs := &counters{}
@@ -1055,22 +982,9 @@ if i, ok := i.(*T); ok { r = i.name }
 r`, res: "foo"},
 
 		{n: "any_set", src: "var a interface{} = 2 + 5; a.(int)", res: "7"},
-
-		// interface{} as function return type (was: syntax error: Interface)
-		{n: "iface_return", src: `
-func f(x int) interface{} { return x }
-f(42).(int)`, res: "42"},
-
-		// return concrete value from interface{} func, then type-assert
-		{n: "iface_return_cap", src: `
-func f(a []int) interface{} { return cap(a) }
-a := []int{1, 2, 3}
-f(a).(int)`, res: "3"},
-
-		{n: "iface_return_multi", src: `
-func f(x int) (interface{}, int) { return x, x + 1 }
-a, b := f(5)
-a.(int) + b`, res: "11"},
+		{n: "iface_return", src: `func f(x int) interface{} {return x}; f(42).(int)`, res: "42"},
+		{n: "iface_return_cap", src: `func f(a []int) interface{} {return cap(a)}; a := []int{1, 2, 3}; f(a).(int)`, res: "3"},
+		{n: "iface_return_multi", src: `func f(x int) (interface{}, int) {return x, x + 1}; a, b := f(5); a.(int) + b`, res: "11"},
 
 		// return concrete value from named interface func, then call method
 		{n: "iface_return_method", src: `
@@ -1990,6 +1904,7 @@ func TestSelect(t *testing.T) {
 	run(t, []etest{
 		{n: "select_recv_buffered", src: `ch := make(chan int, 1); ch <- 42; r := 0; select { case v := <-ch: r = v }; r`, res: "42"},
 		{n: "select_default", src: `ch := make(chan int); r := 0; select { case v := <-ch: r = v; default: r = 99 }; r`, res: "99"},
+
 		{n: "select_send", src: `
 ch := make(chan int, 1)
 select { case ch <- 7: }
@@ -2001,25 +1916,30 @@ close(ch)
 r := false
 select { case _, ok := <-ch: r = ok }
 r`, res: "true"},
+
 		{n: "select_recv_closed_ok_false", src: `
 ch := make(chan int)
 close(ch)
 r := false
 select { case _, ok := <-ch: r = ok }
 r`, res: "false"},
+
 		{n: "select_with_goroutine", src: `
 ch := make(chan string)
 go func() { ch <- "hello" }()
 r := ""
 select { case v := <-ch: r = v }
 r`, res: "hello"},
+
 		{n: "select_in_loop", src: `
 ch := make(chan int, 3)
 ch <- 10; ch <- 20; ch <- 30
 sum := 0
 for i := 0; i < 3; i++ { select { case v := <-ch: sum = sum + v } }
 sum`, res: "60"},
+
 		{n: "select_bare_recv", src: `ch := make(chan int, 1); ch <- 1; select { case <-ch: }; 42`, res: "42"},
+
 		{n: "select_multiple_cases", src: `
 ch1 := make(chan int, 1)
 ch2 := make(chan string, 1)
@@ -2035,7 +1955,6 @@ r`, res: "ok"},
 
 func TestPackageDecl(t *testing.T) {
 	run(t, []etest{
-		// File-level comment before package declaration (was: "package already set").
 		{n: "comment_before_package", src: `
 // A file-level comment
 package main

@@ -19,7 +19,7 @@ type Interp struct {
 
 // NewInterpreter returns a new interpreter.
 func NewInterpreter(s *lang.Spec) *Interp {
-	return &Interp{comp.NewCompiler(s), &vm.Machine{}}
+	return &Interp{comp.NewCompiler(s), vm.NewMachine()}
 }
 
 // Eval evaluates code string and return the last produced value if any, or an error.

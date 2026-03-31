@@ -7,6 +7,7 @@ import (
 	"iter"
 	"log"  // for tracing only
 	"math" // for float arithmetic
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -45,75 +46,74 @@ const (
 	// Instruction effect on stack: values consumed -- values produced.
 	Nop          Op = iota // --
 	Addr                   // a -- &a ;
+	Append                 // slice [v0..vn-1] -- slice' ; append $0 values to slice
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallImm                // [a1 .. ai] -- [r1 .. rj] ; $1=dataIdx of func, $2=narg<<16|nret
+	Cap                    // -- x ; x = cap(mem[sp-$0])
+	Convert                // v -- v' ; v' = convert(v, type at mem[$1]); optional $2 = stack depth offset
+	CopySlice              // dst src -- n ; n = copy(dst, src)
+	DeferPush              // func [a0..an-1] -- func [a0..an-1] [packed prevHead retIP] ; register deferred call on stack; $0=narg, $1=1 if native
+	DeferRet               // -- ; sentinel: restore outer frame after a deferred call returns
+	DeleteMap              // map key -- ; delete(map, key)
 	Deref                  // x -- *x ;
 	DerefSet               // ptr val -- ; *ptr = val
-	Get                    // addr -- value ; value = mem[addr]
-	Fnew                   // -- x; x = new mem[$1]
-	FnewE                  // -- x; x = new mem[$1].Elem()
 	Equal                  // n1 n2 -- cond ; cond = n1 == n2
 	EqualSet               // n1 n2 -- n1 cond ; cond = n1 == n2
 	Exit                   // -- ;
 	Field                  // s -- f ; f = s.FieldIndex($1, ...)
-	FieldSet               // s d -- s ; s.FieldIndex($1, ...) = d
 	FieldFset              // s i v -- s; s.FieldIndex(i) = v
+	FieldSet               // s d -- s ; s.FieldIndex($1, ...) = d
+	Fnew                   // -- x; x = new mem[$1]
+	FnewE                  // -- x; x = new mem[$1].Elem()
+	Get                    // addr -- value ; value = mem[addr]
 	Grow                   // -- ; sp += $1
+	HAlloc                 // -- &cell ; cell = new(Value), push its pointer
+	HGet                   // -- v    ; v = *State.Env[$1]
+	HPtr                   // -- &cell ; push State.Env[$1] itself (transitive capture)
+	HSet                   // v --    ; *State.Env[$1] = v
+	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
+	IfaceWrap              // v -- iface ; wrap v in Iface{type at $1, v}
 	Index                  // a i -- a[i] ;
 	IndexAddr              // a i -- &a[i] ; pointer to element
 	IndexSet               // a i v -- a; a[i] = v
 	Jump                   // -- ; ip += $1
-	JumpTrue               // cond -- ; if cond { ip += $1 }
 	JumpFalse              // cond -- ; if cond { ip += $1 }
-	JumpSetTrue            //
 	JumpSetFalse           //
+	JumpSetTrue            //
+	JumpTrue               // cond -- ; if cond { ip += $1 }
 	Len                    // -- x; x = mem[sp-$1]
 	MapIndex               // a i -- a[i]
 	MapIndexOk             // a i -- v ok ; v, ok = a[i]
 	MapSet                 // a i v -- a; a[i] = v
+	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, env}
+	MkMap                  // -- map ; create map[K]V, key type at mem[$0], val type at mem[$1]
+	MkSlice                // [v0..vn-1] -- slice ; collect $0 values into []T, elem type at mem[$1]
 	New                    // -- x; mem[fp+$1] = new mem[$2]
 	Next                   // -- ; iterator next, set K
 	Next0                  // -- ; iterator next, no variable
 	Next2                  // -- ; iterator next, set K V
 	Not                    // c -- r ; r = !c
+	Panic                  // v -- ; pop value, start stack unwinding
+	PanicUnwind            // -- ; sentinel: handle panic stack unwinding
 	Pop                    // v --
-	Push                   // -- v
+	PtrNew                 // -- ptr ; ptr = new(T), type at mem[$0]
 	Pull                   // a -- a s n; pull iterator next and stop function
 	Pull2                  // a -- a s n; pull iterator next and stop function
+	Push                   // -- v
+	Recover                // -- v ; push recovered value (or nil if not panicking in a deferred call)
 	Return                 // [r1 .. ri] -- ; exit frame, nret and frameBase from frames
-	SetLocal               // v -- ; mem[fp-1+$1] = v
 	SetGlobal              // v -- ; mem[$1] = v (globals)
+	SetLocal               // v -- ; mem[fp-1+$1] = v
 	SetS                   // dest val -- ; dest.Set(val)
 	Slice                  // a l h -- a; a = a [l:h]
 	Slice3                 // a l h m -- a; a = a[l:h:m]
 	Stop                   // -- iterator stop
 	Stop0                  // -- iterator stop, no variable
 	Swap                   // --
-	HAlloc                 // -- &cell ; cell = new(Value), push its pointer
-	HGet                   // -- v    ; v = *State.Env[$1]
-	HSet                   // v --    ; *State.Env[$1] = v
-	HPtr                   // -- &cell ; push State.Env[$1] itself (transitive capture)
-	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, env}
-	Convert                // v -- v' ; v' = convert(v, type at mem[$1]); optional $2 = stack depth offset
-	IfaceWrap              // v -- iface ; wrap v in Iface{type at $1, v}
-	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
+	Trap                   // -- ; pause VM execution and enter debug mode
 	TypeAssert             // iface -- v [ok] ; assert iface holds type at mem[$1]; $2=0 panics, $2=1 ok form
 	TypeBranch             // iface -- ; pop iface; if iface doesn't hold type at mem[$2] (or $2==-1 for nil), ip += $1
-	Panic                  // v -- ; pop value, start stack unwinding
-	Recover                // -- v ; push recovered value (or nil if not panicking in a deferred call)
-	DeferPush              // func [a0..an-1] -- func [a0..an-1] [packed prevHead retIP] ; register deferred call on stack; $0=narg, $1=1 if native
-	DeferRet               // -- ; sentinel: restore outer frame after a deferred call returns
-	PanicUnwind            // -- ; sentinel: handle panic stack unwinding
-	MkSlice                // [v0..vn-1] -- slice ; collect $0 values into []T, elem type at mem[$1]
-	MkMap                  // -- map ; create map[K]V, key type at mem[$0], val type at mem[$1]
-	Append                 // slice [v0..vn-1] -- slice' ; append $0 values to slice
-	CopySlice              // dst src -- n ; n = copy(dst, src)
-	DeleteMap              // map key -- ; delete(map, key)
-	Cap                    // -- x ; x = cap(mem[sp-$0])
-	PtrNew                 // -- ptr ; ptr = new(T), type at mem[$0]
-	Trap                   // -- ; pause VM execution and enter debug mode
 	WrapFunc               // parscanFuncVal -- ParscanFunc ; wrap parscan func in reflect.MakeFunc for native callbacks; $0=typeIdx
-	AddStr                 // s1 s2 -- s ; s = s1 + s2 (string concatenation)
 
 	// Goroutine and channel opcodes.
 	GoCall     // f [a1..ai] -- ; spawn goroutine; $0=narg
@@ -127,6 +127,8 @@ const (
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
 	// The compiler computes: baseOp + Op(NumKindOffset[kind]).
+
+	AddStr // s1 s2 -- s ; s = s1 + s2 (string concatenation)
 
 	AddInt // n1 n2 -- sum
 	AddInt8
@@ -251,10 +253,10 @@ const (
 	LowerIntImm    // n -- n<$1  (signed)
 	LowerUintImm   // n -- n<$1  (unsigned)
 
-	Next2Local // -- ; iterator next, set K V (local scope); like Next2 but scope is always Local
-	GetLocal   // -- value ; value = mem[$1+fp-1] (local variable, no scope check)
 	GetGlobal  // -- value ; value = mem[$1] (global variable, syncs num from ref if needed)
+	GetLocal   // -- value ; value = mem[$1+fp-1] (local variable, no scope check)
 	NextLocal  // -- ; iterator next, set K (local scope); like Next but scope is always Local
+	Next2Local // -- ; iterator next, set K V (local scope); like Next2 but scope is always Local
 
 	// Fused GetLocal + operation superinstructions.
 	// $1 = local offset (as in GetLocal), $2 = immediate operand.
@@ -269,9 +271,8 @@ const (
 	GetLocalReturn         // -- ; push local $1 then return (nret/frameBase from frame)
 
 	// Fused compare + conditional-jump superinstructions.
-	// Avoid materializing a boolean value on the stack.
-	// Only LowerInt variants are needed; compiler rewrites Greater comparisons
-	// using the identity: a > imm ≡ a >= imm+1 ≡ !(a < imm+1).
+	// Only LowerInt variants are needed, compiler rewrites Greater comparisons
+	// using the identity: (a > imm) same as !(a < imm+1).
 	LowerIntImmJumpFalse         // n -- ; if n >= $2 { ip += $1 } ; sp--
 	LowerIntImmJumpTrue          // n -- ; if n < $2 { ip += $1 } ; sp--
 	GetLocalLowerIntImmJumpFalse // -- ; if local >= imm { ip += $1 } ; $2 = localOff<<16 | imm&0xFFFF
@@ -339,12 +340,21 @@ type Machine struct {
 	// reuses for all closures, so it is not a suitable key.)
 	funcFieldsByFuncPtr map[uintptr]Value
 
+	in       io.Reader // machine standard input (nil = os.Stdin)
+	out, err io.Writer // machine standard output and error
+
 	debugInfoFn func() *DebugInfo // builds DebugInfo on demand (breaks vm->comp cycle)
 	debugIn     io.Reader         // debug command input (nil = os.Stdin)
 	debugOut    io.Writer         // debug output (nil = os.Stderr)
 	stepping    bool              //nolint:unused // when true, trap after every instruction (planned)
 	trapOrig    int               // ip to resume after Trap
 }
+
+// NewMachine returns a pointer on a new Machine.
+func NewMachine() *Machine { return &Machine{in: os.Stdin, out: os.Stdout, err: os.Stderr} }
+
+// SetIO sets the I/O streams for the machine.
+func (m *Machine) SetIO(in io.Reader, out, err io.Writer) { m.in = in; m.out = out; m.err = err }
 
 // SetDebugInfo registers a function that builds DebugInfo on demand.
 func (m *Machine) SetDebugInfo(fn func() *DebugInfo) { m.debugInfoFn = fn }
@@ -1494,11 +1504,10 @@ func (m *Machine) Run() (err error) {
 			}
 			sp -= 2 * n
 
+		// Per-type Add.
 		case AddStr:
 			mem[sp-1] = Value{ref: reflect.ValueOf(mem[sp-1].ref.String() + mem[sp].ref.String())}
 			sp--
-
-		// Per-type Add.
 		case AddInt:
 			mem[sp-1].num = add[int](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
@@ -1539,16 +1548,16 @@ func (m *Machine) Run() (err error) {
 			mem[sp-1].num = add[uint64](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
 			sp--
-		case AddFloat64:
-			mem[sp-1].num = addf[float64](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zfloat64
-			sp--
 		case AddFloat32:
 			mem[sp-1].num = addf[float32](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
 			sp--
+		case AddFloat64:
+			mem[sp-1].num = addf[float64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].ref = zfloat64
+			sp--
 
-			// Per-type Sub.
+		// Per-type Sub.
 		case SubInt:
 			mem[sp-1].num = sub[int](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
@@ -1589,16 +1598,16 @@ func (m *Machine) Run() (err error) {
 			mem[sp-1].num = sub[uint64](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
 			sp--
-		case SubFloat64:
-			mem[sp-1].num = subf[float64](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zfloat64
-			sp--
 		case SubFloat32:
 			mem[sp-1].num = subf[float32](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
 			sp--
+		case SubFloat64:
+			mem[sp-1].num = subf[float64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].ref = zfloat64
+			sp--
 
-			// Per-type Mul.
+		// Per-type Mul.
 		case MulInt:
 			mem[sp-1].num = mul[int](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
@@ -1639,76 +1648,16 @@ func (m *Machine) Run() (err error) {
 			mem[sp-1].num = mul[uint64](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
 			sp--
-		case MulFloat64:
-			mem[sp-1].num = mulf[float64](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zfloat64
-			sp--
 		case MulFloat32:
 			mem[sp-1].num = mulf[float32](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
 			sp--
-
-			// Per-type Neg.
-		case NegInt:
-			mem[sp].num = neg[int](mem[sp].num)
-			mem[sp].ref = zint
-		case NegInt8:
-			mem[sp].num = neg[int8](mem[sp].num)
-			mem[sp].ref = zint8
-		case NegInt16:
-			mem[sp].num = neg[int16](mem[sp].num)
-			mem[sp].ref = zint16
-		case NegInt32:
-			mem[sp].num = neg[int32](mem[sp].num)
-			mem[sp].ref = zint32
-		case NegInt64:
-			mem[sp].num = neg[int64](mem[sp].num)
-			mem[sp].ref = zint64
-		case NegUint:
-			mem[sp].num = neg[uint](mem[sp].num)
-			mem[sp].ref = zuint
-		case NegUint8:
-			mem[sp].num = neg[uint8](mem[sp].num)
-			mem[sp].ref = zuint8
-		case NegUint16:
-			mem[sp].num = neg[uint16](mem[sp].num)
-			mem[sp].ref = zuint16
-		case NegUint32:
-			mem[sp].num = neg[uint32](mem[sp].num)
-			mem[sp].ref = zuint32
-		case NegUint64:
-			mem[sp].num = neg[uint64](mem[sp].num)
-			mem[sp].ref = zuint64
-		case NegFloat64:
-			mem[sp].num = negf[float64](mem[sp].num)
-			mem[sp].ref = zfloat64
-		case NegFloat32:
-			mem[sp].num = negf[float32](mem[sp].num)
-			mem[sp].ref = zfloat32
-
-		// Per-type Greater.
-		case GreaterInt, GreaterInt8, GreaterInt16, GreaterInt32, GreaterInt64:
-			mem[sp-1] = boolVal(int64(mem[sp-1].num) > int64(mem[sp].num)) //nolint:gosec
-			sp--
-		case GreaterUint, GreaterUint8, GreaterUint16, GreaterUint32, GreaterUint64:
-			mem[sp-1] = boolVal(mem[sp-1].num > mem[sp].num)
-			sp--
-		case GreaterFloat32, GreaterFloat64:
-			mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) > math.Float64frombits(mem[sp].num))
+		case MulFloat64:
+			mem[sp-1].num = mulf[float64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].ref = zfloat64
 			sp--
 
-		// Per-type Lower.
-		case LowerInt, LowerInt8, LowerInt16, LowerInt32, LowerInt64:
-			mem[sp-1] = boolVal(int64(mem[sp-1].num) < int64(mem[sp].num)) //nolint:gosec
-			sp--
-		case LowerUint, LowerUint8, LowerUint16, LowerUint32, LowerUint64:
-			mem[sp-1] = boolVal(mem[sp-1].num < mem[sp].num)
-			sp--
-		case LowerFloat32, LowerFloat64:
-			mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) < math.Float64frombits(mem[sp].num))
-			sp--
-
-			// Per-type Div.
+		// Per-type Div.
 		case DivInt:
 			mem[sp-1].num = div[int](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
@@ -1748,16 +1697,16 @@ func (m *Machine) Run() (err error) {
 		case DivUint64:
 			mem[sp-1].num = div[uint64](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
-		case DivFloat64:
-			mem[sp-1].num = divf[float64](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zfloat64
-			sp--
 		case DivFloat32:
 			mem[sp-1].num = divf[float32](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
 			sp--
+		case DivFloat64:
+			mem[sp-1].num = divf[float64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].ref = zfloat64
+			sp--
 
-			// Per-type Rem (integer only).
+		// Per-type Rem (integer only).
 		case RemInt:
 			mem[sp-1].num = rem[int](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
@@ -1797,6 +1746,66 @@ func (m *Machine) Run() (err error) {
 		case RemUint64:
 			mem[sp-1].num = rem[uint64](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
+			sp--
+
+		// Per-type Neg.
+		case NegInt:
+			mem[sp].num = neg[int](mem[sp].num)
+			mem[sp].ref = zint
+		case NegInt8:
+			mem[sp].num = neg[int8](mem[sp].num)
+			mem[sp].ref = zint8
+		case NegInt16:
+			mem[sp].num = neg[int16](mem[sp].num)
+			mem[sp].ref = zint16
+		case NegInt32:
+			mem[sp].num = neg[int32](mem[sp].num)
+			mem[sp].ref = zint32
+		case NegInt64:
+			mem[sp].num = neg[int64](mem[sp].num)
+			mem[sp].ref = zint64
+		case NegUint:
+			mem[sp].num = neg[uint](mem[sp].num)
+			mem[sp].ref = zuint
+		case NegUint8:
+			mem[sp].num = neg[uint8](mem[sp].num)
+			mem[sp].ref = zuint8
+		case NegUint16:
+			mem[sp].num = neg[uint16](mem[sp].num)
+			mem[sp].ref = zuint16
+		case NegUint32:
+			mem[sp].num = neg[uint32](mem[sp].num)
+			mem[sp].ref = zuint32
+		case NegUint64:
+			mem[sp].num = neg[uint64](mem[sp].num)
+			mem[sp].ref = zuint64
+		case NegFloat32:
+			mem[sp].num = negf[float32](mem[sp].num)
+			mem[sp].ref = zfloat32
+		case NegFloat64:
+			mem[sp].num = negf[float64](mem[sp].num)
+			mem[sp].ref = zfloat64
+
+		// Per-type Greater.
+		case GreaterInt, GreaterInt8, GreaterInt16, GreaterInt32, GreaterInt64:
+			mem[sp-1] = boolVal(int64(mem[sp-1].num) > int64(mem[sp].num)) //nolint:gosec
+			sp--
+		case GreaterUint, GreaterUint8, GreaterUint16, GreaterUint32, GreaterUint64:
+			mem[sp-1] = boolVal(mem[sp-1].num > mem[sp].num)
+			sp--
+		case GreaterFloat32, GreaterFloat64:
+			mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) > math.Float64frombits(mem[sp].num))
+			sp--
+
+		// Per-type Lower.
+		case LowerInt, LowerInt8, LowerInt16, LowerInt32, LowerInt64:
+			mem[sp-1] = boolVal(int64(mem[sp-1].num) < int64(mem[sp].num)) //nolint:gosec
+			sp--
+		case LowerUint, LowerUint8, LowerUint16, LowerUint32, LowerUint64:
+			mem[sp-1] = boolVal(mem[sp-1].num < mem[sp].num)
+			sp--
+		case LowerFloat32, LowerFloat64:
+			mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) < math.Float64frombits(mem[sp].num))
 			sp--
 
 		// Immediate operand ops: right-hand constant is in Arg[0].
