@@ -2219,7 +2219,19 @@ func (c *Compiler) compileBuiltin(
 		push(sliceSym)    // result is same slice type
 		elemType := sliceSym.Type.Rtype.Elem()
 		elemIdx := c.typeSym(&vm.Type{Rtype: elemType}).Index
-		c.emit(t, vm.Append, nvals, elemIdx)
+		if elemType.Kind() == reflect.Func && nvals > 1 {
+			// Pre-wrap func values so AppendSlice can extract ParscanFunc.GF without
+			// calling wrapForFunc at runtime. Not needed for nvals==1; Append handles it.
+			funcTypeIdx := c.typeIndex(&vm.Type{Rtype: elemType})
+			for i := range nvals {
+				c.emit(t, vm.WrapFunc, funcTypeIdx, nvals-1-i)
+			}
+		}
+		if nvals == 1 {
+			c.emit(t, vm.Append, 1, elemIdx)
+		} else {
+			c.emit(t, vm.AppendSlice, nvals, elemIdx)
+		}
 		return true, nil
 
 	case "copy":

@@ -47,6 +47,7 @@ const (
 	Nop          Op = iota // --
 	Addr                   // a -- &a ;
 	Append                 // slice [v0..vn-1] -- slice' ; append $0 values to slice
+	AppendSlice            // slice [v0..vn-1] -- slice' ; pack $0 values into []T, reflect.AppendSlice; elem type at mem[$1]
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallImm                // [a1 .. ai] -- [r1 .. rj] ; $1=dataIdx of func, $2=narg<<16|nret
 	Cap                    // -- x ; x = cap(mem[sp-$0])
@@ -113,7 +114,7 @@ const (
 	Trap                   // -- ; pause VM execution and enter debug mode
 	TypeAssert             // iface -- v [ok] ; assert iface holds type at mem[$1]; $2=0 panics, $2=1 ok form
 	TypeBranch             // iface -- ; pop iface; if iface doesn't hold type at mem[$2] (or $2==-1 for nil), ip += $1
-	WrapFunc               // parscanFuncVal -- ParscanFunc ; wrap parscan func in reflect.MakeFunc for native callbacks; $0=typeIdx
+	WrapFunc               // parscanFuncVal -- ParscanFunc ; wrap parscan func in reflect.MakeFunc for native callbacks; $0=typeIdx, $1=depth from sp (0=top)
 
 	// Goroutine and channel opcodes.
 	GoCall     // f [a1..ai] -- ; spawn goroutine; $0=narg
@@ -1167,8 +1168,8 @@ func (m *Machine) Run() (err error) {
 			// CallFunc is re-entrant for single-threaded synchronous callbacks; concurrent goroutine
 			// calls to different wrapped functions on the same Machine are NOT safe.
 			typ := m.globals[int(c.A)].ref.Interface().(*Type)
-			fval := mem[sp]
-			mem[sp] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: m.wrapForFunc(fval, typ.Rtype)})}
+			fval := mem[sp-int(c.B)]
+			mem[sp-int(c.B)] = Value{ref: reflect.ValueOf(ParscanFunc{Val: fval, GF: m.wrapForFunc(fval, typ.Rtype)})}
 
 		case Trap:
 			m.trapOrig = ip + 1 // resume ip after Trap instruction
@@ -1453,6 +1454,28 @@ func (m *Machine) Run() (err error) {
 			for i := range n {
 				result = reflect.Append(result, m.wrapForFunc(mem[sp-n+1+i], elemType))
 			}
+			mem[sp-n] = Value{ref: result}
+			sp -= n
+		case AppendSlice:
+			n := int(c.A)
+			result := mem[sp-n].ref
+			elemType := result.Type().Elem()
+			temp := reflect.MakeSlice(result.Type(), n, n)
+			if elemType.Kind() == reflect.Func {
+				for i := range n {
+					src := mem[sp-n+1+i]
+					if pf, ok := src.ref.Interface().(ParscanFunc); ok {
+						temp.Index(i).Set(pf.GF)
+					} else {
+						temp.Index(i).Set(src.Reflect())
+					}
+				}
+			} else {
+				for i := range n {
+					numSet(temp.Index(i), mem[sp-n+1+i])
+				}
+			}
+			result = reflect.AppendSlice(result, temp)
 			mem[sp-n] = Value{ref: result}
 			sp -= n
 		case CopySlice:

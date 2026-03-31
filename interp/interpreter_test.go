@@ -3,6 +3,7 @@ package interp_test
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -62,6 +63,46 @@ func BenchmarkFib(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := intp.Eval("m:bench", "fib(20)"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkAppend(b *testing.B) {
+	intp := interp.NewInterpreter(golang.GoSpec)
+	if _, err := intp.Eval("m:setup", `
+		func appendN(n int) []int {
+			s := []int{}
+			for i := 0; i < n; i++ {
+				s = append(s, i, i+1, i+2)
+			}
+			return s
+		}
+	`); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := intp.Eval("m:bench", "appendN(100)"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkAppendLarge(b *testing.B) {
+	// Build: append(s, 0, 1, 2, ..., 99) — 100 args in a single call.
+	args := make([]string, 100)
+	for i := range args {
+		args[i] = strconv.Itoa(i)
+	}
+	src := "func appendLarge() []int { s := []int{}; s = append(s, " + strings.Join(args, ", ") + "); return s }"
+	intp := interp.NewInterpreter(golang.GoSpec)
+	if _, err := intp.Eval("m:setup", src); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := intp.Eval("m:bench", "appendLarge()"); err != nil {
 			b.Fatal(err)
 		}
 	}
