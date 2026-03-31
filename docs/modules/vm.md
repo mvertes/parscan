@@ -23,11 +23,7 @@ metadata).
   `isGoroutine bool`), two func-field side-tables (`funcFields` keyed by
   reflect.Value address, `funcFieldsByFuncPtr` keyed by the closure's
   function pointer -- used as a stable fallback when a struct containing
-  func fields is copied e.g. via `append`), a `Symbols` map for
-  name-to-globals-index lookup, and debug state.
-- **`Symbols map[string]int`** -- maps symbol names to global memory
-  indices. Populated by `interp.Eval` from the compiler symbol table
-  after each compilation. Used for REPL resolution and `main` dispatch.
+  func fields is copied e.g. via `append`), and debug state.
 - **`Run() error`** -- main execution loop. Dispatches on `Op` via a
   switch statement.
 - **`Push(vals ...Value)`** -- append values to `globals` (used before
@@ -68,6 +64,14 @@ metadata).
   multi-return functions.
 - **`Iface{Typ *Type, Val Value}`** -- boxed interface value.
 - **`Closure{Code int, Env []*Value}`** -- captured function.
+- **`SelectCaseInfo`** -- describes one case of a `select` statement:
+  `Dir reflect.SelectDir` (Send/Recv/Default), `Slot`/`OkSlot` (memory
+  indices for received value and ok bool, -1 if unused), `Local bool`
+  (true if slots are frame-relative rather than global).
+- **`SelectMeta`** -- compile-time metadata for a `select` block, stored
+  in the data segment at a known index. Holds `Cases []SelectCaseInfo`
+  and `TotalPop int` (total stack slots consumed by channel/value
+  entries, precomputed so `SelectExec` can find the base without scanning).
 - **`ParscanFunc{Val Value, GF reflect.Value}`** -- wraps a parscan
   function value alongside its `reflect.MakeFunc`-generated Go wrapper.
   Stored when a parscan func is assigned to a struct field of func type
@@ -80,8 +84,12 @@ metadata).
   - Stack/control: `Nop`, `Pop`, `Push`, `Swap`, `Exit`, `Jump`,
     `JumpTrue`, `JumpFalse`, `JumpSetTrue`, `JumpSetFalse`, `Call`,
     `CallImm`, `Return`.
-  - Memory: `Get`, `GetLocal`, `GetGlobal`, `Set`, `SetS`, `Addr`,
-    `Deref`, `DerefSet`, `Grow`.
+  - Memory: `Get`, `GetLocal`, `GetGlobal`, `SetLocal`, `SetGlobal`,
+    `SetS`, `Addr`, `Deref`, `DerefSet`, `Grow`.
+    `SetLocal`/`SetGlobal` are specialized variants that write directly
+    to frame-relative or global indices. `SetS` is used for addressable
+    slots (calls `reflect.Value.Set` to propagate writes into the ref
+    without touching `num`). Plain `Set` no longer exists as an opcode.
   - Arithmetic -- no generic numeric opcodes remain; every arithmetic op
     is statically typed:
     - `Equal`, `EqualSet` (type-agnostic comparison via `Value.Equal`).
@@ -104,8 +112,12 @@ metadata).
     both value and ok (the `v, ok := m[k]` form).
   - Types: `Convert`, `TypeAssert`, `TypeBranch`, `Fnew`, `FnewE`,
     `New`, `MkSlice`, `MkMap`.
-  - Builtins: `Append`, `CopySlice`, `DeleteMap`, `Cap`, `Len`,
-    `PtrNew`.
+  - Builtins: `Append`, `AppendSlice`, `CopySlice`, `DeleteMap`, `Cap`,
+    `Len`, `PtrNew`. `AppendSlice` packs N values into a `[]T` and calls
+    `reflect.AppendSlice`; used when `append` receives multiple elements
+    to avoid intermediate heap allocation.
+  - Output: `Print`, `Println` -- dedicated opcodes for `print(v...)` and
+    `println(v...)`; write to `m.out` directly without `reflect.Value.Call`.
   - Closures: `HAlloc`, `HGet`, `HSet`, `HPtr`, `MkClosure`.
   - Interfaces: `IfaceWrap`, `IfaceCall`.
   - Native interop: `WrapFunc` -- wraps a parscan function value in a
@@ -124,10 +136,15 @@ metadata).
     - `ChanRecv` -- pop channel, push received value; if `A` == 1 also
       push the ok bool (two-result form `v, ok := <-ch`).
     - `ChanClose` -- pop channel, call `reflect.Value.Close`.
-  - Range: `Next`, `Next0`, `Next2`, `NextLocal`, `Pull`, `Pull2`,
-    `Stop`, `Stop0`. `Next0`/`Stop0` are used when the range variable
-    is blank or absent. `NextLocal` is a fast path for local-scope
-    iterators.
+    - `SelectExec` -- execute a `select` statement. `A` = globals index
+      of `SelectMeta`; `B` = number of cases. Pops channel/value entries
+      off the stack (count from `meta.TotalPop`), calls `reflect.Select`,
+      then writes the received value and ok bool into the slots named in
+      `SelectMeta.Cases`. Pushes the chosen case index.
+  - Range: `Next`, `Next0`, `Next2`, `NextLocal`, `Next2Local`, `Pull`,
+    `Pull2`, `Stop`, `Stop0`. `Next0`/`Stop0` are used when the range
+    variable is blank or absent. `NextLocal`/`Next2Local` are fast paths
+    for local-scope iterators (single and double variable forms).
   - Super instructions (fused multi-op sequences):
     - `GetLocal2` -- push two locals in one dispatch.
     - `GetLocalAddIntImm`, `GetLocalSubIntImm`, `GetLocalMulIntImm` --

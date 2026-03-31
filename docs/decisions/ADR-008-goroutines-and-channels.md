@@ -102,4 +102,7 @@ bidirectional (`reflect.BothDir`) for now.
 - Directional channel enforcement (send-only `chan<-`, receive-only
   `<-chan`) is not yet implemented; all channels are bidirectional at
   runtime.
-- `select` statements are not yet implemented.
+- `select` statements are now implemented via the `SelectExec` opcode and
+  `SelectMeta` data structure. `reflect.Select` handles the actual
+  blocking. See `comp/compiler.go` (`case lang.Select`) and `vm/vm.go`
+  (`case SelectExec`) for details.

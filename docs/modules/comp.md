@@ -135,19 +135,42 @@ end, it patches the `Grow` instruction's `B` field with this value so
 the VM can pre-allocate `locals + maxExprDepth` slots at function entry,
 enabling bounds-check-free stack access within the function body.
 
+### Select statement compilation
+
+`select` blocks reach the compiler as a `lang.Select` token whose `Arg[0]`
+holds a `[]goparser.SelectCaseDesc` slice (one entry per case, produced
+by `parseSelect` in the parser). The compiler's `case lang.Select` handler:
+
+1. Pops stack entries in reverse order (channels and send values for each
+   non-default case).
+2. Allocates or reuses variable slots for each `recv` case's value and ok
+   variables, emitting `New` for locals.
+3. Builds a `*vm.SelectMeta` with `Cases []SelectCaseInfo` and stores it
+   in `Data` at a fresh index.
+4. Emits `SelectExec metaIdx ncase`.
+
+At runtime, `SelectExec` uses `reflect.Select` to block until one case is
+ready, then writes the received value and ok bool into the pre-allocated
+slots using `meta.Cases`.
+
 ### Two-phase compilation
 
 `Compile` proceeds in two phases:
 
 1. **Phase 1 -- Declarations.** `ScanDecls` splits the source into
-   top-level declarations. Each is passed to `ParseDecl`, which handles
-   `package`, `import`, `const`, `type`, and `var` (type registration
-   only -- no initializers). For `func` (including methods), it calls
-   `registerFunc` to record the function signature without parsing the
-   body. Declarations that fail with `ErrUndefined` are retried in a
-   fixpoint loop until convergence. Rollback on failure is lightweight:
-   only `SymTracker` keys are deleted from the symbol table; there is no
-   code or data to revert since Phase 1 emits neither.
+   top-level declarations. Before the retry loop, `preRegisterStructTypes`
+   scans declarations for `type X struct{...}` definitions and inserts
+   placeholder `*vm.Type` entries (untracked, so they survive retry cleanup).
+   This lets forward and mutual type references (e.g. `type F func(*A);
+   type A struct{F}`) resolve in the first pass. Each declaration is then
+   passed to `ParseDecl`, which handles `package`, `import`, `const`,
+   `type`, and `var` (type registration only -- no initializers). For
+   `func` (including methods), it calls `registerFunc` to record the
+   function signature without parsing the body. Declarations that fail with
+   `ErrUndefined` are retried in a fixpoint loop until convergence.
+   Rollback on failure is lightweight: only `SymTracker` keys are deleted
+   from the symbol table; there is no code or data to revert since Phase 1
+   emits neither.
 
 2. **Phase 2 -- Code generation.** `SplitAndSortVarDecls` expands
    `var(...)` blocks and topologically sorts var declarations by
@@ -186,11 +209,11 @@ builtin emits a dedicated opcode:
 
 | Builtin | Opcode(s) | Notes |
 |---------|-----------|-------|
-| `print` | `vm.CallX` (native reflect call) | Registered as `Kind: Value` with a Go func; dispatched via `vm.CallX` opcode, not a `Builtin` symbol |
-| `println` | `vm.CallX` (native reflect call) | Same as `print` |
+| `print` | `Print` | Registered as `Kind: Builtin`; emits `vm.Print narg` directly |
+| `println` | `Println` | Same pattern; emits `vm.Println narg` |
 | `len` | `Len` + `Swap` + `Pop` | `Len` does not consume input (used in slice exprs too) |
 | `cap` | `Cap` + `Swap` + `Pop` | Same pattern as `len` |
-| `append` | `Append` | Uses `reflect.Append` for amortized growth |
+| `append` | `Append` (1 value) or `AppendSlice` (N values) | `AppendSlice` packs N trailing args into `[]T` via `reflect.AppendSlice`; avoids intermediate heap allocation |
 | `copy` | `CopySlice` | Returns element count |
 | `delete` | `DeleteMap` + `Pop` | Void; extra `Pop` discards the map value |
 | `new` | `PtrNew` | Removes the `Fnew` emitted for the type argument |

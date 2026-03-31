@@ -10,7 +10,6 @@ import (
 	"os"
 	"reflect"
 	"strings"
-	"sync"
 	"unsafe" // to allow setting unexported struct fields //nolint:depguard
 )
 
@@ -330,9 +329,7 @@ type Machine struct {
 	panicking bool  // true while unwinding due to panic
 	panicVal  Value // value passed to panic()
 
-	wg          *sync.WaitGroup // shared WaitGroup; nil until first goroutine spawn
-	isGoroutine bool            // true if this machine was spawned via a go statement
-	baseCodeLen int             // len(code) before Run() appends sentinel instructions
+	baseCodeLen int // len(code) before Run() appends sentinel instructions
 
 	// funcFields maps struct func field addresses to parscan func values (int code addresses
 	// or Closures). Parscan funcs cannot be stored directly in typed Go func fields via reflect.
@@ -395,7 +392,7 @@ func (m *Machine) Run() (err error) {
 	// Append sentinel instructions so negative-IP handlers become normal opcodes.
 	sentBase := len(m.code)
 	m.baseCodeLen = sentBase
-	m.code = append(m.code, Instruction{Op: DeferRet}, Instruction{Op: PanicUnwind})
+	m.code = append(m.code, Instruction{Op: DeferRet}, Instruction{Op: PanicUnwind}, Instruction{Op: Exit})
 	deferRetAddr := sentBase
 	panicAddr := sentBase + 1
 	deferRetBits := uint64(deferRetAddr) //nolint:gosec
@@ -1027,16 +1024,8 @@ func (m *Machine) Run() (err error) {
 				args[i] = snapshotArg(mem[sp-narg+1+i])
 			}
 			sp -= narg + 1
-			if m.wg == nil {
-				m.wg = new(sync.WaitGroup)
-			}
-			m.wg.Add(1)
 			m.mem = mem[:sp+1]
-			child := m.newGoroutine(fval, args)
-			go func() {
-				defer m.wg.Done()
-				_ = child.Run()
-			}()
+			m.newGoroutine(fval, args)
 			mem = m.mem[:cap(m.mem)]
 
 		case GoCallImm:
@@ -1047,16 +1036,8 @@ func (m *Machine) Run() (err error) {
 				args[i] = snapshotArg(mem[sp-narg+1+i])
 			}
 			sp -= narg
-			if m.wg == nil {
-				m.wg = new(sync.WaitGroup)
-			}
-			m.wg.Add(1)
 			m.mem = mem[:sp+1]
-			child := m.newGoroutine(fval, args)
-			go func() {
-				defer m.wg.Done()
-				_ = child.Run()
-			}()
+			m.newGoroutine(fval, args)
 			mem = m.mem[:cap(m.mem)]
 
 		case MkChan:
@@ -2144,29 +2125,67 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	return out, nil
 }
 
-// newGoroutine creates a child Machine to run fval(args...) concurrently.
-// The child shares the parent's globals slice (same backing array) and WaitGroup.
-// It gets a private copy of the code with a Call+Exit epilogue appended.
-func (m *Machine) newGoroutine(fval Value, args []Value) *Machine {
-	child := &Machine{
-		globals:     m.globals, // shared backing array — true globals sharing
-		wg:          m.wg,
-		isGoroutine: true,
+// newGoroutine launches fval(args...) as a new goroutine.
+// The child shares the parent's globals and code slices; it gets its own stack
+// with the call frame pre-built so Run() starts directly in the target function.
+func (m *Machine) newGoroutine(fval Value, args []Value) {
+	// Inline fast path: resolve addressable struct func fields (mirrors Call opcode).
+	if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
+		fval = m.resolveFuncField(fval)
 	}
-	// Private code copy: [0..baseCodeLen) + Call narg 0 + Exit epilogue.
+	rv := fval.ref
+	if rv.Kind() == reflect.Interface && !rv.IsNil() {
+		rv = rv.Elem()
+	}
+	if rv.Kind() == reflect.Func {
+		// Native Go function: call via reflection in a plain goroutine.
+		in := make([]reflect.Value, len(args))
+		for i, a := range args {
+			in[i] = a.Reflect()
+		}
+		go func() { rv.Call(in) }()
+		return
+	}
+
+	// Resolve VM function address and closure env.
+	var nip int
+	var env []*Value
+	if isNum(fval.ref.Kind()) {
+		nip = int(fval.num) //nolint:gosec
+	} else if clo, ok := fval.ref.Interface().(Closure); ok {
+		nip, env = clo.Code, clo.Env
+	} else if iv, ok := fval.ref.Interface().(int); ok {
+		nip = iv
+	} else {
+		nip = int(fval.num) //nolint:gosec
+	}
+
+	// Pre-build the call frame: [fval, args..., deferHead, retIP+info, prevFP].
+	// The return address targets the Exit sentinel appended by Run() at baseCodeLen+2.
 	narg := len(args)
-	childCode := make(Code, m.baseCodeLen+2)
-	copy(childCode, m.code[:m.baseCodeLen])
-	callIP := m.baseCodeLen
-	childCode[callIP] = Instruction{Op: Call, A: int32(narg), B: 0} //nolint:gosec
-	childCode[callIP+1] = Instruction{Op: Exit}
-	child.code = childCode
-	// Fresh stack: func value followed by args.
-	child.mem = make([]Value, 0, narg+16)
-	child.mem = append(child.mem, fval)
-	child.mem = append(child.mem, args...)
-	child.ip = callIP
-	return child
+	frameBase := narg + 4
+	exitAddr := m.baseCodeLen + 2
+	mem := make([]Value, frameBase, frameBase+16)
+	mem[0] = fval
+	copy(mem[1:], args)
+	// mem[narg+1] is zero (deferHead)
+	mem[narg+2] = Value{num: packRetIP(exitAddr, 0, frameBase)}
+	mem[narg+3] = Value{num: 0} // prevFP = 0
+
+	child := &Machine{
+		globals:  m.globals,
+		code:     m.code[:m.baseCodeLen],
+		env:      env,
+		ip:       nip,
+		fp:       frameBase,
+		mem:      mem,
+		in:       m.in,
+		out:      m.out,
+		err:      m.err,
+		debugIn:  m.debugIn,
+		debugOut: m.debugOut,
+	}
+	go func() { _ = child.Run() }()
 }
 
 // snapshotArg returns a copy of v detached from any parent frame backing store,

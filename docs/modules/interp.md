@@ -34,20 +34,20 @@ This allows the REPL to build up state across evaluations without
 recompiling everything. The entry point for the new code is
 `max(codeOffset, i.Entry)`, so module-level init code runs before `main`.
 
-### Symbol table bridge
-
-After compilation, `Eval` copies every symbol with a valid `Index` from
-`Compiler.Symbols` (the parser/compiler symbol table) into
-`Machine.Symbols` (a `map[string]int`). This gives the VM a lightweight
-name-to-mem-index lookup without depending on the compiler at runtime.
-The bridge runs on every `Eval` call, so incremental REPL compilations
-accumulate symbols in the VM map.
-
 ### Main function
 
-If a `main` entry exists in `Machine.Symbols`, `Eval` emits a `Call` to it
-after pushing the compiled code. This mirrors `go run` behavior for
-standalone programs and avoids reaching back into the compiler symbol table.
+If a `main` entry exists in `Compiler.Symbols` (the parser/compiler symbol
+table), `Eval` emits a `Call` to it after pushing the compiled code. This
+mirrors `go run` behavior for standalone programs.
+
+### File-based tests
+
+`interp/file_test.go` provides `TestFile`, which reads every `.go` file
+under `_samples/` and runs it through the interpreter. Expected output or
+expected error strings are encoded in the last block comment of the file
+using the conventions `// Output:\n...` and `// Error:\n...`. This gives
+a lightweight integration test suite that exercises the full pipeline end
+to end on real Go programs.
 
 ### Lazy DebugInfo
 

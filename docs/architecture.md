@@ -43,7 +43,6 @@ flowchart TD
         M[Machine] -->|executes| Code
         M -->|uses| Data
         M -->|manages| Mem["globals []Value\n(shared)\nmem []Value\n(per-goroutine stack)"]
-        M -->|name lookup| Syms["Symbols map\nname -> globals index"]
     end
 ```
 
