@@ -394,6 +394,10 @@ func TestFor(t *testing.T) {
 		{n: "#27", src: `m := map[string]int{"a": 1, "b": 2}; n := 0; for _, v := range m { n += v }; n`, res: "3"},
 		{n: "#18", src: `m := map[string]int{"a": 1}; v, ok := m["a"]; ok && v == 1`, res: "true"},
 		{n: "#19", src: `m := map[string]int{"a": 1}; v, ok := m["b"]; !ok && v == 0`, res: "true"},
+		{n: "#30", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; close(ch); n := 0; for v := range ch { n += v }; n`, res: "6"},
+		{n: "#31", src: `ch := make(chan string, 2); ch <- "a"; ch <- "bb"; close(ch); n := 0; for v := range ch { n += len(v) }; n`, res: "3"},
+		{n: "#32", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; close(ch); n := 0; for range ch { n++ }; n`, res: "3"},
+		{n: "#33", src: `func f() int { ch := make(chan int, 3); ch <- 10; ch <- 20; ch <- 30; close(ch); s := 0; for v := range ch { s += v }; return s }; f()`, res: "60"},
 		{n: "#20", src: `
 func f() string {
 	s := make([]map[string]string, 0)

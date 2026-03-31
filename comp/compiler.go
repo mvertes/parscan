@@ -1670,6 +1670,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					initRangeVar(v, vt.Elem())
 					c.emit(t, vm.Pull2)
 				}
+			case reflect.Chan:
+				switch n {
+				case 0:
+					c.emit(t, vm.Pull)
+				case 1:
+					initRangeVar(stack[len(stack)-2], vt.Elem())
+					c.emit(t, vm.Pull)
+				}
 			default:
 				// Unhandled range type (e.g. struct element type from empty composite literal).
 				if n == 0 {
