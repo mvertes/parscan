@@ -2357,7 +2357,7 @@ func (c *Compiler) typeSym(t *vm.Type) *symbol.Symbol {
 	}
 	if tsym.Index == symbol.UnsetAddr {
 		tsym.Index = len(c.Data)
-		c.Data = append(c.Data, vm.NewValue(t.Rtype))
+		c.Data = append(c.Data, vm.TypeValue(t.Rtype))
 	}
 	return tsym
 }

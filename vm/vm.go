@@ -1056,11 +1056,7 @@ func (m *Machine) Run() (err error) {
 
 		case ChanSend:
 			ch := mem[sp-1].ref
-			v := mem[sp].Reflect()
-			if elemType := ch.Type().Elem(); v.Type() != elemType {
-				v = v.Convert(elemType)
-			}
-			ch.Send(v)
+			ch.Send(m.reflectForSend(mem[sp], ch.Type().Elem()))
 			sp -= 2
 
 		case ChanRecv:
@@ -1092,11 +1088,7 @@ func (m *Machine) Run() (err error) {
 					idx++
 				case reflect.SelectSend:
 					ch := mem[idx].ref
-					val := mem[idx+1].Reflect()
-					if elemType := ch.Type().Elem(); val.Type() != elemType {
-						val = val.Convert(elemType)
-					}
-					cases[i] = reflect.SelectCase{Dir: reflect.SelectSend, Chan: ch, Send: val}
+					cases[i] = reflect.SelectCase{Dir: reflect.SelectSend, Chan: ch, Send: m.reflectForSend(mem[idx+1], ch.Type().Elem())}
 					idx += 2
 				case reflect.SelectDefault:
 					cases[i] = reflect.SelectCase{Dir: reflect.SelectDefault}
@@ -2026,6 +2018,18 @@ func (m *Machine) Push(v ...Value) (l int) {
 	return l
 }
 
+// reflectForSend prepares val for sending into a channel whose element type is elemType.
+func (m *Machine) reflectForSend(val Value, elemType reflect.Type) reflect.Value {
+	if elemType.Kind() == reflect.Func {
+		return m.wrapForFunc(val, elemType)
+	}
+	rv := val.Reflect()
+	if rv.Type() != elemType {
+		rv = rv.Convert(elemType)
+	}
+	return rv
+}
+
 // wrapForFunc returns a reflect.Value suitable for storing into a Go container
 // of the given type. For func types, parscan func values are wrapped as proper Go funcs.
 // For non-func types, numeric type mismatches are resolved via raw-bits reinterpretation.
@@ -2044,9 +2048,22 @@ func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 		return rv // already a proper Go func
 	}
 	// Closure, code address, or other parscan func value.
+	// Capture fields rather than m to avoid a data race: the goroutine that sent
+	// this func through a channel may still be cleaning up m when the wrapper is called.
 	fv := val
+	globals := m.globals
+	code := m.code[:m.baseCodeLen]
+	baseCodeLen := m.baseCodeLen
+	stdout, stderr := m.out, m.err
 	return reflect.MakeFunc(funcType, func(args []reflect.Value) []reflect.Value {
-		out, err := m.CallFunc(fv, funcType, args)
+		runner := &Machine{
+			globals:     globals,
+			code:        code,
+			baseCodeLen: baseCodeLen,
+			out:         stdout,
+			err:         stderr,
+		}
+		out, err := runner.CallFunc(fv, funcType, args)
 		if err != nil {
 			panic(err)
 		}

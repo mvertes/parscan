@@ -125,7 +125,23 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		if err != nil {
 			return nil, 0, err
 		}
-		return typ, 1 + indexArgs, nil
+		// Count return type tokens so the caller can advance past them.
+		// parseFuncParams consumes out as return types (unless out starts with a
+		// BraceBlock, which is a function body rather than a return type).
+		nRet := 0
+		if len(out) > 0 && out[0].Tok != lang.BraceBlock {
+			if out[0].Tok == lang.ParenBlock {
+				nRet = 1 // parenthesized return list, e.g. (int, error)
+			} else {
+				// Bare return type: measure token count via parseTypeExpr.
+				// Use typeOnly to avoid registering symbols as a side effect.
+				save := p.typeOnly
+				p.typeOnly = true
+				_, nRet, _ = p.parseTypeExpr(out)
+				p.typeOnly = save
+			}
+		}
+		return typ, 1 + indexArgs + nRet, nil
 
 	case lang.Ident:
 		// TODO: selector expression (pkg.type)

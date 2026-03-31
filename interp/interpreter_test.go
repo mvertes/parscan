@@ -1929,6 +1929,10 @@ go sendTo(ch, 42)
 orig := ch
 ch = make(chan int)
 <-orig`, res: "42"},
+		// Function values through channels.
+		{n: "chan_func_named", src: `func f() int { return 42 }; ch := make(chan func() int, 1); ch <- f; g := <-ch; g()`, res: "42"},
+		{n: "chan_func_closure", src: `x := 10; f := func() int { return x }; ch := make(chan func() int, 1); ch <- f; g := <-ch; g()`, res: "10"},
+		{n: "chan_func_goroutine", src: `func f(n int) int { return n * 2 }; ch := make(chan func(int) int, 1); go func() { ch <- f }(); g := <-ch; g(21)`, res: "42"},
 		// Daisy-chain goroutines (sieve-style): channel pipeline where ch is reassigned each iteration.
 		{n: "goroutine_chan_pipeline", src: `
 func filter(in <-chan int, out chan<- int, prime int) {

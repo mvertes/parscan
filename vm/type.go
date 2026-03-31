@@ -200,6 +200,14 @@ func numBits(rv reflect.Value) uint64 {
 	return 0
 }
 
+// TypeValue returns a zero value for use as a type descriptor in the data table.
+// Preserves the exact reflect.Type for all kinds so opcodes like MkChan can
+// recover it via ref.Type(). NewValue is not suitable here: it stores func and
+// interface variables as interface{} for runtime flexibility.
+func TypeValue(typ reflect.Type) Value {
+	return Value{ref: reflect.New(typ).Elem()}
+}
+
 // NewValue returns a zero value for the specified reflect.Type.
 func NewValue(typ reflect.Type, arg ...int) Value {
 	if isNum(typ.Kind()) {
