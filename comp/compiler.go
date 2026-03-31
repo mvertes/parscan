@@ -2158,7 +2158,7 @@ func (c *Compiler) removeGetGlobal(index int) bool {
 }
 
 // compileBuiltin handles built-in function calls (len, cap, append, copy, delete, new, make,
-// panic, recover). Returns (true, nil) if handled, (false, nil) if not a builtin.
+// panic, recover, print, println). Returns (true, nil) if handled, (false, nil) if not a builtin.
 func (c *Compiler) compileBuiltin(
 	s *symbol.Symbol, narg int, t goparser.Token,
 	stack *[]*symbol.Symbol, push func(*symbol.Symbol), pop func() *symbol.Symbol, _ func() *symbol.Symbol,
@@ -2306,6 +2306,18 @@ func (c *Compiler) compileBuiltin(
 		pop() // channel
 		pop() // close symbol
 		c.emit(t, vm.ChanClose)
+		return true, nil
+
+	case "print", "println":
+		for range narg {
+			pop()
+		}
+		pop() // builtin symbol
+		op := vm.Print
+		if s.Name == "println" {
+			op = vm.Println
+		}
+		c.emit(t, op, narg)
 		return true, nil
 	}
 

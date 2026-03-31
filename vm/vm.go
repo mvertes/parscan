@@ -124,6 +124,9 @@ const (
 	ChanClose  // ch -- ; close channel
 	SelectExec // ch0 [v0] .. chN [vN] -- chosenIdx ; $0=metaIdx, $1=ncase; calls reflect.Select
 
+	Print   // [v0..vn-1] -- ; print $0 values to m.out
+	Println // [v0..vn-1] -- ; println $0 values to m.out, space-separated, trailing newline
+
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
 	// The compiler computes: baseOp + Op(NumKindOffset[kind]).
@@ -1139,6 +1142,24 @@ func (m *Machine) Run() (err error) {
 				}
 			}
 			mem[sp] = Value{num: uint64(chosen), ref: zint} //nolint:gosec
+
+		case Print:
+			n := int(c.A)
+			args := make([]any, n)
+			for i := range n {
+				args[i] = mem[sp-n+1+i].Interface()
+			}
+			_, _ = fmt.Fprint(m.out, args...)
+			sp -= n
+
+		case Println:
+			n := int(c.A)
+			args := make([]any, n)
+			for i := range n {
+				args[i] = mem[sp-n+1+i].Interface()
+			}
+			_, _ = fmt.Fprintln(m.out, args...)
+			sp -= n
 
 		case WrapFunc:
 			// Wrap the parscan func value on the stack in a reflect.MakeFunc for native Go callbacks.
