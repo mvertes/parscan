@@ -1,7 +1,0 @@
-func f(i int) {
-	if i < 2 { return }
-	println("i > 1:", i)
-}
-
-f(1)
-println("bye")

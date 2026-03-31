@@ -13,7 +13,6 @@ import (
 )
 
 func TestFile(t *testing.T) {
-	t.Skip("not ready")
 	baseDir := filepath.Join("..", "_samples")
 	files, err := os.ReadDir(baseDir)
 	if err != nil {
@@ -24,25 +23,40 @@ func TestFile(t *testing.T) {
 			continue
 		}
 		t.Run(file.Name(), func(t *testing.T) {
+			t.Parallel()
 			runFile(t, filepath.Join(baseDir, file.Name()))
 		})
 	}
 }
 
 func runFile(t *testing.T, p string) {
+	t.Helper()
 	buf, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
 	want, isErr := commentData(p, buf)
-	t.Log("want:", isErr, want)
 
 	i := NewInterpreter(golang.GoSpec)
 	i.SetIO(os.Stdin, &stdout, &stderr)
 
 	_, err = i.Eval("f:"+p, string(buf))
-	t.Log("out:", stdout.String(), err)
+	if isErr {
+		if err == nil {
+			t.Fatalf("got nil error, want: %q", want)
+		}
+		if res := strings.TrimSpace(err.Error()); !strings.Contains(res, want) {
+			t.Errorf("got: %q, want: %q", res, want)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := stdout.String(); res != want {
+		t.Errorf("\ngot:  %q,\nwant: %q", res, want)
+	}
 }
 
 func commentData(p string, buf []byte) (text string, isErr bool) {

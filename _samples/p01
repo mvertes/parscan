@@ -1,2 +1,0 @@
-s := "Hello"
-println(s, 5+2)
