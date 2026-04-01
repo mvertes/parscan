@@ -77,11 +77,11 @@ Each call frame is laid out as:
 - `retIP` -- packed `uint64`: `[frameBase:16 | nret:16 | retIP:32]`.
   Encodes the return address, number of return values, and frame size
   in a single slot, avoiding a separate metadata structure.
-- `prevFP` -- the caller's frame pointer. The high bit (`envSavedFlag`)
-  indicates whether the caller's closure env was saved to `frames`.
+- `prevFP` -- the caller's frame pointer. The high bit (`heapSavedFlag`)
+  indicates whether the caller's closure heap was saved to `heapFrames`.
 
-A side-channel `frames [][]*Value` slice saves caller closure environments.
-An entry is pushed only when the caller has a non-nil `env` (closure calls);
+A side-channel `heapFrames [][]*Value` slice saves caller closure heaps.
+An entry is pushed only when the caller has a non-nil `heap` (closure calls);
 plain function calls skip it entirely.
 See [vm](modules/vm.md#call-frame) for details.
 
@@ -136,8 +136,8 @@ See [vm](modules/vm.md#call-frame) for details.
 
 ## Closure and interface dispatch
 
-Closures capture variables via heap cells (`Closure{Code, Env}`). Opcodes
-`HAlloc`, `HGet`, `HSet`, `HPtr`, and `MkClosure` manage the capture
+Closures capture variables via heap cells (`Closure{Code, Heap}`). Opcodes
+`HeapAlloc`, `HeapGet`, `HeapSet`, `HeapPtr`, and `MkClosure` manage the capture
 environment.
 
 Interface dispatch uses an `Iface` wrapper holding a concrete type and value.

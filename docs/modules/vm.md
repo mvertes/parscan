@@ -17,8 +17,8 @@ metadata).
 
 - **`Machine`** -- VM state: `code`, `globals []Value` (shared with child
   goroutines), `mem []Value` (per-goroutine call stack), `ip`, `fp`,
-  closure `env`, a `frames [][]*Value` stack (saved caller closure envs,
-  pushed only for closure calls where `env != nil`), panic state
+  closure `heap`, a `heapFrames [][]*Value` stack (saved caller closure heaps,
+  pushed only for closure calls where `heap != nil`), panic state
   (`panicking`, `panicVal`), goroutine state (`wg *sync.WaitGroup`,
   `isGoroutine bool`), two func-field side-tables (`funcFields` keyed by
   reflect.Value address, `funcFieldsByFuncPtr` keyed by the closure's
@@ -28,7 +28,6 @@ metadata).
   switch statement.
 - **`Push(vals ...Value)`** -- append values to `globals` (used before
   `Run` to load the data segment). Returns the start index.
-- **`Pop() Value`** -- remove the last value from `globals`.
 - **`PushCode(instrs ...Instruction)`** -- append instructions (for
   incremental evaluation).
 
@@ -63,7 +62,7 @@ metadata).
   `Out(i)` (reflect-level). Preserves interface method metadata for
   multi-return functions.
 - **`Iface{Typ *Type, Val Value}`** -- boxed interface value.
-- **`Closure{Code int, Env []*Value}`** -- captured function.
+- **`Closure{Code int, Heap []*Value}`** -- captured function.
 - **`SelectCaseInfo`** -- describes one case of a `select` statement:
   `Dir reflect.SelectDir` (Send/Recv/Default), `Slot`/`OkSlot` (memory
   indices for received value and ok bool, -1 if unused), `Local bool`
@@ -118,7 +117,7 @@ metadata).
     to avoid intermediate heap allocation.
   - Output: `Print`, `Println` -- dedicated opcodes for `print(v...)` and
     `println(v...)`; write to `m.out` directly without `reflect.Value.Call`.
-  - Closures: `HAlloc`, `HGet`, `HSet`, `HPtr`, `MkClosure`.
+  - Closures: `HeapAlloc`, `HeapGet`, `HeapSet`, `HeapPtr`, `MkClosure`.
   - Interfaces: `IfaceWrap`, `IfaceCall`.
   - Native interop: `WrapFunc` -- wraps a parscan function value in a
     `reflect.MakeFunc` adapter so it can be called by native Go code.
@@ -185,11 +184,11 @@ that goroutines can share `globals` while running independent stacks.
 ```
 
 `Call` pushes `deferHead`, `retIP`, and `prevFP` onto the stack, then sets
-`fp` past all three. If the caller has a non-nil closure `env`, it is
-saved to `Machine.frames` and the high bit of `prevFP` is set
-(`envSavedFlag`). `Return` inspects `deferHead` (at `mem[fp-3]`) for
+`fp` past all three. If the caller has a non-nil closure `heap`, it is
+saved to `Machine.heapFrames` and the high bit of `prevFP` is set
+(`heapSavedFlag`). `Return` inspects `deferHead` (at `mem[fp-3]`) for
 pending deferred calls, unpacks nret/frameBase from `retIP`, and
-restores `env` from `frames` if the env flag is set.
+restores `heap` from `heapFrames` if the heap flag is set.
 
 - `mem[fp-3]` -- `deferHead`: index of the topmost deferred-call record
   (0 = none). Updated by `DeferPush`.
@@ -198,7 +197,7 @@ restores `env` from `frames` if the env flag is set.
   (distance from fp to bottom of frame) in a single `uint64`.
   `packRetIP(retIP, nret, frameBase)` constructs the value.
 - `mem[fp-1]` -- `prevFP`: the caller's frame pointer. High bit
-  (`envSavedFlag = 1<<63`) indicates a closure env was saved to `frames`.
+  (`heapSavedFlag = 1<<63`) indicates a closure heap was saved to `heapFrames`.
 
 `CallImm` is a specialized variant for direct calls to known functions.
 It avoids loading the function value from memory and skips runtime type
@@ -308,9 +307,9 @@ stack slots without bounds checks within the function body.
 
 ### Closure dispatch
 
-When a closure is called, `Machine` swaps in its `Env` (saved heap cells)
-and restores the caller's env on return. `HGet`/`HSet` read/write through
-`env[i]` pointers.
+When a closure is called, `Machine` swaps in its `Heap` (saved heap cells)
+and restores the caller's heap on return. `HeapGet`/`HeapSet` read/write through
+`heap[i]` pointers.
 
 ### Goroutines and channels
 
@@ -372,7 +371,7 @@ runtime. Neither can be stored directly in a typed Go `func` field via
 ### Re-entrant execution (CallFunc)
 
 `CallFunc` provides re-entrant VM execution for native Go callbacks. It
-saves all volatile state (`mem`, `ip`, `fp`, `env`, `frames`, panic
+saves all volatile state (`mem`, `ip`, `fp`, `heap`, `heapFrames`, panic
 state, code length), resets per-call state, copies globals to a fresh
 stack, pushes the function value and arguments, appends a temporary
 `Call` + `Exit` sequence, and runs the inner loop. On return (including

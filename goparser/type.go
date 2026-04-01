@@ -19,7 +19,7 @@ const (
 	parseTypeOut
 	parseTypeVar
 	parseTypeType
-	parseTypeRecv // method receiver: Env[0], not a stack param
+	parseTypeRecv // method receiver: Heap[0], not a stack param
 )
 
 // Type parsing error definitions.
@@ -110,7 +110,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 
 		// We can now parse function input and output parameter types.
 		// Input parameters are always enclosed by parenthesis.
-		// For methods, parse the receiver separately as Env[0] (not a stack param),
+		// For methods, parse the receiver separately as Heap[0] (not a stack param),
 		// so explicit params get the correct frame indices (-2, -3, ...).
 		if recvr != "" {
 			recvrToks, err := p.Scan(recvr, false)
@@ -364,8 +364,8 @@ func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag t
 	zv := vm.NewValue(typ.Rtype)
 	switch flag {
 	case parseTypeRecv:
-		// Receiver lives in Env[0] of the method closure, not on the call stack.
-		// Index is irrelevant; the compiler emits HGet 0 via FreeVars.
+		// Receiver lives in Heap[0] of the method closure, not on the call stack.
+		// Index is irrelevant; the compiler emits HeapGet 0 via FreeVars.
 		p.SymSet(name, &symbol.Symbol{
 			Kind: symbol.LocalVar, Name: name, Index: symbol.UnsetAddr,
 			Captured: true, Used: true,

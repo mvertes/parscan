@@ -23,7 +23,7 @@ type Op int32
 // Closure bundles a function code address with its captured variables.
 type Closure struct {
 	Code int      // code address (same as the plain-int function value)
-	Env  []*Value // heap-allocated cells, one per captured variable
+	Heap []*Value // heap-allocated cells, one per captured variable
 }
 
 // SelectCaseInfo describes one case of a select statement.
@@ -67,10 +67,10 @@ const (
 	FnewE                  // -- x; x = new mem[$1].Elem()
 	Get                    // addr -- value ; value = mem[addr]
 	Grow                   // -- ; sp += $1
-	HAlloc                 // -- &cell ; cell = new(Value), push its pointer
-	HGet                   // -- v    ; v = *State.Env[$1]
-	HPtr                   // -- &cell ; push State.Env[$1] itself (transitive capture)
-	HSet                   // v --    ; *State.Env[$1] = v
+	HeapAlloc              // -- &cell ; cell = new(Value), push its pointer
+	HeapGet                // -- v    ; v = *State.Heap[$1]
+	HeapPtr                // -- &cell ; push State.Heap[$1] itself (transitive capture)
+	HeapSet                // v --    ; *State.Heap[$1] = v
 	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
 	IfaceWrap              // v -- iface ; wrap v in Iface{type at $1, v}
 	Index                  // a i -- a[i] ;
@@ -85,7 +85,7 @@ const (
 	MapIndex               // a i -- a[i]
 	MapIndexOk             // a i -- v ok ; v, ok = a[i]
 	MapSet                 // a i v -- a; a[i] = v
-	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, env}
+	MkClosure              // code [&c0..&cn-1] -- clo ; clo = Closure{code, heap}
 	MkMap                  // -- map ; create map[K]V, key type at mem[$0], val type at mem[$1]
 	MkSlice                // [v0..vn-1] -- slice ; collect $0 values into []T, elem type at mem[$1]
 	New                    // -- x; mem[fp+$1] = new mem[$2]
@@ -319,12 +319,12 @@ type Code []Instruction
 
 // Machine is a stack-based virtual machine that executes bytecode instructions.
 type Machine struct {
-	code    Code       // code to execute
-	globals []Value    // global variable storage, shared across goroutines (set by Push)
-	mem     []Value    // stack only (no globals; indices are frame-relative)
-	ip, fp  int        // instruction pointer and frame pointer
-	env     []*Value   // active closure's captured cells (nil for plain functions)
-	frames  [][]*Value // saved caller envs (only for closure calls where env != nil)
+	code       Code       // code to execute
+	globals    []Value    // global variable storage, shared across goroutines (set by Push)
+	mem        []Value    // stack only (no globals; indices are frame-relative)
+	ip, fp     int        // instruction pointer and frame pointer
+	heap       []*Value   // active closure's captured cells (nil for plain functions)
+	heapFrames [][]*Value // saved caller heaps (only for closure calls where heap != nil)
 
 	panicking bool  // true while unwinding due to panic
 	panicVal  Value // value passed to panic()
@@ -366,8 +366,8 @@ func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
 	m.debugOut = out
 }
 
-// envSavedFlag is set in the high bit of prevFP when the caller's env was saved to m.frames.
-const envSavedFlag = uint64(1) << 63
+// heapSavedFlag is set in the high bit of prevFP when the caller's heap was saved to m.heapFrames.
+const heapSavedFlag = uint64(1) << 63
 
 // packRetIP packs the return IP, nret, and frameBase into a single uint64.
 // frameBase is the distance from fp to the bottom of the call frame
@@ -434,19 +434,19 @@ func (m *Machine) Run() (err error) {
 			if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
 				fval = m.resolveFuncField(fval)
 			}
-			prevEnv := m.env
+			prevHeap := m.heap
 			var nip int
 			if isNum(fval.ref.Kind()) {
 				// Plain int code address stored inline in num.
 				nip = int(fval.num) //nolint:gosec
-				m.env = nil
+				m.heap = nil
 			} else if clo, ok := fval.ref.Interface().(Closure); ok {
 				nip = clo.Code
-				m.env = clo.Env
+				m.heap = clo.Heap
 			} else if iv, ok := fval.ref.Interface().(int); ok {
 				// Function variable slot holds a plain code address boxed as interface{}.
 				nip = iv
-				m.env = nil
+				m.heap = nil
 			} else {
 				rv := fval.ref
 				if rv.Kind() == reflect.Interface && !rv.IsNil() {
@@ -468,13 +468,13 @@ func (m *Machine) Run() (err error) {
 					break
 				}
 				nip = int(fval.num) //nolint:gosec
-				m.env = nil
+				m.heap = nil
 			}
 			nret := int(c.B)
 			fpVal := uint64(fp) //nolint:gosec
-			if prevEnv != nil {
-				m.frames = append(m.frames, prevEnv)
-				fpVal |= envSavedFlag
+			if prevHeap != nil {
+				m.heapFrames = append(m.heapFrames, prevHeap)
+				fpVal |= heapSavedFlag
 			}
 			if sp+3 >= len(mem) {
 				mem = growStack(mem, sp, 3)
@@ -482,7 +482,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp+1] = Value{}
 			mem[sp+2] = Value{num: packRetIP(ip+1, nret, narg+4)}
 			mem[sp+3] = Value{num: fpVal}
-			sp += 3 // deferHead, retIP+info, prevFP+envFlag
+			sp += 3 // deferHead, retIP+info, prevFP+heapFlag
 			ip = nip
 			fp = sp + 1
 			continue
@@ -490,11 +490,11 @@ func (m *Machine) Run() (err error) {
 			narg := int(c.B) >> 16
 			nret := int(c.B) & 0xFFFF
 			fpVal := uint64(fp) //nolint:gosec
-			if m.env != nil {
+			if m.heap != nil {
 				// preserve caller closure context
-				m.frames = append(m.frames, m.env)
-				fpVal |= envSavedFlag
-				m.env = nil
+				m.heapFrames = append(m.heapFrames, m.heap)
+				fpVal |= heapSavedFlag
+				m.heap = nil
 			}
 			if sp+3 >= len(mem) {
 				mem = growStack(mem, sp, 3)
@@ -563,15 +563,15 @@ func (m *Machine) Run() (err error) {
 			ip = int(int32(retIPInfo)) //nolint:gosec
 			ofp := fp
 			fpVal := mem[fp-1].num
-			if fpVal&envSavedFlag != 0 {
-				fp = int(fpVal &^ envSavedFlag) //nolint:gosec
-				top := len(m.frames) - 1
-				m.env = m.frames[top]
-				m.frames[top] = nil // clear for GC
-				m.frames = m.frames[:top]
+			if fpVal&heapSavedFlag != 0 {
+				fp = int(fpVal &^ heapSavedFlag) //nolint:gosec
+				top := len(m.heapFrames) - 1
+				m.heap = m.heapFrames[top]
+				m.heapFrames[top] = nil // clear for GC
+				m.heapFrames = m.heapFrames[:top]
 			} else {
 				fp = int(fpVal) //nolint:gosec
-				m.env = nil
+				m.heap = nil
 			}
 			newBase := ofp - frameBase
 			nret := int((retIPInfo >> 32) & 0xFFFF)
@@ -755,8 +755,8 @@ func (m *Machine) Run() (err error) {
 				method = ifc.Typ.Methods[int(c.A)]
 			}
 			codeAddr := int(m.globals[method.Index].num) //nolint:gosec
-			// Build a closure with the concrete receiver as Env[0], replacing the
-			// interface value on the stack. Same result as HAlloc+Get+Swap+MkClosure.
+			// Build a closure with the concrete receiver as Heap[0], replacing the
+			// interface value on the stack. Same result as HeapAlloc+Get+Swap+MkClosure.
 			// For promoted methods, extract the embedded field as receiver.
 			cell := new(Value)
 			*cell = ifc.Val
@@ -770,7 +770,7 @@ func (m *Machine) Run() (err error) {
 				}
 				*cell = fromReflect(rv)
 			}
-			mem[sp] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Env: []*Value{cell}})}
+			mem[sp] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Heap: []*Value{cell}})}
 
 		case TypeAssert:
 			dstTyp := m.globals[int(c.A)].ref.Interface().(*Type)
@@ -1208,8 +1208,8 @@ func (m *Machine) Run() (err error) {
 				}
 				// VM function: pack ip and nret into the returnIP slot, then call.
 				mem[dh].num = uint64(ip) | uint64(nret)<<32 //nolint:gosec
-				prevEnv := m.env
-				nip := m.resolveIPAndEnv(funcVal)
+				prevHeap := m.heap
+				nip := m.resolveIPAndHeap(funcVal)
 				// Push func+args copy and 3-slot call frame (retIP, prevFP, deferHead=0).
 				base := sp
 				if sp+1 >= len(mem) {
@@ -1226,9 +1226,9 @@ func (m *Machine) Run() (err error) {
 					sp += n
 				}
 				defFPVal := uint64(fp) //nolint:gosec
-				if prevEnv != nil {
-					m.frames = append(m.frames, prevEnv)
-					defFPVal |= envSavedFlag
+				if prevHeap != nil {
+					m.heapFrames = append(m.heapFrames, prevHeap)
+					defFPVal |= heapSavedFlag
 				}
 				if sp+3 >= len(mem) {
 					mem = growStack(mem, sp, 3)
@@ -1245,15 +1245,15 @@ func (m *Machine) Run() (err error) {
 			ip = int(int32(retIPInfo)) //nolint:gosec
 			ofp := fp
 			fpVal := mem[fp-1].num
-			if fpVal&envSavedFlag != 0 {
-				fp = int(fpVal &^ envSavedFlag) //nolint:gosec
-				top := len(m.frames) - 1
-				m.env = m.frames[top]
-				m.frames[top] = nil // clear for GC
-				m.frames = m.frames[:top]
+			if fpVal&heapSavedFlag != 0 {
+				fp = int(fpVal &^ heapSavedFlag) //nolint:gosec
+				top := len(m.heapFrames) - 1
+				m.heap = m.heapFrames[top]
+				m.heapFrames[top] = nil // clear for GC
+				m.heapFrames = m.heapFrames[:top]
 			} else {
 				fp = int(fpVal) //nolint:gosec
-				m.env = nil
+				m.heap = nil
 			}
 			newBase := ofp - frameBase
 			// Inline copy for common small nret to avoid runtime.typedslicecopy.
@@ -1321,7 +1321,7 @@ func (m *Machine) Run() (err error) {
 		case Swap:
 			a, b := sp-int(c.A), sp-int(c.B)
 			mem[a], mem[b] = mem[b], mem[a]
-		case HAlloc:
+		case HeapAlloc:
 			cell := new(Value)
 			*cell = mem[sp] // initialise cell with top-of-stack value
 			// Detach addressable refs to prevent aliasing: numeric values may share
@@ -1334,29 +1334,29 @@ func (m *Machine) Run() (err error) {
 				cell.ref = rv
 			}
 			mem[sp] = ValueOf(cell) // replace value with cell pointer
-		case HGet:
+		case HeapGet:
 			if sp+1 >= len(mem) {
 				mem = growStack(mem, sp, 1)
 			}
 			sp++
-			mem[sp] = *m.env[int(c.A)]
-		case HSet:
-			*m.env[int(c.A)] = mem[sp]
+			mem[sp] = *m.heap[int(c.A)]
+		case HeapSet:
+			*m.heap[int(c.A)] = mem[sp]
 			sp--
-		case HPtr:
+		case HeapPtr:
 			if sp+1 >= len(mem) {
 				mem = growStack(mem, sp, 1)
 			}
 			sp++
-			mem[sp] = ValueOf(m.env[int(c.A)])
+			mem[sp] = ValueOf(m.heap[int(c.A)])
 		case MkClosure:
 			n := int(c.A)
 			codeAddr := int(mem[sp-n].num) //nolint:gosec
-			env := make([]*Value, n)
+			heap := make([]*Value, n)
 			for i := range n {
-				env[i] = mem[sp-n+1+i].ref.Interface().(*Value)
+				heap[i] = mem[sp-n+1+i].ref.Interface().(*Value)
 			}
-			clo := ValueOf(Closure{Code: codeAddr, Env: env})
+			clo := ValueOf(Closure{Code: codeAddr, Heap: heap})
 			clear(mem[sp-n : sp+1]) // clear code addr + cell ptr slots
 			sp -= n
 			mem[sp] = clo
@@ -1839,31 +1839,31 @@ func (m *Machine) Run() (err error) {
 // restoreFP restores the frame pointer and closure environment after a return.
 // fpVal is the raw uint64 stored in the prevFP slot (mem[fp-1].num).
 func (m *Machine) restoreFP(fpVal uint64) int {
-	if fpVal&envSavedFlag != 0 {
-		fp := int(fpVal &^ envSavedFlag) //nolint:gosec
-		top := len(m.frames) - 1
-		m.env = m.frames[top]
-		m.frames[top] = nil // clear for GC
-		m.frames = m.frames[:top]
+	if fpVal&heapSavedFlag != 0 {
+		fp := int(fpVal &^ heapSavedFlag) //nolint:gosec
+		top := len(m.heapFrames) - 1
+		m.heap = m.heapFrames[top]
+		m.heapFrames[top] = nil // clear for GC
+		m.heapFrames = m.heapFrames[:top]
 		return fp
 	}
-	m.env = nil
+	m.heap = nil
 	return int(fpVal) //nolint:gosec
 }
 
-// resolveIPAndEnv resolves a parscan function value to its code address,
-// setting m.env to the closure environment (nil for non-closures).
+// resolveIPAndHeap resolves a parscan function value to its code address,
+// setting m.heap to the closure environment (nil for non-closures).
 // Used for deferred VM-func calls (isX==0) in Return and PanicUnwind.
-func (m *Machine) resolveIPAndEnv(funcVal Value) int {
+func (m *Machine) resolveIPAndHeap(funcVal Value) int {
 	if isNum(funcVal.ref.Kind()) {
-		m.env = nil
+		m.heap = nil
 		return int(funcVal.num) //nolint:gosec
 	}
 	if clo, ok := funcVal.ref.Interface().(Closure); ok {
-		m.env = clo.Env
+		m.heap = clo.Heap
 		return clo.Code
 	}
-	m.env = nil
+	m.heap = nil
 	if iv, ok := funcVal.ref.Interface().(int); ok {
 		return iv
 	}
@@ -1964,15 +1964,15 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 		retIPInfo := (*mem)[*fp-2].num
 		nret := int((retIPInfo >> 32) & 0xFFFF)
 		(*mem)[dh].num = uint64(uint32(panicAddr)) | uint64(nret)<<32 //nolint:gosec
-		prevEnv := m.env
-		nip := m.resolveIPAndEnv(funcVal)
+		prevHeap := m.heap
+		nip := m.resolveIPAndHeap(funcVal)
 		base := len(*mem)
 		*mem = append(*mem, funcVal)
 		*mem = append(*mem, (*mem)[dh-narg-2:dh-2]...)
 		defFPVal := uint64(*fp) //nolint:gosec
-		if prevEnv != nil {
-			m.frames = append(m.frames, prevEnv)
-			defFPVal |= envSavedFlag
+		if prevHeap != nil {
+			m.heapFrames = append(m.heapFrames, prevHeap)
+			defFPVal |= heapSavedFlag
 		}
 		*mem = append(*mem, Value{}, Value{num: deferRetBits}, Value{num: defFPVal})
 		*fp = base + 1 + narg + 3
@@ -2115,8 +2115,8 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	savedMem := m.mem
 	savedIP := m.ip
 	savedFP := m.fp
-	savedEnv := m.env
-	savedFrames := m.frames
+	savedHeap := m.heap
+	savedFrames := m.heapFrames
 	savedPanicking := m.panicking
 	savedPanicVal := m.panicVal
 	savedCodeLen := len(m.code)
@@ -2126,16 +2126,16 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 		m.mem = savedMem
 		m.ip = savedIP
 		m.fp = savedFP
-		m.env = savedEnv
-		m.frames = savedFrames
+		m.heap = savedHeap
+		m.heapFrames = savedFrames
 		m.panicking = savedPanicking
 		m.panicVal = savedPanicVal
 		m.code = m.code[:savedCodeLen]
 	}()
 
 	// Reset per-call state.
-	m.env = nil
-	m.frames = nil
+	m.heap = nil
+	m.heapFrames = nil
 	m.panicking = false
 	m.panicVal = Value{}
 
@@ -2193,13 +2193,13 @@ func (m *Machine) newGoroutine(fval Value, args []Value) {
 		return
 	}
 
-	// Resolve VM function address and closure env.
+	// Resolve VM function address and closure heap.
 	var nip int
-	var env []*Value
+	var heap []*Value
 	if isNum(fval.ref.Kind()) {
 		nip = int(fval.num) //nolint:gosec
 	} else if clo, ok := fval.ref.Interface().(Closure); ok {
-		nip, env = clo.Code, clo.Env
+		nip, heap = clo.Code, clo.Heap
 	} else if iv, ok := fval.ref.Interface().(int); ok {
 		nip = iv
 	} else {
@@ -2221,7 +2221,7 @@ func (m *Machine) newGoroutine(fval Value, args []Value) {
 	child := &Machine{
 		globals:  m.globals,
 		code:     m.code[:m.baseCodeLen:m.baseCodeLen],
-		env:      env,
+		heap:     heap,
 		ip:       nip,
 		fp:       frameBase,
 		mem:      mem,

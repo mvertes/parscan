@@ -122,7 +122,7 @@ mapped to bidirectional channels.
 
 When a function literal references a variable from an outer scope, the
 parser marks that variable as `Captured` and records it in `FreeVars`.
-This drives `HAlloc`/`HGet`/`HSet` emission during compilation.
+This drives `HeapAlloc`/`HeapGet`/`HeapSet` emission during compilation.
 
 ### Method registration and receiver handling
 

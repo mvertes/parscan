@@ -1048,12 +1048,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				break
 			}
 			if lhs.Kind == symbol.LocalVar {
-				// Captured variable write inside closure body: use HSet.
+				// Captured variable write inside closure body: use HeapSet.
 				if cf := curFunc(); cf != "" {
 					if cloSym := c.Symbols[cf]; cloSym != nil {
 						if idx := cloSym.FreeVarIndex(lhs.Name); idx >= 0 {
-							c.emit(t, vm.HSet, idx)
-							c.emit(t, vm.Pop, 1) // pop stale value pushed by HGet in Ident
+							c.emit(t, vm.HeapSet, idx)
+							c.emit(t, vm.Pop, 1) // pop stale value pushed by HeapGet in Ident
 							break
 						}
 					}
@@ -1147,28 +1147,28 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					if outerCloSym != nil {
 						if idx := outerCloSym.FreeVarIndex(fvName); idx >= 0 {
-							// The free variable is already captured in the enclosing closure's Env.
-							// Use HPtr to push the existing cell pointer (transitive capture).
-							c.emit(t, vm.HPtr, idx)
+							// The free variable is already captured in the enclosing closure's Heap.
+							// Use HeapPtr to push the existing cell pointer (transitive capture).
+							c.emit(t, vm.HeapPtr, idx)
 							continue
 						}
 					}
 					if fvSym.Kind == symbol.LocalVar {
 						c.emit(t, vm.GetLocal, fvSym.Index)
-						c.emit(t, vm.HAlloc)
+						c.emit(t, vm.HeapAlloc)
 					} else {
 						c.emit(t, vm.GetGlobal, fvSym.Index)
-						c.emit(t, vm.HAlloc)
+						c.emit(t, vm.HeapAlloc)
 					}
 				}
 				c.emit(t, vm.MkClosure, len(s.FreeVars))
 				break
 			}
-			// Captured variable read inside a closure body: use HGet.
+			// Captured variable read inside a closure body: use HeapGet.
 			if cf := curFunc(); cf != "" {
 				if cloSym := c.Symbols[cf]; cloSym != nil {
 					if idx := cloSym.FreeVarIndex(t.Str); idx >= 0 {
-						c.emit(t, vm.HGet, idx)
+						c.emit(t, vm.HeapGet, idx)
 						break
 					}
 				}
@@ -1375,11 +1375,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					// Closure-based method dispatch.
 					// VM stack before Period: [..., receiver_value]
-					// HAlloc: wrap receiver in a heap cell.
+					// HeapAlloc: wrap receiver in a heap cell.
 					// Get Global m.Index: push method code address above the cell.
 					// Swap 0 1: put code addr below cell (MkClosure convention: code at sp-n-1).
 					// MkClosure 1: produce Closure{code, [receiver_cell]}.
-					c.emit(t, vm.HAlloc)
+					c.emit(t, vm.HeapAlloc)
 					c.emit(t, vm.GetGlobal, m.Index)
 					c.emit(t, vm.Swap, 0, 1)
 					c.emit(t, vm.MkClosure, 1)
