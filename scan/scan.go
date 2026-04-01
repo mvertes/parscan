@@ -4,7 +4,6 @@ package scan
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -58,8 +57,6 @@ func (t *Token) String() string {
 type Scanner struct {
 	*lang.Spec
 	Sources Sources // source position registry (multi-file / REPL)
-
-	sdre *regexp.Regexp // string delimiters regular expression
 }
 
 // NewScanner returns a new scanner for a given language specification.
@@ -67,22 +64,6 @@ func NewScanner(spec *lang.Spec) *Scanner {
 	sc := &Scanner{Spec: spec}
 
 	// TODO: Mark unset ASCII char other than alphanum illegal
-
-	// Build a regular expression to match all string start delimiters at once.
-	var sb strings.Builder
-	sb.WriteString("(")
-	for s, p := range sc.BlockProp {
-		if p&lang.CharStr == 0 {
-			continue
-		}
-		// TODO: sort keys in decreasing length order.
-		for _, b := range []byte(s) {
-			fmt.Fprintf(&sb, "\\x%02x", b)
-		}
-		sb.WriteString("|")
-	}
-	re := strings.TrimSuffix(sb.String(), "|") + ")$"
-	sc.sdre = regexp.MustCompile(re)
 
 	return sc
 }
@@ -329,13 +310,33 @@ func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 	canEscape := prop&lang.StrEsc != 0
 	nonl := prop&lang.StrNonl != 0
 	excludeEnd := prop&lang.ExcludeEnd != 0
-	s = start
 	var esc bool
 
+	// Fast path: single-byte end delimiter (covers ", ', `).
+	if len(end) == 1 {
+		endByte := end[0]
+		for i := nstart; i < len(src); i++ {
+			b := src[i]
+			if b == '\n' && nonl {
+				return src[:i+1], false
+			}
+			if b == endByte && !esc {
+				if excludeEnd {
+					return src[:i], true
+				}
+				return src[:i+1], true
+			}
+			esc = canEscape && b == '\\' && !esc
+		}
+		ok = prop&lang.EosValidEnd != 0
+		return src, ok
+	}
+
+	// General path: multi-byte end delimiter (covers */, newline for //).
 	for i, r := range src[nstart:] {
 		s = src[:nstart+i+1]
 		if r == '\n' && nonl {
-			return s, ok
+			return s, false
 		}
 		if strings.HasSuffix(s, end) && !esc {
 			if excludeEnd {
@@ -346,7 +347,25 @@ func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 		esc = canEscape && r == '\\' && !esc
 	}
 	ok = prop&lang.EosValidEnd != 0
-	return s, ok
+	return src, ok
+}
+
+// skipStr detects a string or comment literal starting at src[pos] and returns
+// how many bytes to skip. Returns 0 if no string literal starts there.
+// ok is false if an unterminated string is found.
+func (sc *Scanner) skipStr(src string, pos int) (advance int, ok bool) {
+	b := src[pos]
+	if sc.isStr(rune(b)) {
+		str, sok := sc.getStr(src[pos:], 1)
+		return len(str), sok
+	}
+	if sc.isOp(rune(b)) && pos+1 < len(src) {
+		if sp, match := sc.BlockProp[src[pos:pos+2]]; match && sp&lang.CharStr != 0 {
+			str, sok := sc.getStr(src[pos:], 2)
+			return len(str), sok
+		}
+	}
+	return 0, true
 }
 
 func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {
@@ -354,25 +373,57 @@ func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {
 	end := sc.End[start]
 	prop := sc.BlockProp[start]
 
-	skip := 0
 	n := 1
 
+	// Fast path for single-byte start/end delimiters (covers (, {, [).
+	if len(start) == 1 && len(end) == 1 {
+		startByte, endByte := start[0], end[0]
+		for i := nstart; i < len(src); i++ {
+			b := src[i]
+			switch b {
+			case endByte:
+				n--
+			case startByte:
+				n++
+			default:
+				if advance, sok := sc.skipStr(src, i); advance > 0 {
+					if !sok {
+						return src[:i+1], false
+					}
+					i += advance - 1 // -1 because the for loop increments i
+					continue
+				}
+			}
+			if n == 0 {
+				s = src[:i+1]
+				if prop&lang.ExcludeEnd != 0 {
+					s = s[:len(s)-len(end)]
+				}
+				return s, true
+			}
+		}
+		ok = prop&lang.EosValidEnd != 0
+		return src, ok
+	}
+
+	// General path for multi-byte delimiters.
+	skip := 0
 	for i := range src[nstart:] {
-		s = src[:nstart+i+1]
 		if i < skip {
 			continue
 		}
-		if strings.HasSuffix(s, end) {
+		s = src[:nstart+i+1]
+		switch {
+		case strings.HasSuffix(s, end):
 			n--
-		} else if strings.HasSuffix(s, start) {
+		case strings.HasSuffix(s, start):
 			n++
-		} else if m := sc.sdre.FindStringSubmatch(s); len(m) > 1 {
-			l1 := len(m[1])
-			str, ok := sc.getStr(src[nstart+i+1-l1:], l1)
-			if !ok {
+		default:
+			advance, sok := sc.skipStr(src, nstart+i)
+			if !sok {
 				return s, false
 			}
-			skip = nstart + i + len(str) - l1
+			skip = i + advance
 		}
 		if n == 0 {
 			if prop&lang.ExcludeEnd != 0 {
