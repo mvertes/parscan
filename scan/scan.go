@@ -57,13 +57,41 @@ func (t *Token) String() string {
 type Scanner struct {
 	*lang.Spec
 	Sources Sources // source position registry (multi-file / REPL)
+
+	// Precomputed lookup tables, built from Spec maps by NewScanner.
+	charTok       [lang.ASCIILen]lang.Token // token for single-byte Tokens keys
+	blockTok      [lang.ASCIILen]lang.Token // block token by opening byte (e.g. '(' → ParenBlock)
+	endByte       [lang.ASCIILen]byte       // end delimiter for single-byte openers
+	charBlockProp [lang.ASCIILen]uint       // BlockProp for single-byte keys
+	multiStrStart [lang.ASCIILen]bool       // first byte of a multi-byte string/comment start
 }
 
 // NewScanner returns a new scanner for a given language specification.
 func NewScanner(spec *lang.Spec) *Scanner {
 	sc := &Scanner{Spec: spec}
 
-	// TODO: Mark unset ASCII char other than alphanum illegal
+	for s, t := range sc.Tokens {
+		if len(s) == 1 && s[0] < lang.ASCIILen {
+			sc.charTok[s[0]] = t
+		}
+		// Block token names like "(..)": map opening byte → token.
+		if len(s) == 4 && s[1] == '.' && s[2] == '.' && s[0] < lang.ASCIILen {
+			sc.blockTok[s[0]] = t
+		}
+	}
+	for s, p := range sc.BlockProp {
+		if len(s) == 1 && s[0] < lang.ASCIILen {
+			sc.charBlockProp[s[0]] = p
+		}
+		if len(s) >= 2 && s[0] < lang.ASCIILen && p&lang.CharStr != 0 {
+			sc.multiStrStart[s[0]] = true
+		}
+	}
+	for s, e := range sc.End {
+		if len(s) == 1 && s[0] < lang.ASCIILen && len(e) == 1 {
+			sc.endByte[s[0]] = e[0]
+		}
+	}
 
 	return sc
 }
@@ -161,8 +189,7 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 		case sc.isSep(r):
 			return Token{}, nil
 		case sc.isGroupSep(r):
-			// TODO: handle group separators.
-			return Token{Tok: sc.Tokens[string(r)], Pos: p + i, Str: string(r)}, nil
+			return Token{Tok: sc.charTok[r], Pos: p + i, Str: string(r)}, nil
 		case sc.isLineSep(r):
 			return Token{Pos: p + i, Str: "\n"}, nil
 		case sc.isStr(r):
@@ -176,13 +203,16 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 			if !ok {
 				err = ErrBlock
 			}
-			tok := Token{Pos: p + i, Str: b, Beg: 1, End: 1}
-			tok.Tok = sc.Tokens[tok.Name()]
-			return tok, err
+			return Token{Tok: sc.blockTok[r], Pos: p + i, Str: b, Beg: 1, End: 1}, err
 		case sc.isOp(r):
 			op, isOp := sc.getOp(src[i:])
 			if isOp {
-				t := sc.Tokens[op]
+				var t lang.Token
+				if len(op) == 1 {
+					t = sc.charTok[op[0]]
+				} else {
+					t = sc.Tokens[op]
+				}
 				if t == lang.Illegal {
 					err = fmt.Errorf("%w: %s", ErrIllegal, op)
 				}
@@ -245,7 +275,11 @@ func (sc *Scanner) getOp(src string) (s string, isOp bool) {
 			break
 		}
 		s = src[:i+1]
-		if _, match := sc.BlockProp[s]; match {
+		if len(s) == 1 {
+			if sc.charBlockProp[s[0]] != 0 {
+				return s, false
+			}
+		} else if _, match := sc.BlockProp[s]; match {
 			return s, false
 		}
 	}
@@ -304,6 +338,33 @@ func (sc *Scanner) getNum(src string) (s string, tok lang.Token) {
 }
 
 func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
+	// Fast path: single-byte start with precomputed end byte.
+	if nstart == 1 && src[0] < lang.ASCIILen {
+		if eb := sc.endByte[src[0]]; eb != 0 {
+			prop := sc.charBlockProp[src[0]]
+			canEscape := prop&lang.StrEsc != 0
+			nonl := prop&lang.StrNonl != 0
+			excludeEnd := prop&lang.ExcludeEnd != 0
+			var esc bool
+			for i := 1; i < len(src); i++ {
+				b := src[i]
+				if b == '\n' && nonl {
+					return src[:i+1], false
+				}
+				if b == eb && !esc {
+					if excludeEnd {
+						return src[:i], true
+					}
+					return src[:i+1], true
+				}
+				esc = canEscape && b == '\\' && !esc
+			}
+			ok = prop&lang.EosValidEnd != 0
+			return src, ok
+		}
+	}
+
+	// General path: multi-byte start/end delimiter (covers //, /*).
 	start := src[:nstart]
 	end := sc.End[start]
 	prop := sc.BlockProp[start]
@@ -311,28 +372,6 @@ func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 	nonl := prop&lang.StrNonl != 0
 	excludeEnd := prop&lang.ExcludeEnd != 0
 	var esc bool
-
-	// Fast path: single-byte end delimiter (covers ", ', `).
-	if len(end) == 1 {
-		endByte := end[0]
-		for i := nstart; i < len(src); i++ {
-			b := src[i]
-			if b == '\n' && nonl {
-				return src[:i+1], false
-			}
-			if b == endByte && !esc {
-				if excludeEnd {
-					return src[:i], true
-				}
-				return src[:i+1], true
-			}
-			esc = canEscape && b == '\\' && !esc
-		}
-		ok = prop&lang.EosValidEnd != 0
-		return src, ok
-	}
-
-	// General path: multi-byte end delimiter (covers */, newline for //).
 	for i, r := range src[nstart:] {
 		s = src[:nstart+i+1]
 		if r == '\n' && nonl {
@@ -355,11 +394,11 @@ func (sc *Scanner) getStr(src string, nstart int) (s string, ok bool) {
 // ok is false if an unterminated string is found.
 func (sc *Scanner) skipStr(src string, pos int) (advance int, ok bool) {
 	b := src[pos]
-	if sc.isStr(rune(b)) {
+	if b < lang.ASCIILen && sc.charBlockProp[b]&lang.CharStr != 0 {
 		str, sok := sc.getStr(src[pos:], 1)
 		return len(str), sok
 	}
-	if sc.isOp(rune(b)) && pos+1 < len(src) {
+	if b < lang.ASCIILen && sc.multiStrStart[b] && pos+1 < len(src) {
 		if sp, match := sc.BlockProp[src[pos:pos+2]]; match && sp&lang.CharStr != 0 {
 			str, sok := sc.getStr(src[pos:], 2)
 			return len(str), sok
@@ -369,44 +408,46 @@ func (sc *Scanner) skipStr(src string, pos int) (advance int, ok bool) {
 }
 
 func (sc *Scanner) getBlock(src string, nstart int) (s string, ok bool) {
-	start := src[:nstart]
-	end := sc.End[start]
-	prop := sc.BlockProp[start]
-
 	n := 1
 
 	// Fast path for single-byte start/end delimiters (covers (, {, [).
-	if len(start) == 1 && len(end) == 1 {
-		startByte, endByte := start[0], end[0]
-		for i := nstart; i < len(src); i++ {
-			b := src[i]
-			switch b {
-			case endByte:
-				n--
-			case startByte:
-				n++
-			default:
-				if advance, sok := sc.skipStr(src, i); advance > 0 {
-					if !sok {
-						return src[:i+1], false
+	if nstart == 1 && src[0] < lang.ASCIILen {
+		if eb := sc.endByte[src[0]]; eb != 0 {
+			sb := src[0]
+			prop := sc.charBlockProp[sb]
+			for i := 1; i < len(src); i++ {
+				b := src[i]
+				switch b {
+				case eb:
+					n--
+				case sb:
+					n++
+				default:
+					if advance, sok := sc.skipStr(src, i); advance > 0 {
+						if !sok {
+							return src[:i+1], false
+						}
+						i += advance - 1
+						continue
 					}
-					i += advance - 1 // -1 because the for loop increments i
-					continue
+				}
+				if n == 0 {
+					s = src[:i+1]
+					if prop&lang.ExcludeEnd != 0 {
+						s = s[:len(s)-1]
+					}
+					return s, true
 				}
 			}
-			if n == 0 {
-				s = src[:i+1]
-				if prop&lang.ExcludeEnd != 0 {
-					s = s[:len(s)-len(end)]
-				}
-				return s, true
-			}
+			ok = prop&lang.EosValidEnd != 0
+			return src, ok
 		}
-		ok = prop&lang.EosValidEnd != 0
-		return src, ok
 	}
 
 	// General path for multi-byte delimiters.
+	start := src[:nstart]
+	end := sc.End[start]
+	prop := sc.BlockProp[start]
 	skip := 0
 	for i := range src[nstart:] {
 		if i < skip {
