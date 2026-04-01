@@ -998,32 +998,7 @@ func (m *Machine) Run() (err error) {
 			}
 			sp += int(c.A)
 		case DeferPush:
-			// Snapshot args in-place: detach from parent frame so deferred call
-			// sees the values at defer time, not at execution time.
-			narg := int(c.A)
-			isX := int(c.B)
-			if isX == 2 {
-				// Builtin opcode defer: funcVal (opcode number) is on top of stack,
-				// args are below it. Rotate to standard layout: funcVal at sp-narg,
-				// args at sp-narg+1..sp.
-				funcVal := mem[sp]
-				copy(mem[sp-narg+1:sp+1], mem[sp-narg:sp])
-				mem[sp-narg] = funcVal
-			}
-			for i := sp - narg + 1; i <= sp; i++ {
-				mem[i] = snapshotArg(mem[i])
-			}
-			// Push 3-slot header: packed(narg/isX), prevHead link, returnIP placeholder.
-			// isX uses 2 bits: 0=VM func, 1=native reflect func, 2=builtin opcode.
-			prevHead := int(mem[fp-3].num) //nolint:gosec
-			if sp+3 >= len(mem) {
-				mem = growStack(mem, sp, 3)
-			}
-			mem[sp+1] = Value{num: uint64(narg<<2 | isX)} //nolint:gosec
-			mem[sp+2] = Value{num: uint64(prevHead)}      //nolint:gosec
-			mem[sp+3] = Value{}                           // returnIP placeholder, filled by Return
-			sp += 3
-			mem[fp-3].num = uint64(sp) //nolint:gosec // dh = index of returnIP slot
+			mem, sp = m.deferPush(c, mem, fp, sp)
 
 		case GoCall:
 			narg := int(c.A)
@@ -1234,20 +1209,7 @@ func (m *Machine) Run() (err error) {
 				// VM function: pack ip and nret into the returnIP slot, then call.
 				mem[dh].num = uint64(ip) | uint64(nret)<<32 //nolint:gosec
 				prevEnv := m.env
-				var nip int
-				if isNum(funcVal.ref.Kind()) {
-					nip = int(funcVal.num) //nolint:gosec
-					m.env = nil
-				} else if clo, ok := funcVal.ref.Interface().(Closure); ok {
-					nip = clo.Code
-					m.env = clo.Env
-				} else if iv, ok := funcVal.ref.Interface().(int); ok {
-					nip = iv
-					m.env = nil
-				} else {
-					nip = int(funcVal.num) //nolint:gosec
-					m.env = nil
-				}
+				nip := m.resolveIPAndEnv(funcVal)
 				// Push func+args copy and 3-slot call frame (retIP, prevFP, deferHead=0).
 				base := sp
 				if sp+1 >= len(mem) {
@@ -1861,155 +1823,197 @@ func (m *Machine) Run() (err error) {
 			mem[sp] = boolVal(uint(mem[sp].num) < uint(int(c.A))) //nolint:gosec
 
 		case DeferRet:
-			// Restore outer frame after a deferred VM call returns.
-			mem = mem[:sp+1]
-			dh := int(mem[fp-3].num)        //nolint:gosec
-			narg := int(mem[dh-2].num >> 2) //nolint:gosec
-			val := mem[dh].num
-			returnIP := int(int32(val & 0xFFFFFFFF)) //nolint:gosec
-			nret := int(val >> 32)                   //nolint:gosec
-			prevHead := int(mem[dh-1].num)           //nolint:gosec
-			retBase := dh - narg - 3
-			for i := 0; i < nret; i++ { // move return values down
-				mem[retBase+i] = mem[dh+1+i]
-			}
-			clear(mem[retBase+nret:]) // clear stale slots
-			mem = mem[:retBase+nret]
-			mem[fp-3].num = uint64(prevHead) //nolint:gosec
-			ip = returnIP
-			sp = len(mem) - 1
-			mem = mem[:cap(mem)]
+			mem, sp, ip = m.deferRet(mem, fp, sp)
 			continue
 
 		case PanicUnwind:
-			// Panic unwind: dispatch deferred calls in current frame, then tear down.
-			mem = mem[:sp+1]
-			if fp == 0 {
-				// Top-level panic: no call frame to unwind.
-				m.mem, m.ip, m.fp = mem, 0, 0
-				return fmt.Errorf("panic: %v", m.panicVal.Interface())
+			if done, err := m.panicUnwind(&mem, &fp, &sp, &ip, panicAddr); done {
+				return err
 			}
-			dh := int(mem[fp-3].num) //nolint:gosec
-			if dh != 0 {
-				packed := mem[dh-2].num
-				narg := int(packed >> 2)       //nolint:gosec
-				isX := int(packed & 3)         //nolint:gosec
-				prevHead := int(mem[dh-1].num) //nolint:gosec
-				funcVal := mem[dh-narg-3]
-				retBase := dh - narg - 3
-				if isX == 2 {
-					m.execBuiltinDeferred(Op(funcVal.num), dh-narg-2, narg, mem) //nolint:gosec
-					clear(mem[retBase:])
-					mem = mem[:retBase]
-					mem[fp-3].num = uint64(prevHead) //nolint:gosec
-					sp = len(mem) - 1
-					mem = mem[:cap(mem)]
-					continue
-				}
-				if isX == 1 {
-					// Native defer: call via reflect, discard results.
-					rin := make([]reflect.Value, narg)
-					for i := range rin {
-						rin[i] = mem[dh-narg-2+i].Reflect()
-					}
-					funcVal.ref.Call(rin)
-					clear(mem[retBase:])
-					mem = mem[:retBase]
-					mem[fp-3].num = uint64(prevHead) //nolint:gosec
-					sp = len(mem) - 1
-					mem = mem[:cap(mem)]
-					continue
-				}
-				// VM defer: store panicAddr as return address, push frame.
-				retIPInfo := mem[fp-2].num
-				nret := int((retIPInfo >> 32) & 0xFFFF)
-				mem[dh].num = uint64(uint32(panicAddr)) | uint64(nret)<<32 //nolint:gosec
-				prevEnv := m.env
-				var nip int
-				if isNum(funcVal.ref.Kind()) {
-					nip = int(funcVal.num) //nolint:gosec
-					m.env = nil
-				} else if clo, ok := funcVal.ref.Interface().(Closure); ok {
-					nip = clo.Code
-					m.env = clo.Env
-				} else if iv, ok := funcVal.ref.Interface().(int); ok {
-					nip = iv
-					m.env = nil
-				} else {
-					nip = int(funcVal.num) //nolint:gosec
-					m.env = nil
-				}
-				base := len(mem)
-				mem = append(mem, funcVal)
-				mem = append(mem, mem[dh-narg-2:dh-2]...)
-				defFPVal := uint64(fp) //nolint:gosec
-				if prevEnv != nil {
-					m.frames = append(m.frames, prevEnv)
-					defFPVal |= envSavedFlag
-				}
-				mem = append(mem, Value{}, Value{num: deferRetBits}, Value{num: defFPVal})
-				fp = base + 1 + narg + 3
-				ip = nip
-				sp = len(mem) - 1
-				mem = mem[:cap(mem)]
-				continue
-			}
-			// No more defers in this frame.
-			if !m.panicking {
-				// Recovered: tear down frame, return zero values to caller.
-				retIPInfo := mem[fp-2].num
-				nret := int((retIPInfo >> 32) & 0xFFFF)
-				frameBase := int(retIPInfo >> 48)
-				ip = int(int32(retIPInfo)) //nolint:gosec
-				ofp := fp
-				fpVal := mem[fp-1].num
-				if fpVal&envSavedFlag != 0 {
-					fp = int(fpVal &^ envSavedFlag) //nolint:gosec
-					top := len(m.frames) - 1
-					m.env = m.frames[top]
-					m.frames[top] = nil
-					m.frames = m.frames[:top]
-				} else {
-					fp = int(fpVal) //nolint:gosec
-					m.env = nil
-				}
-				newBase := ofp - frameBase
-				newSP := newBase + nret
-				clear(mem[newBase:newSP]) // clear return slots
-				clear(mem[newSP:])        // clear stale slots
-				mem = mem[:newSP]
-				sp = len(mem) - 1
-				mem = mem[:cap(mem)]
-				continue
-			}
-			// Still panicking: tear down frame, continue unwinding parent.
-			frameBase := int(mem[fp-2].num >> 48)
-			ofp := fp
-			fpVal := mem[fp-1].num
-			if fpVal&envSavedFlag != 0 {
-				fp = int(fpVal &^ envSavedFlag) //nolint:gosec
-				top := len(m.frames) - 1
-				m.env = m.frames[top]
-				m.frames[top] = nil
-				m.frames = m.frames[:top]
-			} else {
-				fp = int(fpVal) //nolint:gosec
-				m.env = nil
-			}
-			if fp == 0 {
-				// Top of stack: return panic as error.
-				m.mem, m.ip, m.fp = mem, 0, 0
-				return fmt.Errorf("panic: %v", m.panicVal.Interface())
-			}
-			newBase := ofp - frameBase
-			clear(mem[newBase:])
-			mem = mem[:newBase]
-			sp = len(mem) - 1
-			mem = mem[:cap(mem)]
 			continue
 		}
 		ip++
 	}
+}
+
+// restoreFP restores the frame pointer and closure environment after a return.
+// fpVal is the raw uint64 stored in the prevFP slot (mem[fp-1].num).
+func (m *Machine) restoreFP(fpVal uint64) int {
+	if fpVal&envSavedFlag != 0 {
+		fp := int(fpVal &^ envSavedFlag) //nolint:gosec
+		top := len(m.frames) - 1
+		m.env = m.frames[top]
+		m.frames[top] = nil // clear for GC
+		m.frames = m.frames[:top]
+		return fp
+	}
+	m.env = nil
+	return int(fpVal) //nolint:gosec
+}
+
+// resolveIPAndEnv resolves a parscan function value to its code address,
+// setting m.env to the closure environment (nil for non-closures).
+// Used for deferred VM-func calls (isX==0) in Return and PanicUnwind.
+func (m *Machine) resolveIPAndEnv(funcVal Value) int {
+	if isNum(funcVal.ref.Kind()) {
+		m.env = nil
+		return int(funcVal.num) //nolint:gosec
+	}
+	if clo, ok := funcVal.ref.Interface().(Closure); ok {
+		m.env = clo.Env
+		return clo.Code
+	}
+	m.env = nil
+	if iv, ok := funcVal.ref.Interface().(int); ok {
+		return iv
+	}
+	return int(funcVal.num) //nolint:gosec
+}
+
+// deferPush implements the DeferPush opcode: snapshot deferred call args and
+// push the 3-slot defer header onto the stack.
+func (m *Machine) deferPush(c Instruction, mem []Value, fp, sp int) ([]Value, int) {
+	narg := int(c.A)
+	isX := int(c.B)
+	if isX == 2 {
+		// Builtin opcode defer: funcVal (opcode number) is on top of stack,
+		// args are below it. Rotate to standard layout: funcVal at sp-narg,
+		// args at sp-narg+1..sp.
+		funcVal := mem[sp]
+		copy(mem[sp-narg+1:sp+1], mem[sp-narg:sp])
+		mem[sp-narg] = funcVal
+	}
+	for i := sp - narg + 1; i <= sp; i++ {
+		mem[i] = snapshotArg(mem[i])
+	}
+	// Push 3-slot header: packed(narg/isX), prevHead link, returnIP placeholder.
+	// isX uses 2 bits: 0=VM func, 1=native reflect func, 2=builtin opcode.
+	prevHead := int(mem[fp-3].num) //nolint:gosec
+	if sp+3 >= len(mem) {
+		mem = growStack(mem, sp, 3)
+	}
+	mem[sp+1] = Value{num: uint64(narg<<2 | isX)} //nolint:gosec
+	mem[sp+2] = Value{num: uint64(prevHead)}      //nolint:gosec
+	mem[sp+3] = Value{}                           // returnIP placeholder, filled by Return
+	sp += 3
+	mem[fp-3].num = uint64(sp) //nolint:gosec // dh = index of returnIP slot
+	return mem, sp
+}
+
+// deferRet implements the DeferRet opcode: restore the outer frame after a
+// deferred VM call returns.
+func (m *Machine) deferRet(mem []Value, fp, sp int) ([]Value, int, int) {
+	mem = mem[:sp+1]
+	dh := int(mem[fp-3].num)        //nolint:gosec
+	narg := int(mem[dh-2].num >> 2) //nolint:gosec
+	val := mem[dh].num
+	returnIP := int(int32(val & 0xFFFFFFFF)) //nolint:gosec
+	nret := int(val >> 32)                   //nolint:gosec
+	prevHead := int(mem[dh-1].num)           //nolint:gosec
+	retBase := dh - narg - 3
+	copy(mem[retBase:], mem[dh+1:dh+1+nret]) // move return values down
+	clear(mem[retBase+nret:])                // clear stale slots
+	mem = mem[:retBase+nret]
+	mem[fp-3].num = uint64(prevHead) //nolint:gosec
+	sp = len(mem) - 1
+	mem = mem[:cap(mem)]
+	return mem, sp, returnIP
+}
+
+// panicUnwind implements the PanicUnwind opcode: dispatch deferred calls in
+// the current frame (LIFO), then tear the frame down and continue unwinding.
+// Returns (true, err) when Run should return, (false, nil) to continue the loop.
+func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (bool, error) {
+	deferRetBits := uint64(panicAddr - 1) //nolint:gosec
+	*mem = (*mem)[:*sp+1]
+	if *fp == 0 {
+		// Top-level panic: no call frame to unwind.
+		m.mem, m.ip, m.fp = *mem, 0, 0
+		return true, fmt.Errorf("panic: %v", m.panicVal.Interface())
+	}
+	dh := int((*mem)[*fp-3].num) //nolint:gosec
+	if dh != 0 {
+		packed := (*mem)[dh-2].num
+		narg := int(packed >> 2)          //nolint:gosec
+		isX := int(packed & 3)            //nolint:gosec
+		prevHead := int((*mem)[dh-1].num) //nolint:gosec
+		funcVal := (*mem)[dh-narg-3]
+		retBase := dh - narg - 3
+		popDefer := func() (bool, error) {
+			clear((*mem)[retBase:])
+			*mem = (*mem)[:retBase]
+			(*mem)[*fp-3].num = uint64(prevHead) //nolint:gosec
+			*sp = len(*mem) - 1
+			*mem = (*mem)[:cap(*mem)]
+			return false, nil
+		}
+		if isX == 2 {
+			m.execBuiltinDeferred(Op(funcVal.num), dh-narg-2, narg, *mem) //nolint:gosec
+			return popDefer()
+		}
+		if isX == 1 {
+			// Native defer: call via reflect, discard results.
+			rin := make([]reflect.Value, narg)
+			for i := range rin {
+				rin[i] = (*mem)[dh-narg-2+i].Reflect()
+			}
+			funcVal.ref.Call(rin)
+			return popDefer()
+		}
+		// VM defer: store panicAddr as return address, push frame.
+		retIPInfo := (*mem)[*fp-2].num
+		nret := int((retIPInfo >> 32) & 0xFFFF)
+		(*mem)[dh].num = uint64(uint32(panicAddr)) | uint64(nret)<<32 //nolint:gosec
+		prevEnv := m.env
+		nip := m.resolveIPAndEnv(funcVal)
+		base := len(*mem)
+		*mem = append(*mem, funcVal)
+		*mem = append(*mem, (*mem)[dh-narg-2:dh-2]...)
+		defFPVal := uint64(*fp) //nolint:gosec
+		if prevEnv != nil {
+			m.frames = append(m.frames, prevEnv)
+			defFPVal |= envSavedFlag
+		}
+		*mem = append(*mem, Value{}, Value{num: deferRetBits}, Value{num: defFPVal})
+		*fp = base + 1 + narg + 3
+		*ip = nip
+		*sp = len(*mem) - 1
+		*mem = (*mem)[:cap(*mem)]
+		return false, nil
+	}
+	// No more defers in this frame.
+	if !m.panicking {
+		// Recovered: tear down frame, return zero values to caller.
+		retIPInfo := (*mem)[*fp-2].num
+		nret := int((retIPInfo >> 32) & 0xFFFF)
+		frameBase := int(retIPInfo >> 48)
+		*ip = int(int32(retIPInfo)) //nolint:gosec
+		ofp := *fp
+		*fp = m.restoreFP((*mem)[*fp-1].num)
+		newBase := ofp - frameBase
+		newSP := newBase + nret
+		clear((*mem)[newBase:newSP]) // clear return slots
+		clear((*mem)[newSP:])        // clear stale slots
+		*mem = (*mem)[:newSP]
+		*sp = len(*mem) - 1
+		*mem = (*mem)[:cap(*mem)]
+		return false, nil
+	}
+	// Still panicking: tear down frame, continue unwinding parent.
+	frameBase := int((*mem)[*fp-2].num >> 48)
+	ofp := *fp
+	*fp = m.restoreFP((*mem)[*fp-1].num)
+	if *fp == 0 {
+		// Top of stack: return panic as error.
+		m.mem, m.ip, m.fp = *mem, 0, 0
+		return true, fmt.Errorf("panic: %v", m.panicVal.Interface())
+	}
+	newBase := ofp - frameBase
+	clear((*mem)[newBase:])
+	*mem = (*mem)[:newBase]
+	*sp = len(*mem) - 1
+	*mem = (*mem)[:cap(*mem)]
+	return false, nil
 }
 
 // fieldByABC reconstructs a FieldByIndex path from fixed A, B, C args.
@@ -2077,7 +2081,7 @@ func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 	// this func through a channel may still be cleaning up m when the wrapper is called.
 	fv := val
 	globals := m.globals
-	code := m.code[:m.baseCodeLen]
+	code := m.code[:m.baseCodeLen:m.baseCodeLen]
 	baseCodeLen := m.baseCodeLen
 	stdout, stderr := m.out, m.err
 	return reflect.MakeFunc(funcType, func(args []reflect.Value) []reflect.Value {
@@ -2216,7 +2220,7 @@ func (m *Machine) newGoroutine(fval Value, args []Value) {
 
 	child := &Machine{
 		globals:  m.globals,
-		code:     m.code[:m.baseCodeLen],
+		code:     m.code[:m.baseCodeLen:m.baseCodeLen],
 		env:      env,
 		ip:       nip,
 		fp:       frameBase,
