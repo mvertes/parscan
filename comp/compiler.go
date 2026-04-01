@@ -471,7 +471,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(s), Type: c.Symbols["string"].Type})
 			c.emit(t, vm.GetGlobal, c.stringIndex(s))
 
-		case lang.Add:
+		case lang.Add, lang.Mul, lang.Sub, lang.Quo, lang.Rem:
 			if err := checkTopN(2); err != nil {
 				return err
 			}
@@ -480,79 +480,18 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			c.emitConstConvert(t, right, typ, 0)
 			c.emitConstConvert(t, left, typ, 1)
 			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
-			if typ != nil && typ.Rtype.Kind() == reflect.String {
-				c.emit(t, vm.AddStr)
-				break
+			switch t.Tok {
+			case lang.Add:
+				c.emitArithmeticOp(t, right, typ, vm.AddInt, vm.AddIntImm, vm.GetLocalAddIntImm, vm.AddStr)
+			case lang.Mul:
+				c.emitArithmeticOp(t, right, typ, vm.MulInt, vm.MulIntImm, vm.GetLocalMulIntImm, 0)
+			case lang.Sub:
+				c.emitArithmeticOp(t, right, typ, vm.SubInt, vm.SubIntImm, vm.GetLocalSubIntImm, 0)
+			case lang.Quo:
+				c.emitArithmeticOp(t, right, typ, vm.DivInt, 0, 0, 0)
+			case lang.Rem:
+				c.emitArithmeticOp(t, right, typ, vm.RemInt, 0, 0, 0)
 			}
-			if isInt64Kind(typ) || isUint64Kind(typ) {
-				if n, ok := c.retractPush(right); ok {
-					if !c.fuseGetLocal(vm.GetLocalAddIntImm, n) {
-						c.emit(t, vm.AddIntImm, n)
-					}
-					break
-				}
-			}
-			c.emit(t, numericOp(vm.AddInt, typ))
-
-		case lang.Mul:
-			if err := checkTopN(2); err != nil {
-				return err
-			}
-			right, left := pop(), pop()
-			typ := arithmeticOpType(right, left)
-			c.emitConstConvert(t, right, typ, 0)
-			c.emitConstConvert(t, left, typ, 1)
-			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
-			if isInt64Kind(typ) || isUint64Kind(typ) {
-				if n, ok := c.retractPush(right); ok {
-					if !c.fuseGetLocal(vm.GetLocalMulIntImm, n) {
-						c.emit(t, vm.MulIntImm, n)
-					}
-					break
-				}
-			}
-			c.emit(t, numericOp(vm.MulInt, typ))
-
-		case lang.Sub:
-			if err := checkTopN(2); err != nil {
-				return err
-			}
-			right, left := pop(), pop()
-			typ := arithmeticOpType(right, left)
-			c.emitConstConvert(t, right, typ, 0)
-			c.emitConstConvert(t, left, typ, 1)
-			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
-			if isInt64Kind(typ) || isUint64Kind(typ) {
-				if n, ok := c.retractPush(right); ok {
-					if !c.fuseGetLocal(vm.GetLocalSubIntImm, n) {
-						c.emit(t, vm.SubIntImm, n)
-					}
-					break
-				}
-			}
-			c.emit(t, numericOp(vm.SubInt, typ))
-
-		case lang.Quo:
-			if err := checkTopN(2); err != nil {
-				return err
-			}
-			right, left := pop(), pop()
-			typ := arithmeticOpType(right, left)
-			c.emitConstConvert(t, right, typ, 0)
-			c.emitConstConvert(t, left, typ, 1)
-			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
-			c.emit(t, numericOp(vm.DivInt, typ))
-
-		case lang.Rem:
-			if err := checkTopN(2); err != nil {
-				return err
-			}
-			right, left := pop(), pop()
-			typ := arithmeticOpType(right, left)
-			c.emitConstConvert(t, right, typ, 0)
-			c.emitConstConvert(t, left, typ, 1)
-			push(&symbol.Symbol{Kind: constKind(right, left), Type: typ})
-			c.emit(t, numericOp(vm.RemInt, typ))
 
 		case lang.Minus:
 			if err := checkTopN(1); err != nil {
@@ -623,14 +562,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if typ != nil {
 				typeIdx = c.typeIndex(typ)
 			}
-			var offset int
-			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // store code location for fixup
-				fixList = append(fixList, t)
-			} else {
-				offset = int(s.Value.Int()) - len(c.Code)
-			}
-			c.emit(t, vm.TypeBranch, offset, typeIdx) // Arg[0]=offset, Arg[1]=typeIdx
+			c.emit(t, vm.TypeBranch, c.resolveLabel(t, &fixList), typeIdx)
 
 		case lang.Index:
 			if err := checkTopN(2); err != nil {
@@ -668,99 +600,29 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
 			}
 
-		case lang.Greater:
+		case lang.Greater, lang.Less, lang.GreaterEqual, lang.LessEqual:
 			if err := checkTopN(2); err != nil {
 				return err
 			}
 			s2, s1 := pop(), pop()
 			typ := symbol.Vtype(s1)
 			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
-			if isInt64Kind(typ) {
-				if n, ok := c.retractPush(s2); ok {
-					if !c.fuseGetLocal(vm.GetLocalGreaterIntImm, n) {
-						c.emit(t, vm.GreaterIntImm, n)
-					}
-					break
-				}
-			} else if isUint64Kind(typ) {
-				if n, ok := c.retractPush(s2); ok {
-					if !c.fuseGetLocal(vm.GetLocalGreaterUintImm, n) {
-						c.emit(t, vm.GreaterUintImm, n)
-					}
-					break
-				}
+			switch t.Tok {
+			case lang.Greater:
+				c.emitComparisonOp(t, s2, typ, vm.GreaterInt,
+					vm.GreaterIntImm, vm.GreaterUintImm,
+					vm.GetLocalGreaterIntImm, vm.GetLocalGreaterUintImm, false)
+			case lang.Less:
+				c.emitComparisonOp(t, s2, typ, vm.LowerInt,
+					vm.LowerIntImm, vm.LowerUintImm,
+					vm.GetLocalLowerIntImm, vm.GetLocalLowerUintImm, false)
+			case lang.GreaterEqual:
+				c.emitComparisonOp(t, s2, typ, vm.LowerInt,
+					vm.LowerIntImm, vm.LowerUintImm, 0, 0, true)
+			case lang.LessEqual:
+				c.emitComparisonOp(t, s2, typ, vm.GreaterInt,
+					vm.GreaterIntImm, vm.GreaterUintImm, 0, 0, true)
 			}
-			c.emit(t, numericOp(vm.GreaterInt, typ))
-
-		case lang.Less:
-			if err := checkTopN(2); err != nil {
-				return err
-			}
-			s2, s1 := pop(), pop()
-			typ := symbol.Vtype(s1)
-			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
-			if isInt64Kind(typ) {
-				if n, ok := c.retractPush(s2); ok {
-					if !c.fuseGetLocal(vm.GetLocalLowerIntImm, n) {
-						c.emit(t, vm.LowerIntImm, n)
-					}
-					break
-				}
-			} else if isUint64Kind(typ) {
-				if n, ok := c.retractPush(s2); ok {
-					if !c.fuseGetLocal(vm.GetLocalLowerUintImm, n) {
-						c.emit(t, vm.LowerUintImm, n)
-					}
-					break
-				}
-			}
-			c.emit(t, numericOp(vm.LowerInt, typ))
-
-		case lang.GreaterEqual:
-			if err := checkTopN(2); err != nil {
-				return err
-			}
-			s2, s1 := pop(), pop()
-			typ := symbol.Vtype(s1)
-			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
-			if isInt64Kind(typ) {
-				if n, ok := c.retractPush(s2); ok {
-					c.emit(t, vm.LowerIntImm, n)
-					c.emit(t, vm.Not)
-					break
-				}
-			} else if isUint64Kind(typ) {
-				if n, ok := c.retractPush(s2); ok {
-					c.emit(t, vm.LowerUintImm, n)
-					c.emit(t, vm.Not)
-					break
-				}
-			}
-			c.emit(t, numericOp(vm.LowerInt, typ))
-			c.emit(t, vm.Not)
-
-		case lang.LessEqual:
-			if err := checkTopN(2); err != nil {
-				return err
-			}
-			s2, s1 := pop(), pop()
-			typ := symbol.Vtype(s1)
-			push(&symbol.Symbol{Kind: symbol.Value, Type: booleanOpType(s2, s1)})
-			if isInt64Kind(typ) {
-				if n, ok := c.retractPush(s2); ok {
-					c.emit(t, vm.GreaterIntImm, n)
-					c.emit(t, vm.Not)
-					break
-				}
-			} else if isUint64Kind(typ) {
-				if n, ok := c.retractPush(s2); ok {
-					c.emit(t, vm.GreaterUintImm, n)
-					c.emit(t, vm.Not)
-					break
-				}
-			}
-			c.emit(t, numericOp(vm.GreaterInt, typ))
-			c.emit(t, vm.Not)
 
 		case lang.NotEqual:
 			if err := checkTopN(2); err != nil {
@@ -1412,54 +1274,22 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					vm.GetLocalGreaterIntImm, vm.GetLocalLowerIntImmJumpTrue, 1) {
 				break
 			}
-			var i int
-			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
-				fixList = append(fixList, t)
-			} else {
-				i = int(s.Value.Int()) - len(c.Code)
-			}
-			c.emit(t, vm.JumpFalse, i)
+			c.emitJump(t, &fixList, vm.JumpFalse)
 
-		case lang.JumpSetFalse:
+		case lang.JumpSetFalse, lang.JumpSetTrue:
 			if err := checkTopN(1); err != nil {
 				return err
 			}
 			pop()                             // LHS result: consumed on the non-jumping path; both paths leave one value at label.
 			jumpDepth[t.Str] = len(stack) + 1 // one value (LHS or RHS) arrives at the merge label
-			var i int
-			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
-				fixList = append(fixList, t)
-			} else {
-				i = int(s.Value.Int()) - len(c.Code)
+			op := vm.JumpSetFalse
+			if t.Tok == lang.JumpSetTrue {
+				op = vm.JumpSetTrue
 			}
-			c.emit(t, vm.JumpSetFalse, i)
-
-		case lang.JumpSetTrue:
-			if err := checkTopN(1); err != nil {
-				return err
-			}
-			pop()                             // LHS result: consumed on the non-jumping path; both paths leave one value at label.
-			jumpDepth[t.Str] = len(stack) + 1 // one value (LHS or RHS) arrives at the merge label
-			var i int
-			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
-				fixList = append(fixList, t)
-			} else {
-				i = int(s.Value.Int()) - len(c.Code)
-			}
-			c.emit(t, vm.JumpSetTrue, i)
+			c.emitJump(t, &fixList, op)
 
 		case lang.Goto:
-			var i int
-			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
-				fixList = append(fixList, t)
-			} else {
-				i = int(s.Value.Int()) - len(c.Code)
-			}
-			c.emit(t, vm.Jump, i)
+			c.emitJump(t, &fixList, vm.Jump)
 
 		case lang.Period:
 			if len(stack) < 1 {
@@ -1583,13 +1413,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Next:
 			showStack(stack)
 			n := t.Arg[0].(int)
-			var i int
-			if s, ok := c.Symbols[t.Str]; !ok {
-				t.Arg = []any{len(c.Code)} // current code location
-				fixList = append(fixList, t)
-			} else {
-				i = int(s.Value.Int()) - len(c.Code)
-			}
+			i := c.resolveLabel(t, &fixList)
 			lf := func(s *symbol.Symbol) int {
 				if s.Kind == symbol.LocalVar {
 					return vm.Local
@@ -2003,6 +1827,69 @@ func numericOp(base vm.Op, typ *vm.Type) vm.Op {
 		panic(fmt.Sprintf("numericOp: non-numeric kind %v", k))
 	}
 	return base + vm.Op(vm.NumKindOffset[k]) //nolint:gosec
+}
+
+// emitArithmeticOp emits a binary arithmetic operation with optional immediate optimization.
+// immOp/fuseOp are the immediate/fused GetLocal variants (0 = no immediate optimization).
+// strOp is the string-concatenation opcode (0 = not applicable).
+func (c *Compiler) emitArithmeticOp(t goparser.Token, right *symbol.Symbol, typ *vm.Type, baseOp, immOp, fuseOp, strOp vm.Op) {
+	if strOp != 0 && typ != nil && typ.Rtype.Kind() == reflect.String {
+		c.emit(t, strOp)
+		return
+	}
+	if immOp != 0 && (isInt64Kind(typ) || isUint64Kind(typ)) {
+		if n, ok := c.retractPush(right); ok {
+			if fuseOp == 0 || !c.fuseGetLocal(fuseOp, n) {
+				c.emit(t, immOp, n)
+			}
+			return
+		}
+	}
+	c.emit(t, numericOp(baseOp, typ))
+}
+
+// emitComparisonOp emits a binary comparison operation with optional immediate optimization.
+// intImm/uintImm are the int64/uint64 immediate opcodes.
+// fuseInt/fuseUint are the fused GetLocal variants (0 = no fusion).
+// If negate is true, vm.Not is emitted after the comparison.
+func (c *Compiler) emitComparisonOp(t goparser.Token, s2 *symbol.Symbol, typ *vm.Type, baseOp, intImm, uintImm, fuseInt, fuseUint vm.Op, negate bool) {
+	var immOp, fuseOp vm.Op
+	if isInt64Kind(typ) {
+		immOp, fuseOp = intImm, fuseInt
+	} else if isUint64Kind(typ) {
+		immOp, fuseOp = uintImm, fuseUint
+	}
+	if immOp != 0 {
+		if n, ok := c.retractPush(s2); ok {
+			if fuseOp == 0 || !c.fuseGetLocal(fuseOp, n) {
+				c.emit(t, immOp, n)
+			}
+			if negate {
+				c.emit(t, vm.Not)
+			}
+			return
+		}
+	}
+	c.emit(t, numericOp(baseOp, typ))
+	if negate {
+		c.emit(t, vm.Not)
+	}
+}
+
+// resolveLabel returns the relative jump offset for label t.Str.
+// If the label is not yet defined, t is appended to fixList for later fixup.
+func (c *Compiler) resolveLabel(t goparser.Token, fixList *goparser.Tokens) int {
+	if s, ok := c.Symbols[t.Str]; ok {
+		return int(s.Value.Int()) - len(c.Code)
+	}
+	t.Arg = []any{len(c.Code)}
+	*fixList = append(*fixList, t)
+	return 0
+}
+
+// emitJump resolves the jump label and emits a jump instruction.
+func (c *Compiler) emitJump(t goparser.Token, fixList *goparser.Tokens, op vm.Op) {
+	c.emit(t, op, c.resolveLabel(t, fixList))
 }
 
 // PrintCode pretty prints the generated code.
