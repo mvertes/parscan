@@ -59,11 +59,12 @@ type Scanner struct {
 	Sources Sources // source position registry (multi-file / REPL)
 
 	// Precomputed lookup tables, built from Spec maps by NewScanner.
-	charTok       [lang.ASCIILen]lang.Token // token for single-byte Tokens keys
-	blockTok      [lang.ASCIILen]lang.Token // block token by opening byte (e.g. '(' → ParenBlock)
-	endByte       [lang.ASCIILen]byte       // end delimiter for single-byte openers
-	charBlockProp [lang.ASCIILen]uint       // BlockProp for single-byte keys
-	multiStrStart [lang.ASCIILen]bool       // first byte of a multi-byte string/comment start
+	charTok         [lang.ASCIILen]lang.Token // token for single-byte Tokens keys
+	blockTok        [lang.ASCIILen]lang.Token // block token by opening byte (e.g. '(' → ParenBlock)
+	endByte         [lang.ASCIILen]byte       // end delimiter for single-byte openers
+	charBlockProp   [lang.ASCIILen]uint       // BlockProp for single-byte keys
+	multiStrStart   [lang.ASCIILen]bool       // first byte of a multi-byte string/comment start
+	blockPropHasDir bool                      // true if any BlockProp key starts with a direct character
 }
 
 // NewScanner returns a new scanner for a given language specification.
@@ -85,6 +86,9 @@ func NewScanner(spec *lang.Spec) *Scanner {
 		}
 		if len(s) >= 2 && s[0] < lang.ASCIILen && p&lang.CharStr != 0 {
 			sc.multiStrStart[s[0]] = true
+		}
+		if len(s) > 0 && sc.isDir(rune(s[0])) {
+			sc.blockPropHasDir = true
 		}
 	}
 	for s, e := range sc.End {
@@ -117,6 +121,7 @@ func isNum(r rune) bool { return '0' <= r && r <= '9' }
 
 // Scan performs a lexical analysis on src and returns tokens or an error.
 func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
+	tokens = make([]Token, 0, len(src)/4+1)
 	offset := 0
 	s := strings.TrimSpace(src)
 	for len(s) > 0 {
@@ -253,8 +258,10 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 
 func (sc *Scanner) getToken(src string) (s string, isDefined bool) {
 	s = sc.nextToken(src)
-	if _, match := sc.BlockProp[s]; match {
-		return s, false
+	if sc.blockPropHasDir {
+		if _, match := sc.BlockProp[s]; match {
+			return s, false
+		}
 	}
 	return s, true
 }
@@ -279,8 +286,10 @@ func (sc *Scanner) getOp(src string) (s string, isOp bool) {
 			if sc.charBlockProp[s[0]] != 0 {
 				return s, false
 			}
-		} else if _, match := sc.BlockProp[s]; match {
-			return s, false
+		} else if sc.multiStrStart[s[0]] {
+			if _, match := sc.BlockProp[s]; match {
+				return s, false
+			}
 		}
 	}
 	// If the longest match is not a known token, try shorter prefixes.
