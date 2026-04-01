@@ -1002,15 +1002,24 @@ func (m *Machine) Run() (err error) {
 			// sees the values at defer time, not at execution time.
 			narg := int(c.A)
 			isX := int(c.B)
+			if isX == 2 {
+				// Builtin opcode defer: funcVal (opcode number) is on top of stack,
+				// args are below it. Rotate to standard layout: funcVal at sp-narg,
+				// args at sp-narg+1..sp.
+				funcVal := mem[sp]
+				copy(mem[sp-narg+1:sp+1], mem[sp-narg:sp])
+				mem[sp-narg] = funcVal
+			}
 			for i := sp - narg + 1; i <= sp; i++ {
 				mem[i] = snapshotArg(mem[i])
 			}
 			// Push 3-slot header: packed(narg/isX), prevHead link, returnIP placeholder.
+			// isX uses 2 bits: 0=VM func, 1=native reflect func, 2=builtin opcode.
 			prevHead := int(mem[fp-3].num) //nolint:gosec
 			if sp+3 >= len(mem) {
 				mem = growStack(mem, sp, 3)
 			}
-			mem[sp+1] = Value{num: uint64(narg<<1 | isX)} //nolint:gosec
+			mem[sp+1] = Value{num: uint64(narg<<2 | isX)} //nolint:gosec
 			mem[sp+2] = Value{num: uint64(prevHead)}      //nolint:gosec
 			mem[sp+3] = Value{}                           // returnIP placeholder, filled by Return
 			sp += 3
@@ -1194,11 +1203,19 @@ func (m *Machine) Run() (err error) {
 			dh := int(mem[fp-3].num) //nolint:gosec
 			if dh != 0 {
 				packed := mem[dh-2].num
-				narg := int(packed >> 1) //nolint:gosec
-				isX := packed&1 == 1
+				narg := int(packed >> 2)       //nolint:gosec
+				isX := int(packed & 3)         //nolint:gosec
 				prevHead := int(mem[dh-1].num) //nolint:gosec
 				funcVal := mem[dh-narg-3]
-				if isX {
+				retBase := dh - narg - 3
+				if isX == 2 {
+					m.execBuiltinDeferred(Op(funcVal.num), dh-narg-2, narg, mem) //nolint:gosec
+					clear(mem[retBase+nret : sp+1])
+					sp = retBase + nret - 1
+					mem[fp-3].num = uint64(prevHead) //nolint:gosec
+					continue
+				}
+				if isX == 1 {
 					// Native function: call via reflect, discard results.
 					rin := make([]reflect.Value, narg)
 					for i := range rin {
@@ -1206,7 +1223,6 @@ func (m *Machine) Run() (err error) {
 					}
 					funcVal.ref.Call(rin)
 					// Move return values (at dh+1..dh+nret) down over the defer entry.
-					retBase := dh - narg - 3
 					for i := 0; i < nret; i++ {
 						mem[retBase+i] = mem[dh+1+i]
 					}
@@ -1848,7 +1864,7 @@ func (m *Machine) Run() (err error) {
 			// Restore outer frame after a deferred VM call returns.
 			mem = mem[:sp+1]
 			dh := int(mem[fp-3].num)        //nolint:gosec
-			narg := int(mem[dh-2].num >> 1) //nolint:gosec
+			narg := int(mem[dh-2].num >> 2) //nolint:gosec
 			val := mem[dh].num
 			returnIP := int(int32(val & 0xFFFFFFFF)) //nolint:gosec
 			nret := int(val >> 32)                   //nolint:gosec
@@ -1876,18 +1892,27 @@ func (m *Machine) Run() (err error) {
 			dh := int(mem[fp-3].num) //nolint:gosec
 			if dh != 0 {
 				packed := mem[dh-2].num
-				narg := int(packed >> 1) //nolint:gosec
-				isX := packed&1 == 1
+				narg := int(packed >> 2)       //nolint:gosec
+				isX := int(packed & 3)         //nolint:gosec
 				prevHead := int(mem[dh-1].num) //nolint:gosec
 				funcVal := mem[dh-narg-3]
-				if isX {
+				retBase := dh - narg - 3
+				if isX == 2 {
+					m.execBuiltinDeferred(Op(funcVal.num), dh-narg-2, narg, mem) //nolint:gosec
+					clear(mem[retBase:])
+					mem = mem[:retBase]
+					mem[fp-3].num = uint64(prevHead) //nolint:gosec
+					sp = len(mem) - 1
+					mem = mem[:cap(mem)]
+					continue
+				}
+				if isX == 1 {
 					// Native defer: call via reflect, discard results.
 					rin := make([]reflect.Value, narg)
 					for i := range rin {
 						rin[i] = mem[dh-narg-2+i].Reflect()
 					}
 					funcVal.ref.Call(rin)
-					retBase := dh - narg - 3
 					clear(mem[retBase:])
 					mem = mem[:retBase]
 					mem[fp-3].num = uint64(prevHead) //nolint:gosec
@@ -2203,6 +2228,31 @@ func (m *Machine) newGoroutine(fval Value, args []Value) {
 		debugOut: m.debugOut,
 	}
 	go func() { _ = child.Run() }()
+}
+
+// execBuiltinDeferred executes a deferred builtin opcode (isX==2) on its stored args.
+// base is the index of the first argument in mem, narg is the argument count.
+func (m *Machine) execBuiltinDeferred(op Op, base, narg int, mem []Value) {
+	switch op {
+	case Println, Print:
+		args := make([]any, narg)
+		for i := range narg {
+			args[i] = mem[base+i].Interface()
+		}
+		if op == Println {
+			_, _ = fmt.Fprintln(m.out, args...)
+		} else {
+			_, _ = fmt.Fprint(m.out, args...)
+		}
+	case ChanClose:
+		mem[base].ref.Close()
+	case DeleteMap:
+		mem[base].ref.SetMapIndex(mem[base+1].Reflect(), reflect.Value{})
+	case CopySlice:
+		reflect.Copy(mem[base].ref, mem[base+1].ref)
+	default:
+		panic(fmt.Sprintf("unsupported deferred builtin opcode: %v", op))
+	}
 }
 
 // snapshotArg returns a copy of v detached from any parent frame backing store,

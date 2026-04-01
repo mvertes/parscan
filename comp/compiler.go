@@ -19,6 +19,17 @@ import (
 
 const debug = false
 
+// builtinDeferOp maps builtin function names to the VM opcode used when deferred.
+// These builtins have no VM-callable function value, so DeferPush stores the opcode
+// number and the VM dispatches it directly on return (isX=2).
+var builtinDeferOp = map[string]vm.Op{
+	"print":   vm.Print,
+	"println": vm.Println,
+	"close":   vm.ChanClose,
+	"delete":  vm.DeleteMap,
+	"copy":    vm.CopySlice,
+}
+
 // Compiler represents the state of a compiler.
 type Compiler struct {
 	*goparser.Parser
@@ -1700,12 +1711,23 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			narg := t.Arg[0].(int)
 			s := stack[len(stack)-1-narg]
-			if s.Kind == symbol.Type {
-				return errorf("cannot defer a type conversion")
-			}
 			isX := 0
-			if s.Kind == symbol.Value {
+			switch s.Kind {
+			case symbol.Type:
+				return errorf("cannot defer a type conversion")
+			case symbol.Value:
 				isX = 1
+			case symbol.Builtin:
+				// Builtin functions (print, println, close, ...) have no VM-callable
+				// representation. Push the opcode number as funcVal (on top of
+				// already-emitted args), then use isX=2 so DeferPush rotates it into
+				// position and Return dispatches the opcode directly.
+				op, ok := builtinDeferOp[s.Name]
+				if !ok {
+					return errorf("cannot defer builtin %s", s.Name)
+				}
+				c.emit(t, vm.Push, int(op))
+				isX = 2
 			}
 			pop() // function
 			for i := 0; i < narg; i++ {
