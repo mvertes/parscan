@@ -45,7 +45,8 @@ func (t *Token) Name() string {
 func (t *Token) String() string {
 	s := t.Tok.String()
 	if t.Tok.IsLiteral() || t.Tok.IsBlock() || t.Tok == lang.Ident || t.Tok == lang.Comment ||
-		t.Tok == lang.Period || t.Tok == lang.Label || t.Tok == lang.Goto || t.Tok == lang.JumpSetFalse || t.Tok == lang.JumpSetTrue || t.Tok == lang.JumpFalse || t.Tok == lang.Colon || t.Tok == lang.Composite {
+		t.Tok == lang.Period || t.Tok == lang.Label || t.Tok == lang.Goto || t.Tok == lang.JumpSetFalse ||
+		t.Tok == lang.JumpSetTrue || t.Tok == lang.JumpFalse || t.Tok == lang.Colon || t.Tok == lang.Composite {
 		s += strconv.Quote(t.Str)
 	} else if t.Tok == lang.Call {
 		s += "(" + strconv.Itoa(t.Beg) + ")"

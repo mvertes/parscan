@@ -45,7 +45,10 @@ func (p *Parser) resolveEllipsisArray(elemTyp *vm.Type, toks Tokens, braceIdx in
 	if braceIdx >= len(toks) || toks[braceIdx].Tok != lang.BraceBlock {
 		return nil, errors.New("[...] requires a composite literal")
 	}
-	size := p.numItems(toks[braceIdx].Block(), lang.Comma)
+	size, err := p.numItems(toks[braceIdx].Block(), lang.Comma)
+	if err != nil {
+		return nil, err
+	}
 	return vm.ArrayOf(size, elemTyp), nil
 }
 
@@ -155,55 +158,11 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		return s.Type, 1, nil
 
 	case lang.Struct:
-		if len(in) < 2 || in[1].Tok != lang.BraceBlock {
-			return nil, 0, fmt.Errorf("%w: %v", ErrSyntax, in)
-		}
-		if in, err = p.Scan(in[1].Block(), false); err != nil {
+		typ, err := p.parseStructType(in)
+		if err != nil {
 			return nil, 0, err
 		}
-		var fields []*vm.Type
-		var embedded []vm.EmbeddedField
-		for _, lt := range in.Split(lang.Semicolon) {
-			if len(lt) == 0 {
-				continue
-			}
-			if f, origType := p.parseEmbeddedField(lt); f != nil {
-				embedded = append(embedded, vm.EmbeddedField{FieldIdx: len(fields), Type: origType})
-				fields = append(fields, f)
-				continue
-			}
-			types, names, _, err := p.parseParamTypes(lt, parseTypeType)
-			if err != nil {
-				// A lone ident that failed embedded-field lookup and param-type
-				// parsing is likely a forward-declared type. Return ErrUndefined
-				// so the lazy fixpoint loop can retry after the type is defined.
-				if errors.Is(err, ErrMissingType) && len(lt) == 1 && lt[0].Tok == lang.Ident {
-					return nil, 0, ErrUndefined{lt[0].Str}
-				}
-				return nil, 0, err
-			}
-			for i, name := range names {
-				if j := strings.LastIndex(name, "/"); j >= 0 {
-					name = name[j+1:]
-				}
-				pkgPath := ""
-				if len(name) > 0 && unicode.IsLower(rune(name[0])) {
-					pkgPath = p.pkgName
-				}
-				// A struct field whose type is a placeholder (not yet finalized via SetFields)
-				// means the containing struct's size cannot be computed yet. Return ErrUndefined
-				// so the retry loop defers this declaration until the placeholder is finalized.
-				if types[i].Rtype.Kind() == reflect.Struct && types[i].Placeholder {
-					return nil, 0, ErrUndefined{types[i].Name}
-				}
-				// Copy parscan-level type (preserving Params, IfaceMethods, etc.) and set field name.
-				ft := *types[i]
-				ft.Name = name
-				ft.PkgPath = pkgPath
-				fields = append(fields, &ft)
-			}
-		}
-		return vm.StructOf(fields, embedded), 2, nil
+		return typ, 2, nil
 
 	case lang.Arrow:
 		// "<-chan T" is recv-only; require chan keyword next.
@@ -508,4 +467,59 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 		}
 	}
 	return false
+}
+
+// parseStructType parses a struct type expression: struct { fields... }.
+// in[0] must be lang.Struct and in[1] must be lang.BraceBlock.
+func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
+	if len(in) < 2 || in[1].Tok != lang.BraceBlock {
+		return nil, fmt.Errorf("%w: %v", ErrSyntax, in)
+	}
+	fieldToks, err := p.Scan(in[1].Block(), false)
+	if err != nil {
+		return nil, err
+	}
+	var fields []*vm.Type
+	var embedded []vm.EmbeddedField
+	for _, lt := range fieldToks.Split(lang.Semicolon) {
+		if len(lt) == 0 {
+			continue
+		}
+		if f, origType := p.parseEmbeddedField(lt); f != nil {
+			embedded = append(embedded, vm.EmbeddedField{FieldIdx: len(fields), Type: origType})
+			fields = append(fields, f)
+			continue
+		}
+		types, names, _, err := p.parseParamTypes(lt, parseTypeType)
+		if err != nil {
+			// A lone ident that failed embedded-field lookup and param-type
+			// parsing is likely a forward-declared type. Return ErrUndefined
+			// so the lazy fixpoint loop can retry after the type is defined.
+			if errors.Is(err, ErrMissingType) && len(lt) == 1 && lt[0].Tok == lang.Ident {
+				return nil, ErrUndefined{lt[0].Str}
+			}
+			return nil, err
+		}
+		for i, name := range names {
+			if j := strings.LastIndex(name, "/"); j >= 0 {
+				name = name[j+1:]
+			}
+			pkgPath := ""
+			if len(name) > 0 && unicode.IsLower(rune(name[0])) {
+				pkgPath = p.pkgName
+			}
+			// A struct field whose type is a placeholder (not yet finalized via SetFields)
+			// means the containing struct's size cannot be computed yet. Return ErrUndefined
+			// so the retry loop defers this declaration until the placeholder is finalized.
+			if types[i].Rtype.Kind() == reflect.Struct && types[i].Placeholder {
+				return nil, ErrUndefined{types[i].Name}
+			}
+			// Copy parscan-level type (preserving Params, IfaceMethods, etc.) and set field name.
+			ft := *types[i]
+			ft.Name = name
+			ft.PkgPath = pkgPath
+			fields = append(fields, &ft)
+		}
+	}
+	return vm.StructOf(fields, embedded), nil
 }
