@@ -35,8 +35,12 @@ func runFile(t *testing.T, p string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want, isErr, skip := commentData(p, buf)
+	if skip {
+		t.Skip()
+	}
+
 	var stdout, stderr bytes.Buffer
-	want, isErr := commentData(p, buf)
 
 	i := NewInterpreter(golang.GoSpec)
 	i.SetIO(os.Stdin, &stdout, &stderr)
@@ -59,17 +63,20 @@ func runFile(t *testing.T, p string) {
 	}
 }
 
-func commentData(p string, buf []byte) (text string, isErr bool) {
+func commentData(p string, buf []byte) (text string, isErr, skip bool) {
 	fset := token.NewFileSet()
 	f, _ := parser.ParseFile(fset, p, buf, parser.ParseComments)
 	if len(f.Comments) == 0 {
 		return
 	}
 	text = f.Comments[len(f.Comments)-1].Text()
-	if strings.HasPrefix(text, "Error:\n") {
-		return strings.TrimPrefix(text, "Error:\n"), true
-	} else if strings.HasPrefix(text, "Output:\n") {
-		return strings.TrimPrefix(text, "Output:\n"), false
+	switch {
+	case strings.HasPrefix(text, "skip:"):
+		return "", false, true
+	case strings.HasPrefix(text, "Error:\n"):
+		return strings.TrimPrefix(text, "Error:\n"), true, false
+	case strings.HasPrefix(text, "Output:\n"):
+		return strings.TrimPrefix(text, "Output:\n"), false, false
 	}
 	return
 }
