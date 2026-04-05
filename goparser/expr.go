@@ -95,9 +95,8 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 
 		case lang.Mul:
 			if i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Colon {
-				// Known non-type identifier after * is a dereference — avoids a
-				// speculative parseTypeExpr call (and its error allocation) on *ptr.
 				if i+1 < lin && in[i+1].Tok == lang.Ident {
+					// Known non-type identifier after * is a dereference.
 					if s, _, ok := p.Symbols.Get(in[i+1].Str, p.scope); ok && s.Kind != symbol.Type {
 						t.Tok = lang.Deref
 						addop(t)

@@ -2,14 +2,16 @@
 package interp
 
 import (
+	"os"
 	"reflect"
 
 	"github.com/mvertes/parscan/comp"
 	"github.com/mvertes/parscan/lang"
+	"github.com/mvertes/parscan/stdlib"
 	"github.com/mvertes/parscan/vm"
 )
 
-const debug = false
+var debug = os.Getenv("PARSCAN_DEBUG") != ""
 
 // Interp represents the state of an interpreter.
 type Interp struct {
@@ -19,7 +21,9 @@ type Interp struct {
 
 // NewInterpreter returns a new interpreter.
 func NewInterpreter(s *lang.Spec) *Interp {
-	return &Interp{comp.NewCompiler(s), vm.NewMachine()}
+	i := &Interp{comp.NewCompiler(s), vm.NewMachine()}
+	i.ImportPackageValues(stdlib.Values)
+	return i
 }
 
 // Eval evaluates code string and return the last produced value if any, or an error.

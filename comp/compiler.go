@@ -19,9 +19,6 @@ import (
 
 const debug = false
 
-// builtinDeferOp maps builtin function names to the VM opcode used when deferred.
-// These builtins have no VM-callable function value, so DeferPush stores the opcode
-// number and the VM dispatches it directly on return (isX=2).
 var builtinDeferOp = map[string]vm.Op{
 	"print":   vm.Print,
 	"println": vm.Println,
@@ -148,10 +145,6 @@ func (c *Compiler) compileDecl(decl goparser.Tokens) error {
 	return c.generate(toks)
 }
 
-// allocGlobalSlots pre-assigns data slots for Var and Func symbols so that
-// Phase 2 code generation never encounters an unresolved index for them.
-// Type and Value symbols are still allocated on the fly in the Ident handler,
-// since many built-in types/values may never be referenced.
 func (c *Compiler) allocGlobalSlots() {
 	for _, s := range c.Symbols {
 		if s.Index != symbol.UnsetAddr {
@@ -191,10 +184,6 @@ func (c *Compiler) typeIndex(typ *vm.Type) int {
 	return i
 }
 
-// preRegisterStructTypes scans declarations for struct type definitions and
-// registers placeholder types in the symbol table. This enables forward and
-// mutual references between types (e.g., type F func(*A); type A struct{F}).
-// Placeholders are added without tracking, so they survive retry-loop cleanup.
 func (c *Compiler) preRegisterStructTypes(decls []goparser.Tokens) {
 	for _, decl := range decls {
 		if len(decl) < 2 || decl[0].Tok != lang.Type {
@@ -229,8 +218,6 @@ func (c *Compiler) registerStructPlaceholder(name string) {
 	c.SymAdd(symbol.UnsetAddr, name, vm.NewValue(ph.Rtype), symbol.Type, ph)
 }
 
-// findTypeSym searches the symbol table for the parscan *vm.Type registered under rtype.
-// Returns nil if not found (e.g. rtype is a native Go type with no parscan-level info).
 func (c *Compiler) findTypeSym(rtype reflect.Type) *vm.Type {
 	for _, sym := range c.Symbols {
 		if sym.Kind == symbol.Type && sym.Type != nil && sym.Type.Rtype == rtype {
@@ -240,11 +227,7 @@ func (c *Compiler) findTypeSym(rtype reflect.Type) *vm.Type {
 	return nil
 }
 
-// registerMethods registers promoted methods from embedded types into typ so that
-// interface dispatch (IfaceCall) can find them. Called at IfaceWrap emission time when
-// iface is the interface type being satisfied and typ is the concrete type.
 func (c *Compiler) registerMethods(iface, typ *vm.Type) {
-	// For *T, resolve T so we can look up value methods and embedded promotions.
 	isPtr := typ.Rtype.Kind() == reflect.Pointer
 	lookupTyp := typ
 	if isPtr {
@@ -257,7 +240,6 @@ func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 		if id < len(typ.Methods) && (typ.Methods[id].Index >= 0 || typ.Methods[id].EmbedIface) {
 			continue // already registered directly or through embedded interface
 		}
-		// Find the method: value receiver, pointer receiver, or promoted.
 		s := &symbol.Symbol{Kind: symbol.Var, Name: lookupTyp.Name, Type: lookupTyp}
 		m, fieldPath := c.Symbols.MethodByName(s, im.Name)
 		if m == nil {
@@ -280,7 +262,6 @@ func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 			}
 			continue
 		}
-		// Path: nil = direct (no adjustment), []int{} = deref only, non-empty = field path.
 		var mpath []int
 		if len(fieldPath) > 0 {
 			if isPtr {
@@ -337,8 +318,7 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 		inst.B = int32(arg[1]) //nolint:gosec
 	}
 	// Field/FieldSet encode a variable-length field index path in A, B.
-	// Unused trailing B must be -1 so the VM can distinguish
-	// path length (field index 0 is valid).
+	// Unused trailing B must be -1 so the VM can distinguish path length.
 	if op == vm.Field || op == vm.FieldSet {
 		if len(arg) < 2 {
 			inst.B = -1
@@ -347,9 +327,6 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 	c.Code = append(c.Code, inst)
 }
 
-// emitField emits one or more Field instructions for a field index path.
-// Paths of length 1-2 are emitted as a single Field instruction.
-// Longer paths are split: emit Field for the first 2 indices, then Field for the remainder.
 func (c *Compiler) emitField(t goparser.Token, path []int) {
 	for len(path) > 2 {
 		c.emit(t, vm.Field, path[0], path[1])
@@ -358,12 +335,10 @@ func (c *Compiler) emitField(t goparser.Token, path []int) {
 	c.emit(t, vm.Field, path...)
 }
 
-// emitIfaceWrap emits IfaceWrap if assigning a concrete value to an interface type.
 func (c *Compiler) emitIfaceWrap(t goparser.Token, ifaceTyp, concreteTyp *vm.Type) {
 	c.emitIfaceWrapAt(t, ifaceTyp, concreteTyp, 0)
 }
 
-// emitIfaceWrapAt emits IfaceWrap with a depth offset for non-top stack values.
 func (c *Compiler) emitIfaceWrapAt(t goparser.Token, ifaceTyp, concreteTyp *vm.Type, depth int) {
 	if ifaceTyp == nil || !ifaceTyp.IsInterface() || concreteTyp == nil || concreteTyp.IsInterface() {
 		return
@@ -886,6 +861,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emitIfaceWrap(t, elemTyp, vs.Type)
 					c.emit(t, vm.MapSet)
 				}
+
 			case symbol.Type, symbol.Unset:
 				fieldName := ks.Name
 				if ks.Kind == symbol.Type {
@@ -907,9 +883,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				c.emitIfaceWrap(t, ft, vs.Type)
 				c.emit(t, vm.FieldSet, j...)
+
 			case symbol.LocalVar, symbol.Var:
-				// Field name in struct literal coincides with a local/global variable.
-				// The Ident emitted a spurious GetLocal/GetGlobal — remove it.
 				if ts.Type == nil || ts.Type.Rtype.Kind() != reflect.Struct {
 					break
 				}
@@ -1301,11 +1276,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			s := pop()
 			switch s.Kind {
 			case symbol.Pkg:
-				p, ok := goparser.Packages[s.PkgPath]
+				p, ok := c.Packages[s.PkgPath]
 				if !ok {
 					return fmt.Errorf("package not found: %s", s.PkgPath)
 				}
-				v, ok := p[t.Str[1:]]
+				v, ok := p.Values[t.Str[1:]]
 				if !ok {
 					return fmt.Errorf("symbol not found in package %s: %s", s.PkgPath, t.Str[1:])
 				}
@@ -1691,8 +1666,6 @@ func arithmeticOpType(right, left *symbol.Symbol) *vm.Type {
 	return symbol.Vtype(right)
 }
 
-// constKind returns Const if both operands are constants, otherwise Value.
-// Used so that constant-folded arithmetic results remain constants for subsequent type inference.
 func constKind(right, left *symbol.Symbol) symbol.Kind {
 	if right.Kind == symbol.Const && left.Kind == symbol.Const {
 		return symbol.Const
@@ -1700,9 +1673,6 @@ func constKind(right, left *symbol.Symbol) symbol.Kind {
 	return symbol.Value
 }
 
-// emitConstConvert emits a Convert instruction if s is a numeric constant whose
-// stored type differs from typ (e.g. float constant 1e2 used in an int expression).
-// depth is the stack slot to convert (0 = top of stack).
 func (c *Compiler) emitConstConvert(t goparser.Token, s *symbol.Symbol, typ *vm.Type, depth int) {
 	if s.Kind != symbol.Const || typ == nil {
 		return
@@ -1719,8 +1689,6 @@ func (c *Compiler) emitConstConvert(t goparser.Token, s *symbol.Symbol, typ *vm.
 
 func booleanOpType(_, _ *symbol.Symbol) *vm.Type { return vm.TypeOf(true) }
 
-// shiftLeftType returns the type for the left operand of a shift. Per Go spec, an untyped float
-// constant used as the left operand of a shift is treated as int.
 func shiftLeftType(left *symbol.Symbol, intTyp *vm.Type) *vm.Type {
 	vt := symbol.Vtype(left)
 	if left.Kind == symbol.Const && vt != nil {
@@ -1731,12 +1699,6 @@ func shiftLeftType(left *symbol.Symbol, intTyp *vm.Type) *vm.Type {
 	return vt
 }
 
-// retractPush removes the most recently emitted Push if s is a constant,
-// returning (immediate value, true). Used for immediate-operand peephole.
-
-// fuseGetLocal checks if the last emitted instruction is GetLocal. If so, it
-// replaces it with the fused superinstruction (op) and stores the immediate in B.
-// Returns true if fusion occurred.
 func (c *Compiler) fuseGetLocal(op vm.Op, imm int) bool {
 	if len(c.Code) == 0 || c.Code[len(c.Code)-1].Op != vm.GetLocal {
 		return false
@@ -1746,12 +1708,6 @@ func (c *Compiler) fuseGetLocal(op vm.Op, imm int) bool {
 	return true
 }
 
-// fuseCmpJump fuses a comparison+jump pair into a single instruction.
-// It checks if the previous instruction is cmpOp or getLocalCmpOp and replaces
-// it with the corresponding fused variant. immAdj is added to the comparison
-// immediate (used to rewrite Greater as Lower via a>imm ≡ a>=imm+1 ≡ !(a<imm+1)).
-// The jump offset is resolved from the token's label (or added to fixList for
-// forward references).
 func (c *Compiler) fuseCmpJump(t goparser.Token, fixList *goparser.Tokens,
 	cmpOp, fusedOp, getLocalCmpOp, getLocalFusedOp vm.Op, immAdj int32,
 ) bool {
@@ -1798,7 +1754,6 @@ func (c *Compiler) retractPush(s *symbol.Symbol) (int, bool) {
 	return n, true
 }
 
-// isInt64Kind reports whether typ is int or int64 (64-bit signed integer).
 func isInt64Kind(typ *vm.Type) bool {
 	if typ == nil {
 		return false
@@ -1807,7 +1762,6 @@ func isInt64Kind(typ *vm.Type) bool {
 	return k == reflect.Int || k == reflect.Int64
 }
 
-// isUint64Kind reports whether typ is uint or uint64 (64-bit unsigned integer).
 func isUint64Kind(typ *vm.Type) bool {
 	if typ == nil {
 		return false
@@ -1816,8 +1770,6 @@ func isUint64Kind(typ *vm.Type) bool {
 	return k == reflect.Uint || k == reflect.Uint64
 }
 
-// numericOp returns a per-type opcode computed as base + type offset.
-// Panics if typ is nil or not a numeric kind — caller must ensure type is resolved.
 func numericOp(base vm.Op, typ *vm.Type) vm.Op {
 	if typ == nil {
 		panic("numericOp: nil type")
@@ -1829,9 +1781,6 @@ func numericOp(base vm.Op, typ *vm.Type) vm.Op {
 	return base + vm.Op(vm.NumKindOffset[k]) //nolint:gosec
 }
 
-// emitArithmeticOp emits a binary arithmetic operation with optional immediate optimization.
-// immOp/fuseOp are the immediate/fused GetLocal variants (0 = no immediate optimization).
-// strOp is the string-concatenation opcode (0 = not applicable).
 func (c *Compiler) emitArithmeticOp(t goparser.Token, right *symbol.Symbol, typ *vm.Type, baseOp, immOp, fuseOp, strOp vm.Op) {
 	if strOp != 0 && typ != nil && typ.Rtype.Kind() == reflect.String {
 		c.emit(t, strOp)
@@ -1848,10 +1797,6 @@ func (c *Compiler) emitArithmeticOp(t goparser.Token, right *symbol.Symbol, typ 
 	c.emit(t, numericOp(baseOp, typ))
 }
 
-// emitComparisonOp emits a binary comparison operation with optional immediate optimization.
-// intImm/uintImm are the int64/uint64 immediate opcodes.
-// fuseInt/fuseUint are the fused GetLocal variants (0 = no fusion).
-// If negate is true, vm.Not is emitted after the comparison.
 func (c *Compiler) emitComparisonOp(t goparser.Token, s2 *symbol.Symbol, typ *vm.Type, baseOp, intImm, uintImm, fuseInt, fuseUint vm.Op, negate bool) {
 	var immOp, fuseOp vm.Op
 	if isInt64Kind(typ) {
@@ -1876,8 +1821,6 @@ func (c *Compiler) emitComparisonOp(t goparser.Token, s2 *symbol.Symbol, typ *vm
 	}
 }
 
-// resolveLabel returns the relative jump offset for label t.Str.
-// If the label is not yet defined, t is appended to fixList for later fixup.
 func (c *Compiler) resolveLabel(t goparser.Token, fixList *goparser.Tokens) int {
 	if s, ok := c.Symbols[t.Str]; ok {
 		return int(s.Value.Int()) - len(c.Code)
@@ -1887,7 +1830,6 @@ func (c *Compiler) resolveLabel(t goparser.Token, fixList *goparser.Tokens) int 
 	return 0
 }
 
-// emitJump resolves the jump label and emits a jump instruction.
 func (c *Compiler) emitJump(t goparser.Token, fixList *goparser.Tokens, op vm.Op) {
 	c.emit(t, op, c.resolveLabel(t, fixList))
 }
@@ -2008,7 +1950,6 @@ func (c *Compiler) BuildDebugInfo() *vm.DebugInfo {
 	return di
 }
 
-// enclosingFunc finds the nearest enclosing Func symbol for a scoped name.
 func enclosingFunc(scopedName string, syms symbol.SymMap) string {
 	scope := scopedName
 	for {
@@ -2023,7 +1964,6 @@ func enclosingFunc(scopedName string, syms symbol.SymMap) string {
 	}
 }
 
-// removeFnew removes the Fnew/FnewE instruction for the given symbol index.
 func (c *Compiler) removeFnew(index int) {
 	for i := len(c.Code) - 1; i >= 0; i-- {
 		op := c.Code[i].Op
@@ -2035,9 +1975,6 @@ func (c *Compiler) removeFnew(index int) {
 	}
 }
 
-// removeGetLocal removes the most recent GetLocal instruction for the given index.
-// If the instruction is GetLocal2 with A=index, it unfuses to GetLocal(B) to
-// preserve the value loaded at position B.
 func (c *Compiler) removeGetLocal(index int) {
 	for i := len(c.Code) - 1; i >= 0; i-- {
 		op := c.Code[i].Op
@@ -2056,9 +1993,6 @@ func (c *Compiler) removeGetLocal(index int) {
 	}
 }
 
-// removeGetGlobal removes the most recent GetGlobal instruction for the given data index,
-// but only if it was a standalone function load (not part of a method dispatch / MkClosure sequence).
-// Returns true if the instruction was removed.
 func (c *Compiler) removeGetGlobal(index int) bool {
 	for i := len(c.Code) - 1; i >= 0; i-- {
 		if c.Code[i].Op == vm.GetGlobal && int(c.Code[i].A) == index {
@@ -2074,8 +2008,6 @@ func (c *Compiler) removeGetGlobal(index int) bool {
 	return false
 }
 
-// compileBuiltin handles built-in function calls (len, cap, append, copy, delete, new, make,
-// panic, recover, print, println). Returns (true, nil) if handled, (false, nil) if not a builtin.
 func (c *Compiler) compileBuiltin(
 	s *symbol.Symbol, narg int, t goparser.Token,
 	stack *[]*symbol.Symbol, push func(*symbol.Symbol), pop func() *symbol.Symbol, _ func() *symbol.Symbol,

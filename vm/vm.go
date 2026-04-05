@@ -331,14 +331,7 @@ type Machine struct {
 
 	baseCodeLen int // len(code) before Run() appends sentinel instructions
 
-	// funcFields maps struct func field addresses to parscan func values (int code addresses
-	// or Closures). Parscan funcs cannot be stored directly in typed Go func fields via reflect.
-	funcFields map[uintptr]Value
-	// funcFieldsByFuncPtr is a stable fallback for funcFields when a struct containing func
-	// fields is copied (e.g. via append). Keyed by the funcValue struct pointer, obtained by
-	// dereferencing the field's memory address — unique per closure and stable across copies.
-	// (reflect.Value.Pointer() on a Func returns only the code pointer, which reflect.MakeFunc
-	// reuses for all closures, so it is not a suitable key.)
+	funcFields          map[uintptr]Value
 	funcFieldsByFuncPtr map[uintptr]Value
 
 	in       io.Reader // machine standard input (nil = os.Stdin)
@@ -366,20 +359,12 @@ func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
 	m.debugOut = out
 }
 
-// heapSavedFlag is set in the high bit of prevFP when the caller's heap was saved to m.heapFrames.
 const heapSavedFlag = uint64(1) << 63
 
-// packRetIP packs the return IP, nret, and frameBase into a single uint64.
-// frameBase is the distance from fp to the bottom of the call frame
-// (args + overhead for CallImm, func + args + overhead for Call).
-// Layout: [frameBase:16 | nret:16 | retIP:32].
 func packRetIP(retIP, nret, frameBase int) uint64 {
 	return uint64(uint32(retIP)) | uint64(nret)<<32 | uint64(frameBase)<<48 //nolint:gosec
 }
 
-// growStack allocates a new stack with room for at least sp+1+need elements.
-// Callers must check capacity before calling. Returns the new slice extended
-// to its full capacity.
 func growStack(mem []Value, sp, need int) []Value {
 	n := max(len(mem)*2, sp+1+need+256)
 	newMem := make([]Value, n)
@@ -463,7 +448,7 @@ func (m *Machine) Run() (err error) {
 							mem = growStack(mem, sp, 1)
 						}
 						sp++
-						mem[sp] = fromReflect(v)
+						mem[sp] = FromReflect(v)
 					}
 					break
 				}
@@ -659,7 +644,7 @@ func (m *Machine) Run() (err error) {
 			if !v.ref.IsValid() {
 				// nil source: zero value of destination type.
 				if dstKind != reflect.Interface {
-					mem[idx] = fromReflect(reflect.Zero(dstType))
+					mem[idx] = FromReflect(reflect.Zero(dstType))
 				}
 				break
 			}
@@ -731,7 +716,7 @@ func (m *Machine) Run() (err error) {
 
 			default:
 				// Fallback: use reflect.
-				mem[idx] = fromReflect(v.Reflect().Convert(dstType))
+				mem[idx] = FromReflect(v.Reflect().Convert(dstType))
 			}
 
 		case IfaceWrap:
@@ -751,7 +736,7 @@ func (m *Machine) Run() (err error) {
 				for _, fi := range method.Path {
 					rv = rv.Field(fi)
 				}
-				ifc = fromReflect(rv).IfaceVal()
+				ifc = FromReflect(rv).IfaceVal()
 				method = ifc.Typ.Methods[int(c.A)]
 			}
 			codeAddr := int(m.globals[method.Index].num) //nolint:gosec
@@ -768,7 +753,7 @@ func (m *Machine) Run() (err error) {
 					}
 					rv = rv.Field(idx)
 				}
-				*cell = fromReflect(rv)
+				*cell = FromReflect(rv)
 			}
 			mem[sp] = Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Heap: []*Value{cell}})}
 
@@ -926,14 +911,14 @@ func (m *Machine) Run() (err error) {
 			mem[sp] = ValueOf(mem[sp-1-int(c.A)].ref.Len())
 		case Next:
 			if k, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, bool))(); ok {
-				m.assignSlot(&m.globals[int(c.B)], fromReflect(k))
+				m.assignSlot(&m.globals[int(c.B)], FromReflect(k))
 			} else {
 				ip += int(c.A)
 				continue
 			}
 		case NextLocal:
 			if k, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, bool))(); ok {
-				m.assignSlot(&mem[fp-1+int(c.B)], fromReflect(k))
+				m.assignSlot(&mem[fp-1+int(c.B)], FromReflect(k))
 			} else {
 				ip += int(c.A)
 				continue
@@ -946,8 +931,8 @@ func (m *Machine) Run() (err error) {
 		case Next2:
 			if k, v, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
 				kAddr, vAddr := int(int16(c.B)), int(int16(c.B>>16)) //nolint:gosec
-				m.assignSlot(&m.globals[kAddr], fromReflect(k))
-				m.assignSlot(&m.globals[vAddr], fromReflect(v))
+				m.assignSlot(&m.globals[kAddr], FromReflect(k))
+				m.assignSlot(&m.globals[vAddr], FromReflect(v))
 			} else {
 				ip += int(c.A)
 				continue
@@ -955,8 +940,8 @@ func (m *Machine) Run() (err error) {
 		case Next2Local:
 			if k, v, ok := mem[sp-1].ref.Interface().(func() (reflect.Value, reflect.Value, bool))(); ok {
 				kAddr, vAddr := int(int16(c.B)), int(int16(c.B>>16)) //nolint:gosec
-				m.assignSlot(&mem[fp-1+kAddr], fromReflect(k))
-				m.assignSlot(&mem[fp-1+vAddr], fromReflect(v))
+				m.assignSlot(&mem[fp-1+kAddr], FromReflect(k))
+				m.assignSlot(&mem[fp-1+vAddr], FromReflect(v))
 			} else {
 				ip += int(c.A)
 				continue
@@ -1046,7 +1031,7 @@ func (m *Machine) Run() (err error) {
 		case ChanRecv:
 			ch := mem[sp]
 			v, ok := ch.ref.Recv()
-			mem[sp] = fromReflect(v)
+			mem[sp] = FromReflect(v)
 			if int(c.A) == 1 {
 				if sp+1 >= len(mem) {
 					mem = growStack(mem, sp, 1)
@@ -1083,7 +1068,7 @@ func (m *Machine) Run() (err error) {
 			ci := meta.Cases[chosen]
 			if ci.Dir == reflect.SelectRecv {
 				if ci.Slot >= 0 {
-					v := fromReflect(recv)
+					v := FromReflect(recv)
 					if ci.Local {
 						mem[fp-1+ci.Slot] = v
 					} else {
@@ -1457,7 +1442,7 @@ func (m *Machine) Run() (err error) {
 			if ref.Kind() == reflect.String {
 				mem[sp-1] = Value{num: uint64(ref.String()[idx]), ref: zuint8}
 			} else {
-				mem[sp-1] = fromReflect(ref.Index(idx))
+				mem[sp-1] = FromReflect(ref.Index(idx))
 			}
 			sp--
 		case IndexAddr:
@@ -1476,7 +1461,7 @@ func (m *Machine) Run() (err error) {
 			if !rv.IsValid() {
 				rv = reflect.Zero(mapVal.Type().Elem())
 			}
-			mem[sp-1] = fromReflect(rv)
+			mem[sp-1] = FromReflect(rv)
 			sp--
 		case MapIndexOk:
 			mapVal := mem[sp-1].ref
@@ -1485,7 +1470,7 @@ func (m *Machine) Run() (err error) {
 			if !ok {
 				rv = reflect.Zero(mapVal.Type().Elem())
 			}
-			mem[sp-1] = fromReflect(rv)
+			mem[sp-1] = FromReflect(rv)
 			mem[sp] = boolVal(ok)
 		case MapSet:
 			mapVal := mem[sp-2].ref
@@ -1836,8 +1821,6 @@ func (m *Machine) Run() (err error) {
 	}
 }
 
-// restoreFP restores the frame pointer and closure environment after a return.
-// fpVal is the raw uint64 stored in the prevFP slot (mem[fp-1].num).
 func (m *Machine) restoreFP(fpVal uint64) int {
 	if fpVal&heapSavedFlag != 0 {
 		fp := int(fpVal &^ heapSavedFlag) //nolint:gosec
@@ -1851,9 +1834,6 @@ func (m *Machine) restoreFP(fpVal uint64) int {
 	return int(fpVal) //nolint:gosec
 }
 
-// resolveIPAndHeap resolves a parscan function value to its code address,
-// setting m.heap to the closure environment (nil for non-closures).
-// Used for deferred VM-func calls (isX==0) in Return and PanicUnwind.
 func (m *Machine) resolveIPAndHeap(funcVal Value) int {
 	if isNum(funcVal.ref.Kind()) {
 		m.heap = nil
@@ -1870,8 +1850,6 @@ func (m *Machine) resolveIPAndHeap(funcVal Value) int {
 	return int(funcVal.num) //nolint:gosec
 }
 
-// deferPush implements the DeferPush opcode: snapshot deferred call args and
-// push the 3-slot defer header onto the stack.
 func (m *Machine) deferPush(c Instruction, mem []Value, fp, sp int) ([]Value, int) {
 	narg := int(c.A)
 	isX := int(c.B)
@@ -1900,8 +1878,6 @@ func (m *Machine) deferPush(c Instruction, mem []Value, fp, sp int) ([]Value, in
 	return mem, sp
 }
 
-// deferRet implements the DeferRet opcode: restore the outer frame after a
-// deferred VM call returns.
 func (m *Machine) deferRet(mem []Value, fp, sp int) ([]Value, int, int) {
 	mem = mem[:sp+1]
 	dh := int(mem[fp-3].num)        //nolint:gosec
@@ -1920,9 +1896,6 @@ func (m *Machine) deferRet(mem []Value, fp, sp int) ([]Value, int, int) {
 	return mem, sp, returnIP
 }
 
-// panicUnwind implements the PanicUnwind opcode: dispatch deferred calls in
-// the current frame (LIFO), then tear the frame down and continue unwinding.
-// Returns (true, err) when Run should return, (false, nil) to continue the loop.
 func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (bool, error) {
 	deferRetBits := uint64(panicAddr - 1) //nolint:gosec
 	*mem = (*mem)[:*sp+1]
@@ -2047,7 +2020,6 @@ func (m *Machine) Push(v ...Value) (l int) {
 	return l
 }
 
-// reflectForSend prepares val for sending into a channel whose element type is elemType.
 func (m *Machine) reflectForSend(val Value, elemType reflect.Type) reflect.Value {
 	if elemType.Kind() == reflect.Func {
 		return m.wrapForFunc(val, elemType)
@@ -2059,9 +2031,6 @@ func (m *Machine) reflectForSend(val Value, elemType reflect.Type) reflect.Value
 	return rv
 }
 
-// wrapForFunc returns a reflect.Value suitable for storing into a Go container
-// of the given type. For func types, parscan func values are wrapped as proper Go funcs.
-// For non-func types, numeric type mismatches are resolved via raw-bits reinterpretation.
 func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 	if funcType.Kind() != reflect.Func {
 		return numReflect(funcType, val)
@@ -2147,7 +2116,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	m.mem = nil
 	m.mem = append(m.mem, fval)
 	for _, a := range args {
-		m.mem = append(m.mem, fromReflect(a))
+		m.mem = append(m.mem, FromReflect(a))
 	}
 
 	// Temporarily append Call + Exit to drive the function to completion.
@@ -2171,9 +2140,6 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	return out, nil
 }
 
-// newGoroutine launches fval(args...) as a new goroutine.
-// The child shares the parent's globals and code slices; it gets its own stack
-// with the call frame pre-built so Run() starts directly in the target function.
 func (m *Machine) newGoroutine(fval Value, args []Value) {
 	// Inline fast path: resolve addressable struct func fields (mirrors Call opcode).
 	if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
@@ -2234,8 +2200,6 @@ func (m *Machine) newGoroutine(fval Value, args []Value) {
 	go func() { _ = child.Run() }()
 }
 
-// execBuiltinDeferred executes a deferred builtin opcode (isX==2) on its stored args.
-// base is the index of the first argument in mem, narg is the argument count.
 func (m *Machine) execBuiltinDeferred(op Op, base, narg int, mem []Value) {
 	switch op {
 	case Println, Print:
@@ -2259,16 +2223,12 @@ func (m *Machine) execBuiltinDeferred(op Op, base, narg int, mem []Value) {
 	}
 }
 
-// snapshotArg returns a copy of v detached from any parent frame backing store,
-// so the copy is independent of later reassignment to the source variable.
-// Used for goroutine and deferred call arguments, which are evaluated at the
-// call site rather than at execution time.
 func snapshotArg(v Value) Value {
 	if v.ref.CanAddr() {
 		if isNum(v.ref.Kind()) {
-			v.ref = reflect.Zero(v.ref.Type()) // value is in .num; drop the cell pointer
+			v.ref = reflect.Zero(v.ref.Type())
 		} else {
-			v.ref = reflect.ValueOf(v.ref.Interface()) // extract current value from cell
+			v.ref = reflect.ValueOf(v.ref.Interface())
 		}
 	}
 	return v
@@ -2312,16 +2272,10 @@ func Vstring(lv []Value) string {
 	return sb.String()
 }
 
-// funcValuePtr returns the funcValue struct pointer stored in an addressable func field fv.
-// reflect.MakeFunc reuses the same code pointer for all closures, so Pointer() is not unique;
-// the funcValue struct pointer obtained by dereferencing the field address is.
 func funcValuePtr(fv reflect.Value) uintptr {
 	return *(*uintptr)(fv.Addr().UnsafePointer()) //nolint:gosec
 }
 
-// forceSettable returns fv as-is if settable, or makes it settable via unsafe.
-// Use it only on unexported struct fields. If the value is not addressable,
-// it is returned as-is (e.g. field of a temporary struct is readable but not settable).
 func forceSettable(fv reflect.Value) reflect.Value {
 	if !fv.CanSet() && fv.CanAddr() {
 		fv = reflect.NewAt(fv.Type(), unsafe.Pointer(fv.UnsafeAddr())).Elem()
@@ -2329,8 +2283,6 @@ func forceSettable(fv reflect.Value) reflect.Value {
 	return fv
 }
 
-// resolveFuncField returns the parscan Value for v if v is an addressable struct func
-// field registered in funcFields or funcFieldsByFuncPtr; otherwise returns v unchanged.
 func (m *Machine) resolveFuncField(v Value) Value {
 	if v.ref.Kind() == reflect.Func && v.ref.CanAddr() {
 		if pf, ok := m.funcFields[v.ref.UnsafeAddr()]; ok {
@@ -2345,7 +2297,6 @@ func (m *Machine) resolveFuncField(v Value) Value {
 	return v
 }
 
-// setGoFuncField sets fv to gf and registers val in funcFieldsByFuncPtr for post-copy lookup.
 func (m *Machine) setGoFuncField(fv, gf reflect.Value, val Value) {
 	fv.Set(gf)
 	if ptr := funcValuePtr(fv); ptr != 0 {
@@ -2356,9 +2307,6 @@ func (m *Machine) setGoFuncField(fv, gf reflect.Value, val Value) {
 	}
 }
 
-// setFuncField stores val into an addressable struct func field fv.
-// The parscan value goes into funcFields (for in-VM dispatch) and a Go wrapper is
-// set on the field (for native Go callbacks and nil checks).
 func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 	if pf, ok := val.ref.Interface().(ParscanFunc); ok && fv.CanAddr() {
 		if m.funcFields == nil {
@@ -2387,11 +2335,7 @@ func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 	fv.Set(val.Reflect())
 }
 
-// assignSlot writes src into the memory slot dst, updating both num and ref
-// for numeric types to maintain the dual-storage invariant.
 func (m *Machine) assignSlot(dst *Value, src Value) {
-	// Struct func field → func var: resolve to the parscan value so Call can dispatch
-	// it directly (interface{} slots are transparent to the Func/CanAddr check in Call).
 	if pf := m.resolveFuncField(src); pf != src {
 		*dst = pf
 		return
@@ -2432,8 +2376,6 @@ func (m *Machine) assignSlot(dst *Value, src Value) {
 	}
 }
 
-// setNumReflect writes the raw bits from num into a settable numeric reflect.Value,
-// handling cross-type assignment (e.g. int literal into uint16 slot).
 func setNumReflect(rv reflect.Value, num uint64) {
 	switch rv.Kind() {
 	case reflect.Bool:
@@ -2447,8 +2389,6 @@ func setNumReflect(rv reflect.Value, num uint64) {
 	}
 }
 
-// numSet assigns src into the settable reflect.Value dst, handling different-kind numeric pairs
-// (e.g. int value into uint slot from untyped const) that reflect.Set would reject.
 func numSet(dst reflect.Value, src Value) {
 	if isNum(dst.Kind()) && isNum(src.ref.Kind()) {
 		setNumReflect(dst, src.num)
@@ -2457,8 +2397,6 @@ func numSet(dst reflect.Value, src Value) {
 	}
 }
 
-// numReflect returns src as a reflect.Value of type t, handling different-kind numeric pairs
-// (e.g. int value for uint map key) that reflect.SetMapIndex would reject.
 func numReflect(t reflect.Type, src Value) reflect.Value {
 	if isNum(t.Kind()) && isNum(src.ref.Kind()) {
 		r := reflect.New(t).Elem()

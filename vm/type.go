@@ -360,9 +360,8 @@ func (v Value) Seq() iter.Seq[reflect.Value] { return v.Reflect().Seq() }
 // Seq2 returns a range-over-2 iterator for the value v.
 func (v Value) Seq2() iter.Seq2[reflect.Value, reflect.Value] { return v.ref.Seq2() }
 
-// fromReflect wraps a reflect.Value into a Value.
-// Numeric types get their bits extracted into num; composites use ref directly.
-func fromReflect(rv reflect.Value) Value {
+// FromReflect wraps a reflect.Value into a Value.
+func FromReflect(rv reflect.Value) Value {
 	if isNum(rv.Kind()) {
 		return Value{num: numBits(rv), ref: reflect.Zero(rv.Type())}
 	}

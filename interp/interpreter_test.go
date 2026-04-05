@@ -90,7 +90,6 @@ func BenchmarkAppend(b *testing.B) {
 }
 
 func BenchmarkAppendLarge(b *testing.B) {
-	// Build: append(s, 0, 1, 2, ..., 99) — 100 args in a single call.
 	args := make([]string, 100)
 	for i := range args {
 		args[i] = strconv.Itoa(i)

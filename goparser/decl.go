@@ -352,7 +352,7 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 		return out, fmt.Errorf("invalid argument %v", in[0])
 	}
 	pp := in[l-1].Block()
-	pkg, ok := Packages[pp]
+	pkg, ok := p.Packages[pp]
 	if !ok {
 		// TODO: try to import source package from here.
 		return out, fmt.Errorf("package not found: %s", pp)
@@ -368,7 +368,7 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	}
 	if n == "." {
 		// Import package symbols in the current scope.
-		for k, v := range pkg {
+		for k, v := range pkg.Values {
 			p.SymSet(k, &symbol.Symbol{Index: symbol.UnsetAddr, Name: k, Kind: symbol.Value, PkgPath: pp, Value: v})
 		}
 	} else {

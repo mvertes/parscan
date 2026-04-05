@@ -19,11 +19,12 @@ type Parser struct {
 	*scan.Scanner
 
 	Symbols  symbol.SymMap
-	function *symbol.Symbol
-	scope    string
-	fname    string
-	pkgName  string // current package name
-	noPkg    bool   // true if package statement is not mandatory (test, repl).
+	Packages map[string]*symbol.Package
+	function *symbol.Symbol // current function
+	scope    string         // current scope
+	fname    string         // current function name
+	pkgName  string         // current package name
+	noPkg    bool           // true if package statement is not mandatory (test, repl).
 
 	funcScope     string
 	framelen      map[string]int // length of function frames indexed by funcScope
@@ -56,6 +57,13 @@ func (p *Parser) SymAdd(i int, name string, v vm.Value, k symbol.Kind, t *vm.Typ
 	p.Symbols[name] = &symbol.Symbol{Kind: k, Name: name, Index: i, Value: v, Type: t}
 }
 
+// ImportPackageValues populates packages with values.
+func (p *Parser) ImportPackageValues(m map[string]map[string]reflect.Value) {
+	for k, v := range m {
+		p.Packages[k] = symbol.BinPkg(v, k)
+	}
+}
+
 // scopedName returns name qualified by the current scope (e.g. "main/foo").
 func (p *Parser) scopedName(name string) string {
 	return strings.TrimPrefix(p.scope+"/"+name, "/")
@@ -79,8 +87,6 @@ func (p *Parser) blankName() string {
 	return n
 }
 
-// addLocalVar registers a new local variable in the current function frame
-// and returns its scoped name for token fixup.
 func (p *Parser) addLocalVar(name string) string {
 	if name == "_" {
 		name = p.blankName()
@@ -91,9 +97,6 @@ func (p *Parser) addLocalVar(name string) string {
 	return scoped
 }
 
-// inferDefineType infers the type of a := variable from simple RHS composite
-// patterns (&T{} → *T, T{} → T) and sets it in the symbol table so that
-// later array-size constant expressions like len(v.Field) can be evaluated.
 func (p *Parser) inferDefineType(rhs Tokens, scopedName string) {
 	sym := p.Symbols[scopedName]
 	if sym == nil || sym.Type != nil {
@@ -123,8 +126,6 @@ func (p *Parser) inferDefineType(rhs Tokens, scopedName string) {
 	}
 }
 
-// addGlobalVar registers a new global variable in the current scope
-// and returns its scoped name for token fixup.
 func (p *Parser) addGlobalVar(name string) string {
 	if name == "_" {
 		name = p.blankName()
@@ -151,8 +152,6 @@ func caseBodyLabel(scope string, index int) string {
 	return fmt.Sprintf("%sc%d_body", scope, index)
 }
 
-// moveDefaultLast swaps the default clause (identified by "case :" with no condition)
-// to the last position in the list so it is evaluated last.
 func moveDefaultLast(clauses []Tokens) {
 	last := len(clauses) - 1
 	for i, cl := range clauses {
@@ -168,6 +167,7 @@ func NewParser(spec *lang.Spec, noPkg bool) *Parser {
 	p := &Parser{
 		Scanner:     scan.NewScanner(spec),
 		Symbols:     symbol.SymMap{},
+		Packages:    map[string]*symbol.Package{},
 		noPkg:       noPkg,
 		framelen:    map[string]int{},
 		labelCount:  map[string]int{},
@@ -300,8 +300,6 @@ func (p *Parser) SplitAndSortVarDecls(decls []Tokens) []Tokens {
 	return expanded
 }
 
-// varLines splits a var declaration (single or paren block) into component lines,
-// stripping the leading "var" token. Returns one element for a single declaration.
 func (p *Parser) varLines(toks Tokens) ([]Tokens, error) {
 	if len(toks) < 2 {
 		return nil, errors.New("missing expression")
@@ -316,7 +314,6 @@ func (p *Parser) varLines(toks Tokens) ([]Tokens, error) {
 	return inner.Split(lang.Semicolon), nil
 }
 
-// splitVarBlock splits a var(...) block into individual var declarations.
 func (p *Parser) splitVarBlock(decl Tokens) []Tokens {
 	lines, err := p.varLines(decl)
 	if err != nil || len(lines) <= 1 {
@@ -333,12 +330,11 @@ func (p *Parser) splitVarBlock(decl Tokens) []Tokens {
 	return result
 }
 
-// sortByDeps topologically sorts var declarations by dependency order (Kahn's algorithm).
 func (p *Parser) sortByDeps(decls []Tokens) []Tokens {
 	if len(decls) <= 1 {
 		return decls
 	}
-	nameSet := map[string]int{} // var name -> index
+	nameSet := map[string]int{}
 	for i, decl := range decls {
 		if len(decl) >= 2 && decl[1].Tok == lang.Ident {
 			nameSet[decl[1].Str] = i
@@ -349,7 +345,7 @@ func (p *Parser) sortByDeps(decls []Tokens) []Tokens {
 	}
 
 	n := len(decls)
-	rdeps := make([][]int, n) // rdeps[i] = nodes that depend on i
+	rdeps := make([][]int, n)
 	inDeg := make([]int, n)
 	for i, decl := range decls {
 		seen := map[int]bool{}
@@ -388,8 +384,6 @@ func (p *Parser) sortByDeps(decls []Tokens) []Tokens {
 	return result
 }
 
-// collectIdents finds idents in toks that match names in nameSet,
-// recursing into block tokens.
 func (p *Parser) collectIdents(toks Tokens, nameSet map[string]int, out map[int]bool) {
 	for _, t := range toks {
 		if t.Tok == lang.Ident {
@@ -448,7 +442,6 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 	return false, nil
 }
 
-// registerFunc parses and registers a named function or method signature.
 func (p *Parser) registerFunc(toks Tokens) error {
 	if len(toks) < 3 || toks[0].Tok != lang.Func {
 		return nil
@@ -524,8 +517,6 @@ func (p *Parser) registerFunc(toks Tokens) error {
 	return nil
 }
 
-// recvTypeName extracts the receiver type name from scanned receiver tokens.
-// Returns e.g. "T" for (t T) or "*T" for (t *T). Returns "" on failure.
 func recvTypeName(recvr Tokens) string {
 	// Walk backwards: last Ident is the type name, preceded by * for pointer receivers.
 	for i := len(recvr) - 1; i >= 0; i-- {
@@ -539,8 +530,6 @@ func recvTypeName(recvr Tokens) string {
 	return ""
 }
 
-// parseVarDecl registers var symbol names so other Phase 1 decls can see them.
-// Vars with initializers are deferred to Phase 2 for type inference and codegen.
 func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
 	lines, err := p.varLines(toks)
 	if err != nil {
@@ -779,7 +768,6 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 	return p.parseAssignMultiRHS(in, lhs, rhs, aindex, define)
 }
 
-// parseAssignMultiRHS handles assignments with multiple comma-separated values on the RHS.
 func (p *Parser) parseAssignMultiRHS(in Tokens, lhs, rhs []Tokens, aindex int, define bool) (out Tokens, err error) {
 	// For plain-ident non-define assignments (e.g. a, b = b, a), use a batched approach:
 	// emit all LHS first, then all RHS, then one Assign(n). This ensures all RHS values
@@ -849,7 +837,6 @@ func (p *Parser) parseAssignMultiRHS(in Tokens, lhs, rhs []Tokens, aindex int, d
 	return out, err
 }
 
-// compoundAssignOp maps compound assignment tokens to their binary operator.
 var compoundAssignOp = map[lang.Token]lang.Token{
 	lang.AddAssign:    lang.Add,
 	lang.SubAssign:    lang.Sub,
@@ -864,8 +851,6 @@ var compoundAssignOp = map[lang.Token]lang.Token{
 	lang.AndNotAssign: lang.AndNot,
 }
 
-// indexCompoundAssign returns the binary operator and position of the first compound
-// assignment token in the token list, or (0, -1) if none found.
 func indexCompoundAssign(in Tokens) (lang.Token, int) {
 	for i, t := range in {
 		if op, ok := compoundAssignOp[t.Tok]; ok {
@@ -875,7 +860,6 @@ func indexCompoundAssign(in Tokens) (lang.Token, int) {
 	return 0, -1
 }
 
-// parseCompoundAssign transforms "a op= expr" into the equivalent of "a = a op (expr)".
 func (p *Parser) parseCompoundAssign(in Tokens, aindex int, op lang.Token) (Tokens, error) {
 	lhs := in[:aindex]
 	rhs := in[aindex+1:]
@@ -895,7 +879,6 @@ func (p *Parser) parseCompoundAssign(in Tokens, aindex int, op lang.Token) (Toke
 	return p.parseAssign(newIn, len(lhs))
 }
 
-// parseIncDec transforms "a++" into the equivalent of "a = a + 1" (or "a - 1" for "--").
 func (p *Parser) parseIncDec(in Tokens) (Tokens, error) {
 	last := in[len(in)-1]
 	lhs := in[:len(in)-1]
@@ -913,7 +896,6 @@ func (p *Parser) parseIncDec(in Tokens) (Tokens, error) {
 	return p.parseAssign(newIn, len(lhs))
 }
 
-// tokensToBlock serializes tokens back into a parenthesized expression string.
 func tokensToBlock(toks Tokens) string {
 	var sb strings.Builder
 	for i, t := range toks {
@@ -1404,8 +1386,6 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-// parseTypeSwitch handles switch v := x.(type) { ... } statements.
-// periodIdx is the index of ".(type)" in cond.
 func (p *Parser) parseTypeSwitch(in, init, cond Tokens, periodIdx int) (out Tokens, err error) {
 	pos := in[0].Pos
 	guardToks := cond[:periodIdx]
@@ -1452,7 +1432,6 @@ func (p *Parser) parseTypeSwitch(in, init, cond Tokens, periodIdx int) (out Toke
 	return out, nil
 }
 
-// parseTypeSwitchClause generates code for one case clause of a type switch.
 func (p *Parser) parseTypeSwitchClause(in Tokens, index, maximum int, tsName, varName string) (out Tokens, err error) {
 	in = append(in, newSemicolon(in[len(in)-1].Pos))
 	tl := in.Split(lang.Colon)
@@ -1623,7 +1602,6 @@ type selectCase struct {
 	okName   string
 }
 
-// parseSelectCase parses a single case clause header and body for a select statement.
 func (p *Parser) parseSelectCase(cl Tokens, index int, pos int, ci *selectCase) error {
 	tl := cl.Split(lang.Colon)
 	if len(tl) != 2 {
@@ -1847,8 +1825,6 @@ func (p *Parser) numItems(s string, sep lang.Token) (int, error) {
 	return r, nil
 }
 
-// pushBreakScope pushes a new labeled scope for break/continue and
-// registers pendingLabel if set. Returns a cleanup function to defer.
 func (p *Parser) pushBreakScope(prefix, pendingLabel string, hasContinue bool) func() {
 	label := prefix + strconv.Itoa(p.labelCount[p.scope])
 	p.labelCount[p.scope]++

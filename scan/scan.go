@@ -61,7 +61,7 @@ type Scanner struct {
 
 	// Precomputed lookup tables, built from Spec maps by NewScanner.
 	charTok         [lang.ASCIILen]lang.Token // token for single-byte Tokens keys
-	blockTok        [lang.ASCIILen]lang.Token // block token by opening byte (e.g. '(' → ParenBlock)
+	blockTok        [lang.ASCIILen]lang.Token // block token by opening byte
 	endByte         [lang.ASCIILen]byte       // end delimiter for single-byte openers
 	charBlockProp   [lang.ASCIILen]uint       // BlockProp for single-byte keys
 	multiStrStart   [lang.ASCIILen]bool       // first byte of a multi-byte string/comment start
@@ -76,7 +76,6 @@ func NewScanner(spec *lang.Spec) *Scanner {
 		if len(s) == 1 && s[0] < lang.ASCIILen {
 			sc.charTok[s[0]] = t
 		}
-		// Block token names like "(..)": map opening byte → token.
 		if len(s) == 4 && s[1] == '.' && s[2] == '.' && s[0] < lang.ASCIILen {
 			sc.blockTok[s[0]] = t
 		}
@@ -97,7 +96,6 @@ func NewScanner(spec *lang.Spec) *Scanner {
 			sc.endByte[s[0]] = e[0]
 		}
 	}
-
 	return sc
 }
 
