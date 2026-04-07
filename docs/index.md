@@ -15,6 +15,7 @@ Parscan is an experimental Go interpreter built from a pipeline of composable pa
 - [comp](modules/comp.md) -- bytecode compiler with peephole optimization
 - [vm](modules/vm.md) -- stack-based bytecode virtual machine
 - [interp](modules/interp.md) -- integration layer and REPL
+- [stdlib](modules/stdlib.md) -- standard library wrappers for native Go imports
 
 ## Architecture Decision Records
 

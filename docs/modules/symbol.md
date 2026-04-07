@@ -30,11 +30,15 @@ to resolve addresses and types.
   walking from the innermost scope outward.
 - **`MethodByName(sym, name) (*Symbol, []int)`** -- find a method on a
   type, including promoted methods from embedded fields.
+- **`Package`** -- package descriptor with `Path`, `Bin` (binary flag),
+  and `Values map[string]vm.Value` for exported symbols.
+- **`BinPkg(m map[string]reflect.Value, name string) *Package`** -- creates
+  a binary package from a map of reflect values (used for stdlib wrappers).
 - **`Init()`** -- populates builtin types (`int`, `string`, `bool`, ...),
-  values (`nil`, `true`, `false`, `iota`), `print` and `println` (as
-  `Value` with native Go functions via `fmt.Print`/`fmt.Println`), and
-  builtin functions (`len`, `cap`, `append`, `copy`, `delete`, `new`,
-  `make`, `panic`, `recover`, `trap`) with `Kind: Builtin`.
+  values (`nil`, `true`, `false`, `iota`), and builtin functions (`print`,
+  `println`, `len`, `cap`, `append`, `copy`, `delete`, `new`, `make`,
+  `panic`, `recover`, `trap`) with `Kind: Builtin`. The compiler emits
+  dedicated opcodes for each builtin.
 
 ## Internal design
 

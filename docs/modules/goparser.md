@@ -12,7 +12,9 @@ most complex stage in the pipeline.
 
 ## Key types and functions
 
-- **`Parser`** -- embeds `*scan.Scanner` and a `symbol.SymMap`. Tracks the
+- **`Parser`** -- embeds `*scan.Scanner` and a `symbol.SymMap`. Holds a
+  `Packages` map (`map[string]*symbol.Package`) for imported packages
+  and a `pkgfs` filesystem for reading imported source files. Tracks the
   current scope path, break/continue labels, closure state, and named
   return variables.
 - **`Token`** -- extends `scan.Token` with an `Arg []any` field for
@@ -21,8 +23,18 @@ most complex stage in the pipeline.
   `SplitStart`).
 - **`Parse(src string) (Tokens, error)`** -- full parse: scan, then
   parse all statements into a postfix token stream.
-- **`ScanDecls(src string) ([]Tokens, error)`** -- scan and split source
-  into top-level declaration token groups without parsing bodies.
+- **`ParseAll(name, src string) ([]Tokens, error)`** -- top-level entry
+  point for multi-file compilation. If `src` is empty and `name` is a
+  directory, reads all `.go` files (excluding `_test.go`) from it via
+  `pkgfs`. Runs Phase 1 (declaration resolution with retry loop) and
+  returns remaining declarations for Phase 2 code generation. Also
+  handles `import` statements by recursively calling itself for
+  dependencies.
+- **`ImportPackageValues(m map[string]map[string]reflect.Value)`** --
+  populates `Packages` with binary (native Go) package values, using
+  `symbol.BinPkg` to wrap them.
+- **`SetPkgfs(pkgPath string)`** -- sets the parser's virtual filesystem
+  for resolving imported source packages.
 - **`ParseDecl(toks Tokens) (handled bool, err error)`** -- resolve a
   single declaration during Phase 1 without emitting code. Delegates to
   `parsePackage`, `parseImports`, `parseConst`, `parseType`,
@@ -147,12 +159,33 @@ it to a `[]T` slice type, setting a `variadic` flag. This flag propagates
 through `FuncOf` so the compiler knows to pack trailing arguments at the
 call site.
 
+### Package and import handling
+
+Import resolution lives in `import.go`. `ParseAll` is the main entry point:
+
+1. If `src` is empty and `name` is a directory, reads all `.go` files from
+   `pkgfs` (excluding `_test.go` and subdirectories).
+2. Calls `scanDecls` (unexported) to split source into top-level declaration
+   groups without parsing bodies.
+3. Runs `preRegisterStructTypes` to insert placeholder `*vm.Type` entries
+   for struct type definitions, enabling forward and mutual type references
+   (e.g. `type F func(*A); type A struct{F}`).
+4. Enters the Phase 1 retry loop: each declaration is passed to `ParseDecl`.
+   Failures with `ErrUndefined` are retried until convergence; rollback is
+   lightweight (only `SymTracker` keys are deleted).
+5. Returns the remaining declarations (func bodies, var initializers) after
+   running `SplitAndSortVarDecls`.
+
+`importSrc` handles `import` statements by calling `ParseAll` recursively
+for the imported package path.
+
 ## Dependencies
 
 - `scan/` -- scanner tokens.
 - `lang/` -- token types, `Spec`.
-- `symbol/` -- symbol table.
+- `symbol/` -- symbol table, `Package`.
 - `vm/` -- `Type`, `Value` (for symbol metadata).
+- `io/fs` -- virtual filesystem for imported sources.
 
 ## Open questions / TODOs
 

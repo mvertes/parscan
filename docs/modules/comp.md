@@ -17,11 +17,11 @@ slice and populates a `Data` slice (the global memory segment).
   allocation (`methodIDs` map), a type-pointer dedup cache (`typeIdxs`),
   and `posBase` (byte offset of the current source in the `Sources`
   registry for position resolution).
-- **`Compile(name, src string) error`** -- end-to-end: two-phase compilation
-  (declarations first, then code generation) with fixpoint retry in each
-  phase. `name` identifies the source (`"m:<content>"` for inline,
-  `"f:<path>"` for file) and is registered in the scanner's `Sources` table
-  for position resolution.
+- **`Compile(name, src string) error`** -- end-to-end compilation. Delegates
+  Phase 1 (declaration resolution with retry loop) to `ParseAll`, then runs
+  `allocGlobalSlots` and Phase 2 code generation (var initializers first,
+  then func bodies). `name` identifies the source (`"m:<content>"` for
+  inline, `"f:<path>"` for file).
 - **`Dump() / ApplyDump(d)`** -- snapshot and restore global variable
   state (used for REPL resets).
 
@@ -155,28 +155,19 @@ slots using `meta.Cases`.
 
 ### Two-phase compilation
 
-`Compile` proceeds in two phases:
+`Compile` delegates Phase 1 to `goparser.ParseAll` and handles Phase 2
+directly:
 
-1. **Phase 1 -- Declarations.** `ScanDecls` splits the source into
-   top-level declarations. Before the retry loop, `preRegisterStructTypes`
-   scans declarations for `type X struct{...}` definitions and inserts
-   placeholder `*vm.Type` entries (untracked, so they survive retry cleanup).
-   This lets forward and mutual type references (e.g. `type F func(*A);
-   type A struct{F}`) resolve in the first pass. Each declaration is then
-   passed to `ParseDecl`, which handles `package`, `import`, `const`,
-   `type`, and `var` (type registration only -- no initializers). For
-   `func` (including methods), it calls `registerFunc` to record the
-   function signature without parsing the body. Declarations that fail with
-   `ErrUndefined` are retried in a fixpoint loop until convergence.
-   Rollback on failure is lightweight: only `SymTracker` keys are deleted
-   from the symbol table; there is no code or data to revert since Phase 1
-   emits neither.
+1. **Phase 1 -- Declarations** (in `goparser.ParseAll`). Splits the source
+   into top-level declarations, pre-registers struct type placeholders,
+   and runs a retry loop passing each declaration to `ParseDecl`. Returns
+   the remaining declarations (func bodies, var initializers) after
+   topological sorting. See [goparser](goparser.md#package-and-import-handling)
+   for details.
 
-2. **Phase 2 -- Code generation.** `SplitAndSortVarDecls` expands
-   `var(...)` blocks and topologically sorts var declarations by
-   dependency. `allocGlobalSlots` then pre-assigns data indices for
-   every `Var` and `Func` symbol, so code generation never encounters
-   an unresolved index. Code is generated in two passes:
+2. **Phase 2 -- Code generation** (in `Compile`). `allocGlobalSlots`
+   pre-assigns data indices for every `Var` and `Func` symbol. Code is
+   then generated in two passes:
    - **Pass 1:** var initializers, so all global var types are concrete.
    - **Pass 2:** func bodies and expression statements.
 

@@ -104,11 +104,12 @@ See [vm](modules/vm.md#call-frame) for details.
    See [ADR-003](decisions/ADR-003-scope-as-path.md).
 
 4. **Two-phase compilation with pre-allocated slots** -- compilation splits
-   into a declaration phase (const, type, var types, func/method signatures)
-   and a code generation phase (var initializers first, then func bodies).
-   Phase 1 uses a retry loop for forward references; Phase 2 pre-allocates
-   data slots and uses topological sorting of var declarations to eliminate
-   retries entirely. See [ADR-004](decisions/ADR-004-lazy-fixpoint.md).
+   into a declaration phase and a code generation phase. Phase 1
+   (declarations, retry loop, struct placeholders) lives in
+   `goparser.ParseAll`; Phase 2 (code generation with pre-allocated data
+   slots) lives in `comp.Compile`. Phase 1 uses a retry loop for forward
+   references; Phase 2 uses topological sorting of var declarations to
+   eliminate retries entirely. See [ADR-004](decisions/ADR-004-lazy-fixpoint.md).
 
 5. **Per-type opcodes** -- all arithmetic opcodes are statically typed;
    there are no generic `Add`/`Sub`/`Mul`/`Neg`/`Greater`/`Lower` opcodes.

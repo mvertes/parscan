@@ -10,8 +10,9 @@ It sits at the start of the pipeline, feeding tokens to `goparser`.
 
 ## Key types and functions
 
-- **`Scanner`** -- holds a `*lang.Spec`, a compiled regex for string
-  delimiters, and a `Sources` registry. Created via `NewScanner(spec)`.
+- **`Scanner`** -- holds a `*lang.Spec`, precomputed lookup tables, and a
+  `Sources` registry. Created via `NewScanner(spec)`, which builds the
+  lookup tables from the spec's maps.
 - **`Source`** -- describes a registered source: name, base offset, length.
 - **`Sources`** -- ordered list of `Source` entries mapping global byte
   offsets to file/line/col. Methods: `Add(name, src) int` (returns base
@@ -27,10 +28,24 @@ It sits at the start of the pipeline, feeding tokens to `goparser`.
 ## Internal design
 
 The scanner is a state machine that classifies characters via `lang.Spec.CharProp`
-(a 128-entry ASCII lookup table). It handles:
+(a 128-entry ASCII lookup table). `NewScanner` precomputes several
+fixed-size arrays from the spec's maps, eliminating map lookups and regexp
+from the hot path:
+
+- `charTok[128]` -- token for single-byte `Tokens` keys (operators, separators).
+- `blockTok[128]` -- block token by opening byte (`(`, `{`, `[`).
+- `endByte[128]` -- end delimiter for single-byte openers (fast path for
+  `getStr` and `getBlock`).
+- `charBlockProp[128]` -- `BlockProp` for single-byte keys.
+- `multiStrStart[128]` -- flags first byte of multi-byte string/comment starts
+  (e.g. `//`, `/*`).
+
+The scanner handles:
 
 - **Identifiers and numbers** -- classified by character properties.
-- **Operators** -- longest-match from the spec's token table.
+- **Operators** -- longest-match greedy scan; if the longest candidate is
+  not a known token, shorter prefixes are tried. Single-byte operators
+  resolve via `charTok` (no map lookup).
 - **String literals** -- delimiters and escape sequences from
   `Spec.End` and `Spec.BlockProp`.
 - **Nested blocks** -- `()`, `[]`, `{}` are matched and balanced at scan
