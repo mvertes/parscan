@@ -7,7 +7,6 @@ import (
 
 	"github.com/mvertes/parscan/comp"
 	"github.com/mvertes/parscan/lang"
-	"github.com/mvertes/parscan/stdlib"
 	"github.com/mvertes/parscan/vm"
 )
 
@@ -22,7 +21,6 @@ type Interp struct {
 // NewInterpreter returns a new interpreter.
 func NewInterpreter(s *lang.Spec) *Interp {
 	i := &Interp{comp.NewCompiler(s), vm.NewMachine()}
-	i.ImportPackageValues(stdlib.Values)
 	return i
 }
 

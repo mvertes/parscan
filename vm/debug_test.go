@@ -55,7 +55,7 @@ func TestDumpFrame_WithDebugInfo(t *testing.T) {
 		{Op: Push}, {Op: Push}, {Op: Push}, {Op: Push}, {Op: Push}, {Op: Call, Pos: 10},
 	}
 	var sources scan.Sources
-	sources.Add("m:test", "func foo(n int) int {\n\treturn n + 1\n}\n")
+	sources.Add("test", "func foo(n int) int {\n\treturn n + 1\n}\n")
 	di := &DebugInfo{
 		Sources: sources,
 		Labels:  map[int]string{42: "main/foo"},
@@ -136,7 +136,7 @@ func TestEnterDebug(t *testing.T) {
 	}
 
 	var sources2 scan.Sources
-	sources2.Add("m:test", "func foo(x int) { trap() }")
+	sources2.Add("test", "func foo(x int) { trap() }")
 	di := &DebugInfo{
 		Sources: sources2,
 		Labels:  map[int]string{4: "foo"},
@@ -192,17 +192,17 @@ func TestEnterDebugHelp(t *testing.T) {
 
 func TestDebugInfoPosToLine(t *testing.T) {
 	var sources scan.Sources
-	sources.Add("m:test", "line1\nline2\nline3\n")
+	sources.Add("test", "line1\nline2\nline3\n")
 	di := &DebugInfo{Sources: sources}
 
 	tests := []struct {
 		pos  Pos
 		want string
 	}{
-		{0, "1:1"},
-		{5, "1:6"},
-		{6, "2:1"},
-		{12, "3:1"},
+		{0, "test:1:1"},
+		{5, "test:1:6"},
+		{6, "test:2:1"},
+		{12, "test:3:1"},
 	}
 	for _, tt := range tests {
 		got := di.PosToLine(tt.pos)

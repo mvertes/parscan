@@ -9,6 +9,7 @@ import (
 
 	"github.com/mvertes/parscan/interp"
 	"github.com/mvertes/parscan/lang/golang"
+	"github.com/mvertes/parscan/stdlib"
 )
 
 type etest struct {
@@ -27,8 +28,9 @@ func gen(test etest) func(*testing.T) {
 			t.Skip()
 		}
 		intp := interp.NewInterpreter(golang.GoSpec)
+		intp.ImportPackageValues(stdlib.Values)
 		errStr := ""
-		r, e := intp.Eval("m:test", test.src)
+		r, e := intp.Eval("test", test.src)
 		t.Log(r, e)
 		if e != nil {
 			errStr = e.Error()
@@ -57,12 +59,12 @@ func fib(i int) int {
 
 func BenchmarkFib(b *testing.B) {
 	intp := interp.NewInterpreter(golang.GoSpec)
-	if _, err := intp.Eval("m:fib", fibSrc); err != nil {
+	if _, err := intp.Eval("fib", fibSrc); err != nil {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := intp.Eval("m:bench", "fib(20)"); err != nil {
+		if _, err := intp.Eval("bench", "fib(20)"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -70,7 +72,7 @@ func BenchmarkFib(b *testing.B) {
 
 func BenchmarkAppend(b *testing.B) {
 	intp := interp.NewInterpreter(golang.GoSpec)
-	if _, err := intp.Eval("m:setup", `
+	if _, err := intp.Eval("setup", `
 		func appendN(n int) []int {
 			s := []int{}
 			for i := 0; i < n; i++ {
@@ -83,7 +85,7 @@ func BenchmarkAppend(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := intp.Eval("m:bench", "appendN(100)"); err != nil {
+		if _, err := intp.Eval("bench", "appendN(100)"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -96,12 +98,12 @@ func BenchmarkAppendLarge(b *testing.B) {
 	}
 	src := "func appendLarge() []int { s := []int{}; s = append(s, " + strings.Join(args, ", ") + "); return s }"
 	intp := interp.NewInterpreter(golang.GoSpec)
-	if _, err := intp.Eval("m:setup", src); err != nil {
+	if _, err := intp.Eval("setup", src); err != nil {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := intp.Eval("m:bench", "appendLarge()"); err != nil {
+		if _, err := intp.Eval("bench", "appendLarge()"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -1293,7 +1295,7 @@ func TestImport(t *testing.T) {
 `
 	run(t, []etest{
 		{n: "#00", src: "fmt.Println(4)", err: "undefined: fmt"},
-		{n: "#01", src: `import "xxx"`, err: "package not found: xxx"},
+		{n: "#01", src: `import "xxx"`, err: "open xxx: no such file or directory"},
 		{n: "#02", src: `import "fmt"; fmt.Println(4)`, res: "<nil>"},
 		{n: "#03", src: src0 + "fmt.Println(4)", res: "<nil>"},
 		{n: "#04", src: `func main() {import "fmt"; fmt.Println("hello")}`, err: "unexpected import"},
@@ -2018,10 +2020,10 @@ func TestRepl(t *testing.T) {
 	// constants from subsequent Evals.
 	t.Run("stale_data", func(t *testing.T) {
 		intp := interp.NewInterpreter(golang.GoSpec)
-		if _, err := intp.Eval("m:1", "12/5.1"); err != nil {
+		if _, err := intp.Eval("1", "12/5.1"); err != nil {
 			t.Fatal(err)
 		}
-		r, err := intp.Eval("m:2", "13/4.0")
+		r, err := intp.Eval("2", "13/4.0")
 		if err != nil {
 			t.Fatal(err)
 		}

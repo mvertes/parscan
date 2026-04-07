@@ -7,7 +7,7 @@ import (
 
 // Source describes a source text.
 type Source struct {
-	Name    string // "m:<label>" for inline, "f:<path>" for file
+	Name    string
 	Base    int    // base byte offset in the unified position space
 	Len     int    // length in bytes
 	content string // source text for line/col resolution
@@ -16,13 +16,12 @@ type Source struct {
 // Sources is an ordered list of Source entries.
 type Sources []Source
 
-// Add registers a new source and returns its base offset. The name follows
-// the convention "m:<label>" for inline / REPL input or "f:<path>" for files.
+// Add registers a new source and returns its base offset.
 func (ss *Sources) Add(name, src string) int {
 	base := 0
 	if n := len(*ss); n > 0 {
 		last := (*ss)[n-1]
-		base = last.Base + last.Len + 1 // +1 for implicit newline separator:w
+		base = last.Base + last.Len + 1 // +1 for implicit newline separator
 	}
 	*ss = append(*ss, Source{Name: name, Base: base, Len: len(src), content: src})
 	return base
@@ -53,10 +52,7 @@ func (ss Sources) FormatPos(pos int) string {
 	if name == "" {
 		return ""
 	}
-	if strings.HasPrefix(name, "m:") {
-		return fmt.Sprintf("%d:%d", line, col)
-	}
-	return fmt.Sprintf("%s:%d:%d", name[2:], line, col)
+	return fmt.Sprintf("%s:%d:%d", name, line, col)
 }
 
 func lineCol(src string, offset int) (line, col int) {

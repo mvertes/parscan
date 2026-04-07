@@ -354,8 +354,9 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	pp := in[l-1].Block()
 	pkg, ok := p.Packages[pp]
 	if !ok {
-		// TODO: try to import source package from here.
-		return out, fmt.Errorf("package not found: %s", pp)
+		if out, err = p.importSrc(pp); err != nil {
+			return out, err
+		}
 	}
 	n := in[0].Str
 	if l == 1 {
@@ -377,7 +378,7 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-func (p *Parser) parsePackage(in Tokens) (out Tokens, err error) {
+func (p *Parser) parsePackageDecl(in Tokens) (out Tokens, err error) {
 	if len(in) != 2 {
 		return out, errors.New("invalid number of arguments")
 	}

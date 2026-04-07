@@ -58,6 +58,7 @@ func (t *Token) String() string {
 type Scanner struct {
 	*lang.Spec
 	Sources Sources // source position registry (multi-file / REPL)
+	PosBase int     // base offset for current source
 
 	// Precomputed lookup tables, built from Spec maps by NewScanner.
 	charTok         [lang.ASCIILen]lang.Token // token for single-byte Tokens keys

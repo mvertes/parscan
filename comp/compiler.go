@@ -38,7 +38,6 @@ type Compiler struct {
 	methodIDs map[string]int                  // global method ID by method name
 	typeIdxs  map[*vm.Type]int                // dedup cache for typeIndex, keyed by parscan type pointer
 	typeSyms  map[reflect.Type]*symbol.Symbol // dedup cache for typeSym, keyed by reflect.Type
-	posBase   int                             // base offset for current source (from Sources.Add)
 }
 
 // NewCompiler returns a new compiler state for a given scanner.
@@ -56,68 +55,11 @@ func NewCompiler(spec *lang.Spec) *Compiler {
 // Compile parses src and generates code and data, or returns a non-nil error.
 // Code and data are added incrementally in c.Code and C.Data.
 // name identifies the source ("m:<content>" for inline, "f:<path>" for file).
-//
-// Compilation proceeds in two phases:
-//  1. Declarations: resolve all const, type, var (types only) and func signatures
-//     with a retry loop so forward references between declarations are handled.
-//  2. Code generation: parse func bodies and var initializers, then generate
-//     bytecode in a single pass (no retries needed, all symbols are defined).
 func (c *Compiler) Compile(name, src string) error {
-	c.posBase = c.Sources.Add(name, src)
-
-	decls, err := c.ScanDecls(src)
+	remaining, err := c.ParseAll(name, src)
 	if err != nil {
 		return err
 	}
-
-	// Pre-register struct type placeholders so that forward and mutual
-	// references (e.g., type F func(*A); type A struct{F}) can resolve.
-	// Placeholders are untracked: they survive the retry loop cleanup.
-	c.preRegisterStructTypes(decls)
-
-	// Phase 1: resolve all declarations (no code generation).
-	// Retry until no undefined declaration remains, or no progress is made.
-	var remaining []goparser.Tokens // decls needing full parse + generate
-	pending := decls
-	for len(pending) > 0 {
-		var retry []goparser.Tokens
-		var firstErr error
-		for _, decl := range pending {
-			c.SymTracker = nil
-			handled, parseErr := c.ParseDecl(decl)
-			if parseErr != nil {
-				var eu goparser.ErrUndefined
-				if errors.As(parseErr, &eu) {
-					for _, k := range c.SymTracker {
-						delete(c.Symbols, k)
-					}
-					c.SymTracker = nil
-					retry = append(retry, decl)
-					if firstErr == nil {
-						firstErr = parseErr
-					}
-					continue
-				}
-				return parseErr
-			}
-			if !handled {
-				remaining = append(remaining, decl)
-			}
-		}
-		if len(retry) == len(pending) {
-			return firstErr
-		}
-		pending = retry
-	}
-
-	// Phase 2: split var blocks, sort var declarations by dependency,
-	// then generate code in two passes. All symbols (including methods)
-	// are registered in Phase 1 with their signatures.
-	//
-	// Pass 1 compiles var initializers so that all var types are resolved.
-	// Pass 2 compiles func bodies and expression statements; by then every
-	// global var has a concrete type, eliminating forward-reference retries.
-	remaining = c.SplitAndSortVarDecls(remaining)
 	c.allocGlobalSlots()
 	var rest []goparser.Tokens
 	for _, decl := range remaining {
@@ -182,40 +124,6 @@ func (c *Compiler) typeIndex(typ *vm.Type) int {
 	c.Data = append(c.Data, vm.ValueOf(typ))
 	c.typeIdxs[typ] = i
 	return i
-}
-
-func (c *Compiler) preRegisterStructTypes(decls []goparser.Tokens) {
-	for _, decl := range decls {
-		if len(decl) < 2 || decl[0].Tok != lang.Type {
-			continue
-		}
-		if decl[1].Tok == lang.ParenBlock {
-			// Grouped: type ( A struct{...}; B struct{...} )
-			inner, err := c.Scan(decl[1].Block(), false)
-			if err != nil {
-				continue
-			}
-			for _, lt := range inner.Split(lang.Semicolon) {
-				if len(lt) >= 2 && lt[0].Tok == lang.Ident && lt[1].Tok == lang.Struct {
-					c.registerStructPlaceholder(lt[0].Str)
-				}
-			}
-			continue
-		}
-		// Single: type A struct{...}
-		if len(decl) >= 3 && decl[1].Tok == lang.Ident && decl[2].Tok == lang.Struct {
-			c.registerStructPlaceholder(decl[1].Str)
-		}
-	}
-}
-
-func (c *Compiler) registerStructPlaceholder(name string) {
-	if _, ok := c.Symbols[name]; ok {
-		return // Already registered (e.g., from a previous Compile call).
-	}
-	ph := vm.NewStructType()
-	ph.Name = name
-	c.SymAdd(symbol.UnsetAddr, name, vm.NewValue(ph.Rtype), symbol.Type, ph)
 }
 
 func (c *Compiler) findTypeSym(rtype reflect.Type) *vm.Type {
@@ -310,7 +218,7 @@ func (c *Compiler) emit(t goparser.Token, op vm.Op, arg ...int) {
 		_, file, line, _ := runtime.Caller(1)
 		fmt.Fprintf(os.Stderr, "%s:%d: %v emit %v %v\n", path.Base(file), line, t, op, arg)
 	}
-	inst := vm.Instruction{Op: op, Pos: vm.Pos(t.Pos + c.posBase)} //nolint:gosec
+	inst := vm.Instruction{Op: op, Pos: vm.Pos(t.Pos + c.PosBase)} //nolint:gosec
 	if len(arg) > 0 {
 		inst.A = int32(arg[0]) //nolint:gosec
 	}

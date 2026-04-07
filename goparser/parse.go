@@ -4,6 +4,8 @@ package goparser
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -25,6 +27,7 @@ type Parser struct {
 	fname    string         // current function name
 	pkgName  string         // current package name
 	noPkg    bool           // true if package statement is not mandatory (test, repl).
+	pkgfs    fs.FS          // filesystem to read imported sources from
 
 	funcScope     string
 	framelen      map[string]int // length of function frames indexed by funcScope
@@ -64,23 +67,23 @@ func (p *Parser) ImportPackageValues(m map[string]map[string]reflect.Value) {
 	}
 }
 
-// scopedName returns name qualified by the current scope (e.g. "main/foo").
+// SetPkgfs sets the parser virtual filesystem for reading sources.
+func (p *Parser) SetPkgfs(pkgPath string) {
+	p.pkgfs = os.DirFS(pkgPath)
+}
+
 func (p *Parser) scopedName(name string) string {
 	return strings.TrimPrefix(p.scope+"/"+name, "/")
 }
 
-// labelName returns name qualified by the current function scope, for labels and gotos.
 func (p *Parser) labelName(name string) string { return p.funcScope + "/" + name }
 
-// takePendingLabel returns any pending user label and clears it.
 func (p *Parser) takePendingLabel() string {
 	l := p.pendingLabel
 	p.pendingLabel = ""
 	return l
 }
 
-// blankName returns a unique internal name for the blank identifier "_", so
-// that multiple "_" in the same declaration each get their own symbol entry.
 func (p *Parser) blankName() string {
 	n := "_" + strconv.Itoa(p.blankSeq)
 	p.blankSeq++
@@ -239,9 +242,8 @@ func (p *Parser) parseStmts(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-// ScanDecls scans src and returns its top-level statements as individual token slices,
-// without parsing them. Used by the lazy fixpoint evaluation loop.
-func (p *Parser) ScanDecls(src string) ([]Tokens, error) {
+// scanDecls scans src and returns its top-level statements as token slices, without parsing them.
+func (p *Parser) scanDecls(src string) ([]Tokens, error) {
 	toks, err := p.Scan(src, true)
 	if err != nil {
 		return nil, err
@@ -420,7 +422,7 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 	}
 	switch toks[0].Tok {
 	case lang.Package:
-		_, err = p.parsePackage(toks)
+		_, err = p.parsePackageDecl(toks)
 		return true, err
 	case lang.Import:
 		_, err = p.parseImports(toks)
@@ -641,7 +643,7 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	case lang.Import:
 		return p.parseImports(in)
 	case lang.Package:
-		return p.parsePackage(in)
+		return p.parsePackageDecl(in)
 	case lang.Return:
 		return p.parseReturn(in)
 	case lang.Switch:

@@ -44,8 +44,9 @@ func runFile(t *testing.T, p string) {
 
 	i := NewInterpreter(golang.GoSpec)
 	i.SetIO(os.Stdin, &stdout, &stderr)
+	i.SetPkgfs("../_samples/pkg")
 
-	_, err = i.Eval("f:"+p, string(buf))
+	_, err = i.Eval(p, string(buf))
 	if isErr {
 		if err == nil {
 			t.Fatalf("got nil error, want: %q", want)
