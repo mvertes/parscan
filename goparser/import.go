@@ -3,8 +3,8 @@ package goparser
 import (
 	"errors"
 	"io/fs"
-	"log"
 	"os"
+	"strings"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/symbol"
@@ -12,14 +12,13 @@ import (
 )
 
 func (p *Parser) importSrc(pkgPath string) (out Tokens, err error) {
-	if p.pkgfs == nil {
-		p.pkgfs = os.DirFS(".")
-	}
-	entries, err := fs.ReadDir(p.pkgfs, pkgPath)
+	r, err := p.ParseAll(pkgPath, "")
 	if err != nil {
 		return out, err
 	}
-	log.Println("path:", pkgPath, entries, err)
+	for _, s := range r {
+		out = append(out, s...)
+	}
 	return out, err
 }
 
@@ -27,10 +26,43 @@ func (p *Parser) importSrc(pkgPath string) (out Tokens, err error) {
 func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 	var decls []Tokens
 
-	decls, err = p.scanDecls(src)
-	p.PosBase = p.Sources.Add(name, src)
-	if err != nil {
-		return out, err
+	if src == "" {
+		// Get content from file(s).
+		if p.pkgfs == nil {
+			p.pkgfs = os.DirFS(".")
+		}
+		fi, err := fs.Stat(p.pkgfs, name)
+		if err != nil {
+			return out, err
+		}
+		if fi.IsDir() {
+			files, err := fs.ReadDir(p.pkgfs, name)
+			if err != nil {
+				return out, err
+			}
+			for _, f := range files {
+				if f.IsDir() || !strings.HasSuffix(f.Name(), ".go") || strings.HasSuffix(f.Name(), "_test.go") {
+					continue
+				}
+				buf, err := fs.ReadFile(p.pkgfs, name+"/"+f.Name())
+				if err != nil {
+					return out, err
+				}
+				src := string(buf)
+				d, err := p.scanDecls(src)
+				p.PosBase = p.Sources.Add(name, src)
+				if err != nil {
+					return out, err
+				}
+				decls = append(decls, d...)
+			}
+		}
+	} else {
+		decls, err = p.scanDecls(src)
+		p.PosBase = p.Sources.Add(name, src)
+		if err != nil {
+			return out, err
+		}
 	}
 
 	// Pre-register struct type placeholders so that forward and mutual
