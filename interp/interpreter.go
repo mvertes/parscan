@@ -34,6 +34,7 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 		dataOffset = len(i.Data)
 	}
 	i.PopExit() // Remove last exit from previous run (re-entrance).
+	initsBefore := len(i.InitFuncs)
 
 	if err = i.Compile(name, src); err != nil {
 		return res, err
@@ -42,10 +43,16 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 	i.TrimStack()
 	i.Push(i.Data[dataOffset:]...)
 	i.PushCode(i.Code[codeOffset:]...)
-	if s, ok := i.Symbols["main"]; ok {
-		i.PushCode(vm.Instruction{Op: vm.Push, A: int32(i.Data[s.Index].Int())}) //nolint:gosec
-		i.PushCode(vm.Instruction{Op: vm.Call})
+	emitCall := func(fn string) {
+		if s, ok := i.Symbols[fn]; ok {
+			i.PushCode(vm.Instruction{Op: vm.Push, A: int32(i.Data[s.Index].Int())}) //nolint:gosec
+			i.PushCode(vm.Instruction{Op: vm.Call})
+		}
 	}
+	for _, fn := range i.InitFuncs[initsBefore:] {
+		emitCall(fn)
+	}
+	emitCall("main")
 	i.PushCode(vm.Instruction{Op: vm.Exit})
 	i.SetIP(max(codeOffset, i.Entry))
 	i.SetDebugInfo(func() *vm.DebugInfo { return i.BuildDebugInfo() })

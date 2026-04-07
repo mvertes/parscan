@@ -73,7 +73,7 @@ Go language support:
 - [x] fallthrough statement
 - [x] goto statement
 - [x] label statement
-- [ ] select statement
+- [x] select statement
 - [x] binary operators
 - [x] unary operators
 - [x] logical operators && and ||
@@ -91,7 +91,8 @@ Go language support:
 - [ ] type constraints (generic)
 - [ ] type checking
 - [ ] comment pragmas
-- [ ] package import
+- [x] package import
+- [ ] init functions
 - [ ] modules
 
 Other items:

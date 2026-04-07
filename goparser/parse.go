@@ -38,6 +38,8 @@ type Parser struct {
 	pendingLabel  string               // user label preceding the current for/switch statement
 	labeledJump   map[string][2]string // maps user label to [continueLabel, breakLabel]
 	clonum        int                  // closure instance number
+	initNum       int                  // init function instance counter
+	InitFuncs     []string             // ordered list of init function internal names
 	blankSeq      int                  // counter for unique blank identifier names
 	namedOut      []string             // scoped names of named return vars for current function
 	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
@@ -463,6 +465,9 @@ func (p *Parser) registerFunc(toks Tokens) error {
 	case toks[1].Tok == lang.Ident:
 		// Plain function: func Name(params) rettype { ... }
 		fname = toks[1].Str
+		if fname == "init" {
+			return nil // init functions are handled in Phase 2 only.
+		}
 		sigToks = toks[:bi]
 
 	case toks[1].Tok == lang.ParenBlock && len(toks) > 2 && toks[2].Tok == lang.Ident:
@@ -1131,6 +1136,11 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	switch in[1].Tok {
 	case lang.Ident:
 		fname = in[1].Str
+		if fname == "init" {
+			fname = "#init" + strconv.Itoa(p.initNum)
+			p.initNum++
+			p.InitFuncs = append(p.InitFuncs, fname)
+		}
 	case lang.ParenBlock:
 		// receiver, or anonymous function parameters.
 		if t := in[2]; t.Tok == lang.Ident {
