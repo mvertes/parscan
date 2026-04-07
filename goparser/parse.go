@@ -20,14 +20,15 @@ import (
 type Parser struct {
 	*scan.Scanner
 
-	Symbols  symbol.SymMap
-	Packages map[string]*symbol.Package
-	function *symbol.Symbol // current function
-	scope    string         // current scope
-	fname    string         // current function name
-	pkgName  string         // current package name
-	noPkg    bool           // true if package statement is not mandatory (test, repl).
-	pkgfs    fs.FS          // filesystem to read imported sources from
+	Symbols         symbol.SymMap
+	Packages        map[string]*symbol.Package
+	function        *symbol.Symbol // current function
+	scope           string         // current scope
+	fname           string         // current function name
+	pkgName         string         // current package name
+	noPkg           bool           // true if package statement is not mandatory (test, repl).
+	pkgfs           fs.FS          // filesystem to read imported sources from
+	importRemaining []Tokens       // code-gen declarations from imported source packages
 
 	funcScope     string
 	framelen      map[string]int // length of function frames indexed by funcScope

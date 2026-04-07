@@ -354,9 +354,10 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	pp := in[l-1].Block()
 	pkg, ok := p.Packages[pp]
 	if !ok {
-		if out, err = p.importSrc(pp); err != nil {
+		if err = p.importSrc(pp); err != nil {
 			return out, err
 		}
+		pkg = p.Packages[pp]
 	}
 	n := in[0].Str
 	if l == 1 {
@@ -385,8 +386,8 @@ func (p *Parser) parsePackageDecl(in Tokens) (out Tokens, err error) {
 	if in[1].Tok != lang.Ident {
 		return out, errors.New("not an ident")
 	}
-	if p.pkgName != "" {
-		return out, errors.New("package already set")
+	if p.pkgName != "" && p.pkgName != in[1].Str {
+		return out, fmt.Errorf("package %s; expected %s", in[1].Str, p.pkgName)
 	}
 	p.pkgName = in[1].Str
 	return out, err

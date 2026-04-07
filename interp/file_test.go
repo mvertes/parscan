@@ -64,6 +64,43 @@ func runFile(t *testing.T, p string) {
 	}
 }
 
+func TestImportDiamond(t *testing.T) {
+	// Both pkg2 and pkg3 import pkg1. Verify pkg1 is registered once.
+	src := `package main
+
+import (
+	"example.com/pkg2"
+	"example.com/pkg3"
+)
+
+func main() {
+	println(pkg2.W, pkg3.H())
+}
+`
+	var stdout bytes.Buffer
+	i := NewInterpreter(golang.GoSpec)
+	i.SetIO(os.Stdin, &stdout, os.Stderr)
+	i.SetPkgfs("../_samples/pkg")
+
+	if _, err := i.Eval("test", src); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := stdout.String(), "hello world hello!\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+
+	// pkg1 must appear exactly once in Packages (not compiled twice).
+	count := 0
+	for k := range i.Packages {
+		if k == "example.com/pkg1" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("pkg1 registered %d times in Packages, want 1", count)
+	}
+}
+
 func commentData(p string, buf []byte) (text string, isErr, skip bool) {
 	fset := token.NewFileSet()
 	f, _ := parser.ParseFile(fset, p, buf, parser.ParseComments)

@@ -2,6 +2,7 @@ package goparser
 
 import (
 	"errors"
+	"go/token"
 	"io/fs"
 	"os"
 	"strings"
@@ -11,15 +12,48 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
-func (p *Parser) importSrc(pkgPath string) (out Tokens, err error) {
-	r, err := p.ParseAll(pkgPath, "")
+func (p *Parser) importSrc(pkgPath string) (err error) {
+	// Save and restore parser state so the imported package's
+	// "package" declaration does not conflict with the current one.
+	savedPkgName := p.pkgName
+	p.pkgName = ""
+	defer func() { p.pkgName = savedPkgName }()
+
+	// Snapshot existing symbol keys so we can identify new ones.
+	existing := make(map[string]bool, len(p.Symbols))
+	for k := range p.Symbols {
+		existing[k] = true
+	}
+
+	remaining, err := p.ParseAll(pkgPath, "")
 	if err != nil {
-		return out, err
+		return err
 	}
-	for _, s := range r {
-		out = append(out, s...)
+
+	// Store remaining declarations (func bodies, var initializers)
+	// for code generation by the outer ParseAll / Compile.
+	p.importRemaining = append(p.importRemaining, remaining...)
+
+	// Collect exported symbols into a Package entry and create
+	// qualified aliases (e.g. "example.com/pkg1.V") so the compiler
+	// can resolve pkg.Member accesses.
+	pkg := &symbol.Package{
+		Path:   pkgPath,
+		Values: map[string]vm.Value{},
 	}
-	return out, err
+	for k, s := range p.Symbols {
+		if existing[k] || !token.IsExported(k) {
+			continue
+		}
+		pkg.Values[k] = s.Value
+	}
+	// Create qualified aliases after the loop to avoid mutating p.Symbols during iteration.
+	for k := range pkg.Values {
+		p.Symbols[pkgPath+"."+k] = p.Symbols[k]
+	}
+	p.Packages[pkgPath] = pkg
+
+	return nil
 }
 
 // ParseAll parses code and its dependencies, and returns slices of Tokens or an error.
@@ -103,6 +137,12 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 			return out, firstErr
 		}
 		pending = retry
+	}
+
+	// Include code-gen declarations from imported source packages.
+	if len(p.importRemaining) > 0 {
+		remaining = append(p.importRemaining, remaining...)
+		p.importRemaining = nil
 	}
 
 	// Phase 2: split var blocks, sort var declarations by dependency,
