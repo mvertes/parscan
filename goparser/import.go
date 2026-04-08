@@ -2,10 +2,10 @@ package goparser
 
 import (
 	"errors"
-	"go/token"
 	"io/fs"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/symbol"
@@ -42,7 +42,7 @@ func (p *Parser) importSrc(pkgPath string) (err error) {
 		Values: map[string]vm.Value{},
 	}
 	for k, s := range p.Symbols {
-		if existing[k] || !token.IsExported(k) {
+		if existing[k] || !isExported(k) {
 			continue
 		}
 		pkg.Values[k] = s.Value
@@ -78,11 +78,17 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 				if f.IsDir() || !strings.HasSuffix(f.Name(), ".go") || strings.HasSuffix(f.Name(), "_test.go") {
 					continue
 				}
+				if !matchFileName(f.Name(), p.buildCtx) {
+					continue
+				}
 				buf, err := fs.ReadFile(p.pkgfs, name+"/"+f.Name())
 				if err != nil {
 					return out, err
 				}
 				src := string(buf)
+				if !matchBuildDirective(src, p.buildCtx) {
+					continue
+				}
 				d, err := p.scanDecls(src)
 				p.PosBase = p.Sources.Add(name, src)
 				if err != nil {
@@ -188,4 +194,11 @@ func (p *Parser) registerStructPlaceholder(name string) {
 	ph := vm.NewStructType()
 	ph.Name = name
 	p.SymAdd(symbol.UnsetAddr, name, vm.NewValue(ph.Rtype), symbol.Type, ph)
+}
+
+func isExported(name string) bool {
+	for _, r := range name {
+		return unicode.IsUpper(r)
+	}
+	return false
 }

@@ -44,6 +44,7 @@ type Parser struct {
 	namedOut      []string             // scoped names of named return vars for current function
 	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
 	typeOnly      bool                 // when true, addSymVar is a no-op (Phase 1 signature-only parse)
+	buildCtx      *buildContext        // build constraint context for file filtering
 }
 
 // SymSet inserts sym at key in the symbol table, recording the key for potential rollback.
@@ -178,6 +179,7 @@ func NewParser(spec *lang.Spec, noPkg bool) *Parser {
 		framelen:    map[string]int{},
 		labelCount:  map[string]int{},
 		labeledJump: map[string][2]string{},
+		buildCtx:    defaultBuildContext(),
 	}
 	p.Symbols.Init()
 	return p
