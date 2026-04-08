@@ -22,7 +22,12 @@ func defaultBuildContext() *buildContext {
 	}
 }
 
-func matchFileName(name string, ctx *buildContext) bool {
+// MatchFileName reports whether name (a .go file basename) matches the
+// given build context's GOOS/GOARCH constraints encoded in the file name.
+func MatchFileName(name string, ctx *buildContext) bool {
+	if ctx == nil {
+		ctx = defaultBuildContext()
+	}
 	name = strings.TrimSuffix(name, ".go")
 
 	i := strings.Index(name, "_")

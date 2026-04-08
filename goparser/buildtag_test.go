@@ -26,8 +26,8 @@ func TestMatchFileName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name+"_"+tt.goos+"_"+tt.goarch, func(t *testing.T) {
 			ctx := &buildContext{GOOS: tt.goos, GOARCH: tt.goarch, GoVersion: "go1.24"}
-			if got := matchFileName(tt.name, ctx); got != tt.want {
-				t.Errorf("matchFileName(%q, %s/%s) = %v, want %v", tt.name, tt.goos, tt.goarch, got, tt.want)
+			if got := MatchFileName(tt.name, ctx); got != tt.want {
+				t.Errorf("MatchFileName(%q, %s/%s) = %v, want %v", tt.name, tt.goos, tt.goarch, got, tt.want)
 			}
 		})
 	}

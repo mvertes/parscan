@@ -42,7 +42,7 @@ func (p *Parser) importSrc(pkgPath string) (err error) {
 		Values: map[string]vm.Value{},
 	}
 	for k, s := range p.Symbols {
-		if existing[k] || !isExported(k) {
+		if existing[k] || !IsExported(k) {
 			continue
 		}
 		pkg.Values[k] = s.Value
@@ -78,7 +78,7 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 				if f.IsDir() || !strings.HasSuffix(f.Name(), ".go") || strings.HasSuffix(f.Name(), "_test.go") {
 					continue
 				}
-				if !matchFileName(f.Name(), p.buildCtx) {
+				if !MatchFileName(f.Name(), p.buildCtx) {
 					continue
 				}
 				buf, err := fs.ReadFile(p.pkgfs, name+"/"+f.Name())
@@ -123,17 +123,24 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 			if parseErr != nil {
 				var eu ErrUndefined
 				if errors.As(parseErr, &eu) {
-					for _, k := range p.SymTracker {
-						delete(p.Symbols, k)
-					}
-					p.SymTracker = nil
+					p.rollbackSymTracker()
 					retry = append(retry, decl)
 					if firstErr == nil {
 						firstErr = parseErr
 					}
 					continue
 				}
-				return out, parseErr
+				// Propagate I/O and filesystem errors (e.g. missing packages).
+				// Skip everything else (parser limitations, unimplemented syntax).
+				var pathErr *fs.PathError
+				if errors.As(parseErr, &pathErr) {
+					return out, parseErr
+				}
+				p.rollbackSymTracker()
+				if firstErr == nil {
+					firstErr = parseErr
+				}
+				continue
 			}
 			if !handled {
 				remaining = append(remaining, decl)
@@ -196,7 +203,15 @@ func (p *Parser) registerStructPlaceholder(name string) {
 	p.SymAdd(symbol.UnsetAddr, name, vm.NewValue(ph.Rtype), symbol.Type, ph)
 }
 
-func isExported(name string) bool {
+func (p *Parser) rollbackSymTracker() {
+	for _, k := range p.SymTracker {
+		delete(p.Symbols, k)
+	}
+	p.SymTracker = nil
+}
+
+// IsExported reports whether the given name starts with an upper-case letter.
+func IsExported(name string) bool {
 	for _, r := range name {
 		return unicode.IsUpper(r)
 	}

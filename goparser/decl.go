@@ -35,14 +35,23 @@ func (p *Parser) parseConst(in Tokens) (out Tokens, err error) {
 	}
 	pending := make([]constLine, 0, len(lines))
 	var prev Tokens
-	for i, lt := range lines {
-		if i > 0 && len(lt) == 1 {
+	var iotaIdx int
+	for _, lt := range lines {
+		// Strip trailing comments and skip comment-only lines.
+		for len(lt) > 0 && lt[len(lt)-1].Tok == lang.Comment {
+			lt = lt[:len(lt)-1]
+		}
+		if len(lt) == 0 {
+			continue
+		}
+		if len(lt) == 1 && iotaIdx > 0 {
 			lt = append(Tokens{lt[0]}, prev...)
 		}
-		pending = append(pending, constLine{toks: lt, iota: int64(i)})
+		pending = append(pending, constLine{toks: lt, iota: int64(iotaIdx)})
 		if len(lt) > 1 {
 			prev = lt[1:]
 		}
+		iotaIdx++
 	}
 
 	// Retry until no undefined const remains, or no progress is made.
@@ -345,13 +354,19 @@ func (p *Parser) parseImports(in Tokens) (out Tokens, err error) {
 
 func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	l := len(in)
-	if l != 1 && l != 2 {
+	if l == 0 {
 		return out, errors.New("invalid number of arguments")
 	}
-	if in[l-1].Tok != lang.String {
+	// Find the import path string, ignoring trailing tokens (e.g. comments).
+	si := l - 1
+	for si >= 0 && in[si].Tok != lang.String {
+		si--
+	}
+	if si < 0 {
 		return out, fmt.Errorf("invalid argument %v", in[0])
 	}
-	pp := in[l-1].Block()
+	l = si + 1 // effective length up to and including the string token
+	pp := in[si].Block()
 	pkg, ok := p.Packages[pp]
 	if !ok {
 		if err = p.importSrc(pp); err != nil {
