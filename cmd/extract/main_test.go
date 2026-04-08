@@ -83,7 +83,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(filepath.Base(tt.dir), func(t *testing.T) {
 			output := captureStdout(t, func() {
-				if err := run(tt.dir); err != nil {
+				if err := run(os.Stdout, tt.dir); err != nil {
 					t.Fatalf("run(%q): %v", tt.dir, err)
 				}
 			})
