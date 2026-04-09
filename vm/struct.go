@@ -49,13 +49,22 @@ func rtypeData(t reflect.Type) unsafe.Pointer {
 	return (*[2]unsafe.Pointer)(unsafe.Pointer(&t))[1]
 }
 
-// patchRtype overwrites dst's internal rtype with src's rtype bytes.
+// patchRtype overwrites dst's internal rtype with src's rtype bytes,
+// then clears the Str (nameOff) and PtrToThis (typeOff) fields.
+//
+// These 4-byte offsets (at byte offsets 40 and 44 in abi.Type) are registered
+// in reflect's global offset map for the source rtype's heap address. After
+// copying them into the destination (which has a different address), the
+// runtime cannot resolve them and crashes with "nameOff/typeOff base pointer
+// out of range". Zeroing them forces reflect to use safe slow paths.
 func patchRtype(dst, src reflect.Type) {
 	d := rtypeData(dst)
 	s := rtypeData(src)
 	for i := uintptr(0); i < structTypeSize; i++ {
 		*(*byte)(unsafe.Add(d, i)) = *(*byte)(unsafe.Add(s, i))
 	}
+	*(*int32)(unsafe.Add(d, 40)) = 0 // Str (nameOff)
+	*(*int32)(unsafe.Add(d, 44)) = 0 // PtrToThis (typeOff)
 }
 
 // NewStructType creates a forward-declared struct type.
