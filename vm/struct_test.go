@@ -104,6 +104,30 @@ func TestNewStructTypeSetFields(t *testing.T) {
 		}
 	})
 
+	t.Run("patched_as_field_type", func(t *testing.T) {
+		// Verify a patched placeholder can be used as a field type
+		// in a subsequent reflect.StructOf without crashing (rtype.String).
+		placeholder := NewStructType()
+		fields := []*Type{
+			{Name: "X", Rtype: reflect.TypeOf(0)},
+			{Name: "Y", Rtype: reflect.TypeOf("")},
+		}
+		placeholder.SetFields(StructOf(fields, nil))
+
+		s := placeholder.Rtype.String()
+		if s == "" {
+			t.Fatal("expected non-empty type string after SetFields")
+		}
+
+		outer := StructOf([]*Type{
+			{Name: "Inner", Rtype: placeholder.Rtype},
+			{Name: "Z", Rtype: reflect.TypeOf(0)},
+		}, nil)
+		if outer.Rtype.NumField() != 2 {
+			t.Fatalf("expected 2 fields, got %d", outer.Rtype.NumField())
+		}
+	})
+
 	t.Run("linked_list_reflect", func(t *testing.T) {
 		// Build a two-node linked list using reflect and verify traversal.
 		placeholder := NewStructType()

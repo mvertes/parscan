@@ -479,6 +479,15 @@ func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 	for _, e := range embedded {
 		embSet[e.FieldIdx] = true
 	}
+	// Find a consistent PkgPath for all unexported fields.
+	// reflect.StructOf requires all unexported fields to share the same PkgPath.
+	pkgPath := "builtin"
+	for _, f := range fields {
+		if f.PkgPath != "" {
+			pkgPath = f.PkgPath
+			break
+		}
+	}
 	for i, f := range fields {
 		rf[i].Name = f.Name
 		rf[i].PkgPath = f.PkgPath
@@ -489,13 +498,13 @@ func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 			rf[i].Type = f.Rtype
 		}
 		// reflect.StructOf panics if Anonymous=true and PkgPath is non-empty, or if
-		// Anonymous=false and the name is lowercase with empty PkgPath. For embedded
+		// Anonymous=false and the name is unexported with empty PkgPath. For embedded
 		// built-in types (e.g. bool, int) the name is lowercase with no PkgPath; we
 		// must not set Anonymous and must set a non-empty PkgPath so reflect treats
 		// the field as unexported. Parscan tracks embedded info via EmbeddedField.
-		if embSet[i] && len(f.Name) > 0 && unicode.IsLower(rune(f.Name[0])) {
+		if embSet[i] && len(f.Name) > 0 && !unicode.IsUpper(rune(f.Name[0])) {
 			if rf[i].PkgPath == "" {
-				rf[i].PkgPath = "builtin"
+				rf[i].PkgPath = pkgPath
 			}
 		} else {
 			rf[i].Anonymous = embSet[i]

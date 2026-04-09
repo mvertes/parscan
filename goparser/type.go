@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"unicode"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/symbol"
@@ -505,7 +504,7 @@ func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
 				name = name[j+1:]
 			}
 			pkgPath := ""
-			if len(name) > 0 && unicode.IsLower(rune(name[0])) {
+			if !IsExported(name) {
 				pkgPath = p.pkgName
 			}
 			// A struct field whose type is a placeholder (not yet finalized via SetFields)
@@ -513,6 +512,10 @@ func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
 			// so the retry loop defers this declaration until the placeholder is finalized.
 			if types[i].Rtype.Kind() == reflect.Struct && types[i].Placeholder {
 				return nil, ErrUndefined{types[i].Name}
+			}
+			if name == "" {
+				// Unnamed field: likely an embedded type not yet defined.
+				return nil, ErrUndefined{types[i].Rtype.String()}
 			}
 			// Copy parscan-level type (preserving Params, IfaceMethods, etc.) and set field name.
 			ft := *types[i]

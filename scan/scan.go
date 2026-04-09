@@ -327,13 +327,16 @@ func (sc *Scanner) getNum(src string) (s string, tok lang.Token) {
 		case r == '+' || r == '-':
 			// Only valid right after 'e'/'E', handled above via continue.
 			return s, tok
-		case r == 'x' || r == 'X' || r == 'o' || r == 'O' || r == 'b' || r == 'B':
+		case r == 'x' || r == 'X' || r == 'o' || r == 'O':
 			if i != 1 || src[0] != '0' {
 				return src[:i], tok
 			}
 		case (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F'):
-			// Hex digits: only valid after 0x prefix.
-			if len(src) < 3 || src[0] != '0' || (src[1] != 'x' && src[1] != 'X') {
+			// Hex digits (a-f) and binary prefix (0b/0B).
+			// 'b'/'B' at position 1 after '0' is a binary prefix, not a hex digit.
+			if i == 1 && src[0] == '0' && (r == 'b' || r == 'B') {
+				// Binary prefix (0b), ok.
+			} else if len(src) < 3 || src[0] != '0' || (src[1] != 'x' && src[1] != 'X') {
 				return src[:i], tok
 			}
 		case r == '_':

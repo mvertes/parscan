@@ -90,7 +90,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		decl = decl[:i]
 	}
 	var vars []string
-	if _, vars, _, err = p.parseParamTypes(decl, parseTypeVar); err != nil {
+	if _, vars, _, err = p.parseParamTypes(decl, parseTypeType); err != nil {
 		if errors.Is(err, ErrMissingType) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
@@ -166,7 +166,11 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 		}
 		return constant.UnaryOp(gotok[id], op1, 0), 1 + l1, err
 	case id.IsLiteral():
-		return constant.MakeFromLiteral(t.Str, gotok[id], 0), 1, err
+		tok := gotok[id]
+		if id == lang.String && len(t.Str) > 0 && t.Str[0] == '\'' {
+			tok = token.CHAR
+		}
+		return constant.MakeFromLiteral(t.Str, tok, 0), 1, err
 	case id == lang.Ident:
 		s, _, ok := p.Symbols.Get(t.Str, p.scope)
 		if !ok {
