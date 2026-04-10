@@ -159,6 +159,12 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			name := in[2].Str
 			v, ok := pkg.Values[name]
 			if !ok {
+				if pkg.Bin {
+					// Binary package stub without this value (e.g. extractor
+					// with empty dependency stubs). Return a placeholder type
+					// so parsing can continue.
+					return &vm.Type{Name: name, Rtype: reflect.TypeOf((*any)(nil)).Elem()}, 3, nil
+				}
 				return nil, 0, ErrUndefined{s.Name + "." + name}
 			}
 			rt := v.Type()
@@ -470,6 +476,9 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 		return false
 	}
 	s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
+	if ok && s.Kind == symbol.Pkg {
+		return false // Qualified type expression: pkg.Type.
+	}
 	if !ok || s.Kind != symbol.Type {
 		return true
 	}
