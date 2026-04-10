@@ -2,6 +2,7 @@
 package interp
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 
@@ -16,11 +17,12 @@ var debug = os.Getenv("PARSCAN_DEBUG") != ""
 type Interp struct {
 	*comp.Compiler
 	*vm.Machine
+	fmtPatched bool
 }
 
 // NewInterpreter returns a new interpreter.
 func NewInterpreter(s *lang.Spec) *Interp {
-	i := &Interp{comp.NewCompiler(s), vm.NewMachine()}
+	i := &Interp{Compiler: comp.NewCompiler(s), Machine: vm.NewMachine()}
 	return i
 }
 
@@ -36,9 +38,16 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 	i.PopExit() // Remove last exit from previous run (re-entrance).
 	initsBefore := len(i.InitFuncs)
 
+	if !i.fmtPatched {
+		i.patchFmtBindings()
+		i.fmtPatched = true
+	}
+
 	if err = i.Compile(name, src); err != nil {
 		return res, err
 	}
+
+	i.Machine.MethodNames = i.Compiler.MethodNames()
 
 	i.TrimStack()
 	i.Push(i.Data[dataOffset:]...)
@@ -62,4 +71,28 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 	}
 	err = i.Run()
 	return i.Top().Reflect(), err
+}
+
+// patchFmtBindings overrides fmt.Print, Printf, Println with versions
+// that write to the machine's configured output writer instead of os.Stdout.
+func (i *Interp) patchFmtBindings() {
+	pkg, ok := i.Packages["fmt"]
+	if !ok {
+		return
+	}
+	m := i.Machine
+	pkg.Values["Print"] = vm.FromReflect(reflect.ValueOf(func(a ...any) (int, error) {
+		return fmt.Fprint(m.Out(), a...)
+	}))
+	pkg.Values["Printf"] = vm.FromReflect(reflect.ValueOf(func(format string, a ...any) (int, error) {
+		return fmt.Fprintf(m.Out(), format, a...)
+	}))
+	pkg.Values["Println"] = vm.FromReflect(reflect.ValueOf(func(a ...any) (int, error) {
+		return fmt.Fprintln(m.Out(), a...)
+	}))
+
+	// Also export the Stringer type so interpreted code can reference it.
+	if _, ok := pkg.Values["Stringer"]; !ok {
+		pkg.Values["Stringer"] = vm.FromReflect(reflect.ValueOf((*fmt.Stringer)(nil)))
+	}
 }

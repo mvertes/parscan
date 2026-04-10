@@ -145,6 +145,27 @@ Interface dispatch uses an `Iface` wrapper holding a concrete type and value.
 Methods are identified by integer IDs (`methodIDs` in the compiler).
 `IfaceWrap` boxes a value; `IfaceCall` dispatches by method ID.
 
+## Interface bridging for native Go calls
+
+Go's `reflect.StructOf` cannot register methods on dynamically-created types.
+When an interpreted value with methods (e.g. `String() string`) is passed to a
+native Go function like `fmt.Println`, Go's interface dispatcher cannot find the
+method. Parscan solves this with a bridge mechanism:
+
+1. The compiler emits `IfaceWrap` for arguments to native function calls whose
+   parameters are interface types. This carries the parscan `*Type` identity
+   across the boundary (essential for non-struct types like `type T int` where
+   the `reflect.Type` is shared with the underlying type).
+2. At the native call boundary in `vm.Run`, `bridgeArgs` scans arguments for
+   `Iface` values. For each value whose type has a method matching a registered
+   bridge (e.g. `String`), it allocates a bridge instance (e.g. `*BridgeString`)
+   with a closure that calls back into the VM via `CallFunc`.
+3. Bridge types are defined in `stdlib/` (not `vm/`) and registered in
+   `vm.Bridges` at init time. Adding a new bridge requires no changes to
+   `vm/` or `comp/`.
+
+See [ADR-009](decisions/ADR-009-interface-bridging.md).
+
 ## Variadic functions
 
 Variadic parameters (`...T`) are parsed as `[]T` by `goparser`. At the call

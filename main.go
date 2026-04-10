@@ -10,6 +10,7 @@ import (
 
 	"github.com/mvertes/parscan/interp"
 	"github.com/mvertes/parscan/lang/golang"
+	"github.com/mvertes/parscan/stdlib"
 )
 
 func main() {
@@ -34,6 +35,7 @@ func run(arg []string) error {
 	args := rflag.Args()
 
 	i := interp.NewInterpreter(golang.GoSpec)
+	i.ImportPackageValues(stdlib.Values)
 	if str != "" {
 		_, err := i.Eval("m:"+str, str)
 		return err

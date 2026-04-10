@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mvertes/parscan/lang/golang"
+	"github.com/mvertes/parscan/stdlib"
 )
 
 func TestFile(t *testing.T) {
@@ -43,6 +44,7 @@ func runFile(t *testing.T, p string) {
 	var stdout, stderr bytes.Buffer
 
 	i := NewInterpreter(golang.GoSpec)
+	i.ImportPackageValues(stdlib.Values)
 	i.SetIO(os.Stdin, &stdout, &stderr)
 	i.SetPkgfs("../_samples/pkg")
 

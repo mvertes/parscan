@@ -422,6 +422,56 @@ global-index-to-name mappings, and per-function local variable lists.
 `DumpFrame` and `DumpCallStack` use this information to annotate memory
 slots with human-readable names and source positions.
 
+### Interface bridging at the native call boundary
+
+Go's `reflect.StructOf` cannot attach methods to dynamically-created types.
+When an interpreted struct (or named type) with methods is passed to a native
+Go function as an `interface{}` parameter, Go's interface dispatcher cannot
+find the method. The VM bridges this gap at the native function call site
+(`rv.Call(in)` path inside the `Call` handler).
+
+**Bridge registry.** `vm.Bridges` (`map[string]reflect.Type`) maps method
+names to pointer-to-bridge types. Bridge types live in `stdlib/` and are
+registered at init time. Each bridge is a struct with a `Fn` field and one
+pointer-receiver method that delegates to `Fn`:
+
+```go
+type BridgeString struct{ Fn func() string }
+func (b *BridgeString) String() string { return b.Fn() }
+```
+
+**`bridgeArgs(in []reflect.Value)`** scans the native-call argument list for
+`Iface` values (boxed by `IfaceWrap` during compilation). For each match:
+
+- If the concrete type has a method with a registered bridge, `wrapIface`
+  allocates a bridge instance, sets its `Fn` to a closure built by
+  `makeBridgeClosure`, and replaces the argument with the bridge pointer.
+- Otherwise, the `Iface` is unwrapped to its concrete value so native code
+  sees the original type instead of `vm.Iface`.
+
+**`makeBridgeClosure`** builds a `Closure{Code, Heap}` with the receiver in
+`Heap[0]` (same pattern as the `IfaceCall` handler) and wraps it via
+`reflect.MakeFunc`. The closure creates a fresh `Machine` with captured state
+and calls `CallFunc` for re-entrant execution.
+
+**`MethodNames []string`** on `Machine` provides the reverse mapping from
+global method IDs to names, populated from the compiler after each `Compile`.
+
+```mermaid
+sequenceDiagram
+    participant Compiler
+    participant VM as VM (Run)
+    participant Bridge as Bridge (stdlib)
+    participant Native as Native Go func
+    Compiler->>VM: IfaceWrap (carries *Type)
+    VM->>VM: bridgeArgs detects Iface
+    VM->>Bridge: allocate *BridgeString, set Fn
+    VM->>Native: rv.Call(bridged args)
+    Native->>Bridge: calls String()
+    Bridge->>VM: Fn closure -> CallFunc
+    VM-->>Native: returns result
+```
+
 ## Dependencies
 
 - `scan` -- for `scan.Sources` (source position registry used by `DebugInfo`).

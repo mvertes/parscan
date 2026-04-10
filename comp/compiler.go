@@ -116,6 +116,15 @@ func (c *Compiler) methodID(name string) int {
 	return id
 }
 
+// MethodNames returns the reverse mapping of global method IDs to names.
+func (c *Compiler) MethodNames() []string {
+	names := make([]string, len(c.methodIDs))
+	for name, id := range c.methodIDs {
+		names[id] = name
+	}
+	return names
+}
+
 func (c *Compiler) typeIndex(typ *vm.Type) int {
 	if i, ok := c.typeIdxs[typ]; ok {
 		return i
@@ -712,6 +721,33 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				rtyp = rv.Type()
 			} else if s.Type != nil {
 				rtyp = s.Type.Rtype
+			}
+			// Wrap concrete args in Iface when the parameter expects an interface type.
+			if rtyp != nil && rtyp.Kind() == reflect.Func {
+				nIn := rtyp.NumIn()
+				for k := 0; k < narg && k < nIn; k++ {
+					argSym := stack[len(stack)-narg+k]
+					if argSym.Type == nil || argSym.Type.IsInterface() {
+						continue
+					}
+					ifaceTyp := &vm.Type{Rtype: rtyp.In(k)}
+					depth := narg - 1 - k
+					c.emitIfaceWrapAt(t, ifaceTyp, argSym.Type, depth)
+				}
+				if rtyp.IsVariadic() && !spread {
+					nFixed := nIn - 1
+					elemType := rtyp.In(nFixed).Elem()
+					if elemType.Kind() == reflect.Interface {
+						elemTyp := &vm.Type{Rtype: elemType}
+						for k := nFixed; k < narg; k++ {
+							argSym := stack[len(stack)-narg+k]
+							if argSym.Type == nil || argSym.Type.IsInterface() {
+								continue
+							}
+							c.emitIfaceWrapAt(t, elemTyp, argSym.Type, narg-1-k)
+						}
+					}
+				}
 			}
 			// Pop function and input arg symbols, push return value symbols.
 			for i := 0; i < narg+1; i++ {

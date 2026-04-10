@@ -49,6 +49,23 @@ using the conventions `// Output:\n...` and `// Error:\n...`. This gives
 a lightweight integration test suite that exercises the full pipeline end
 to end on real Go programs.
 
+### fmt output redirection
+
+`patchFmtBindings` overrides `fmt.Print`, `fmt.Printf`, and `fmt.Println` in
+the parser's package registry with closures that call `fmt.Fprint`/`Fprintf`/
+`Fprintln` via `m.Out()`. This redirects formatted output to the machine's
+configured writer (set by `SetIO`) instead of `os.Stdout`. The patch is
+applied once, on the first `Eval` call. The closures capture the `Machine`
+pointer and resolve `Out()` lazily at call time, so `SetIO` changes take
+effect immediately.
+
+### Method names for interface bridging
+
+After each `Compile`, `Eval` copies the compiler's reverse method-ID mapping
+(`MethodNames`) to the Machine. This allows the VM's `bridgeArgs` to look up
+method names when wrapping interpreted values for native Go calls. See
+[vm](vm.md#interface-bridging-at-the-native-call-boundary).
+
 ### Lazy DebugInfo
 
 `Eval` registers a `debugInfoFn` closure on the VM via `SetDebugInfo`.
