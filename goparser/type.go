@@ -146,10 +146,26 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		return typ, 1 + indexArgs + nRet, nil
 
 	case lang.Ident:
-		// TODO: selector expression (pkg.type)
 		s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
 		if !ok {
 			return nil, 0, ErrUndefined{in[0].Str}
+		}
+		if s.Kind == symbol.Pkg && len(in) >= 3 && in[1].Tok == lang.Period {
+			// Selector expression: pkg.Type
+			pkg, ok := p.Packages[s.PkgPath]
+			if !ok {
+				return nil, 0, fmt.Errorf("package not found: %s", s.PkgPath)
+			}
+			name := in[2].Str
+			v, ok := pkg.Values[name]
+			if !ok {
+				return nil, 0, ErrUndefined{s.Name + "." + name}
+			}
+			rt := v.Type()
+			if rt.Kind() == reflect.Pointer {
+				rt = rt.Elem()
+			}
+			return &vm.Type{Name: rt.Name(), Rtype: rt}, 3, nil
 		}
 		if s.Kind != symbol.Type {
 			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)

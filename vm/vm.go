@@ -731,6 +731,16 @@ func (m *Machine) Run() (err error) {
 			mem[idx] = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: mem[idx]})}
 
 		case IfaceCall:
+			if !mem[sp].IsIface() {
+				// Native interface value: use reflect to get the method.
+				rv := mem[sp].Reflect()
+				if rv.Kind() == reflect.Interface {
+					rv = rv.Elem()
+				}
+				methodName := m.MethodNames[int(c.A)]
+				mem[sp] = Value{ref: rv.MethodByName(methodName)}
+				break
+			}
 			ifc := mem[sp].IfaceVal()
 			method := ifc.Typ.Methods[int(c.A)]
 			// The concrete type inside an embedded interface field is only known at runtime.
@@ -768,7 +778,29 @@ func (m *Machine) Run() (err error) {
 			okForm := int(c.B) == 1
 			ifc := mem[sp]
 			if !ifc.IsIface() {
-				if !okForm {
+				// Native interface value: use reflect for type assertion.
+				rv := ifc.Reflect()
+				if rv.IsValid() && rv.Kind() == reflect.Interface && !rv.IsNil() {
+					rv = rv.Elem()
+					if rv.Type().AssignableTo(dstTyp.Rtype) {
+						mem[sp] = FromReflect(rv)
+						if okForm {
+							if sp+1 >= len(mem) {
+								mem = growStack(mem, sp, 1)
+							}
+							sp++
+							mem[sp] = boolVal(true)
+						}
+						break
+					}
+					if !okForm {
+						m.panicking = true
+						m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface value is %s, not %s", rv.Type(), dstTyp))}
+						sp--
+						ip = panicAddr
+						continue
+					}
+				} else if !okForm {
 					m.panicking = true
 					m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp))}
 					sp--
