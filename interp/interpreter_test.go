@@ -1301,6 +1301,8 @@ func TestImport(t *testing.T) {
 		{n: "#05", src: `import m "fmt"; m.Println(4)`, res: "<nil>"},
 		{n: "#06", src: `import . "fmt"; Println(4)`, res: "<nil>"},
 		{n: "#07", src: `import "context"; func get(ctx context.Context) string { return "ok" }; get(context.Background())`, res: "ok"},
+		{n: "#08", src: `import "context"; ctx := context.WithValue(context.Background(), "a", "b"); context.WithValue(ctx, "c", "d")`, res: "context.Background.WithValue(a, b).WithValue(c, d)"},
+		{n: "#09", skip: true, src: `import "context"; ctx := context.WithValue(context.Background(), "a", "b"); ctx.Value("a").(string)`, res: "b"},
 	})
 }
 

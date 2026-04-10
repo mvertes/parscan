@@ -448,6 +448,7 @@ func (m *Machine) Run() (err error) {
 						in[i] = mem[sp-narg+1+i].Reflect()
 					}
 					m.bridgeArgs(in)
+					coerceInterfaceArgs(in, rv.Type())
 					sp -= narg + 1
 					for _, v := range rv.Call(in) {
 						if sp+1 >= len(mem) {
@@ -1219,6 +1220,7 @@ func (m *Machine) Run() (err error) {
 					for i := range rin {
 						rin[i] = mem[dh-narg-2+i].Reflect()
 					}
+					coerceInterfaceArgs(rin, funcVal.ref.Type())
 					funcVal.ref.Call(rin)
 					// Move return values (at dh+1..dh+nret) down over the defer entry.
 					for i := 0; i < nret; i++ {
@@ -1968,6 +1970,7 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 			for i := range rin {
 				rin[i] = (*mem)[dh-narg-2+i].Reflect()
 			}
+			coerceInterfaceArgs(rin, funcVal.ref.Type())
 			funcVal.ref.Call(rin)
 			return popDefer()
 		}
@@ -2198,6 +2201,7 @@ func (m *Machine) newGoroutine(fval Value, args []Value) {
 		for i, a := range args {
 			in[i] = a.Reflect()
 		}
+		coerceInterfaceArgs(in, rv.Type())
 		go func() { rv.Call(in) }()
 		return
 	}
@@ -2453,9 +2457,7 @@ func numReflect(t reflect.Type, src Value) reflect.Value {
 // with wrapper instances that implement Go interfaces via registered bridges.
 // Non-bridged Iface values are unwrapped to their concrete value.
 func (m *Machine) bridgeArgs(in []reflect.Value) {
-	if len(Bridges) == 0 || len(m.MethodNames) == 0 {
-		return
-	}
+	hasBridges := len(Bridges) > 0 && len(m.MethodNames) > 0
 	for i, rv := range in {
 		if !rv.IsValid() || rv.Type() != ifaceRtype {
 			// Also check inside interface{} wrapping.
@@ -2467,12 +2469,40 @@ func (m *Machine) bridgeArgs(in []reflect.Value) {
 			}
 		}
 		ifc := rv.Interface().(Iface)
-		if w := m.wrapIface(ifc); w.IsValid() {
-			in[i] = w
-		} else {
-			// No bridges matched: unwrap to the concrete value.
-			in[i] = ifc.Val.Reflect()
+		if hasBridges {
+			if w := m.wrapIface(ifc); w.IsValid() {
+				in[i] = w
+				continue
+			}
 		}
+		// No bridges matched (or none registered): unwrap to the concrete value.
+		in[i] = ifc.Val.Reflect()
+	}
+}
+
+// coerceInterfaceArgs unwraps interface-typed arguments whose type does not match
+// the function's expected parameter type. This handles native interface values
+// (e.g. context.Context) stored in generic interface{} variable slots.
+func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
+	numIn := funcType.NumIn()
+	isVariadic := funcType.IsVariadic()
+	for i, rv := range in {
+		if !rv.IsValid() || rv.Kind() != reflect.Interface || rv.IsNil() {
+			continue
+		}
+		var paramType reflect.Type
+		switch {
+		case i < numIn:
+			paramType = funcType.In(i)
+		case isVariadic:
+			paramType = funcType.In(numIn - 1).Elem()
+		default:
+			continue
+		}
+		if rv.Type() == paramType {
+			continue
+		}
+		in[i] = rv.Elem()
 	}
 }
 
