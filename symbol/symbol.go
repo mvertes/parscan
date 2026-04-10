@@ -43,11 +43,17 @@ type Symbol struct {
 	Cval     constant.Value //
 	Used     bool           //
 	Captured bool           // true if this variable escapes to a heap cell
+	LoopVar  bool           // true if this is a for-init or range variable (snapshot capture)
+	CellSlot bool           // true if the local frame slot holds a heap cell pointer (promoted)
 	FreeVars []string       // closure: scoped names of captured outer-scope locals, in Heap order
 	RecvName string         // for methods: raw receiver variable name
 	InNames  []string       // raw input param names, cached from Phase 1 for Phase 2
 	OutNames []string       // raw output param names, cached from Phase 1 for Phase 2
 }
+
+// NeedsCell reports whether this variable should be promoted to a heap cell
+// (captured by a closure and not a loop iteration variable).
+func (s *Symbol) NeedsCell() bool { return s.Captured && !s.LoopVar }
 
 // FreeVarIndex returns the index of name in FreeVars, or -1 if not found.
 func (s *Symbol) FreeVarIndex(name string) int {

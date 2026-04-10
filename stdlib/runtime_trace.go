@@ -10,8 +10,14 @@ import (
 func init() {
 	Values["runtime/trace"] = map[string]reflect.Value{
 		"IsEnabled": reflect.ValueOf(trace.IsEnabled),
+		"Log": reflect.ValueOf(trace.Log),
+		"Logf": reflect.ValueOf(trace.Logf),
 		"NewFlightRecorder": reflect.ValueOf(trace.NewFlightRecorder),
+		"NewTask": reflect.ValueOf(trace.NewTask),
+		"Start": reflect.ValueOf(trace.Start),
+		"StartRegion": reflect.ValueOf(trace.StartRegion),
 		"Stop": reflect.ValueOf(trace.Stop),
+		"WithRegion": reflect.ValueOf(trace.WithRegion),
 		"FlightRecorder": reflect.ValueOf((*trace.FlightRecorder)(nil)),
 		"FlightRecorderConfig": reflect.ValueOf((*trace.FlightRecorderConfig)(nil)),
 		"Region": reflect.ValueOf((*trace.Region)(nil)),

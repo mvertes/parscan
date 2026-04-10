@@ -9,10 +9,13 @@ import (
 
 func init() {
 	Values["archive/tar"] = map[string]reflect.Value{
+		"FileInfoHeader": reflect.ValueOf(tar.FileInfoHeader),
 		"FormatGNU": reflect.ValueOf(tar.FormatGNU),
 		"FormatPAX": reflect.ValueOf(tar.FormatPAX),
 		"FormatUSTAR": reflect.ValueOf(tar.FormatUSTAR),
 		"FormatUnknown": reflect.ValueOf(tar.FormatUnknown),
+		"NewReader": reflect.ValueOf(tar.NewReader),
+		"NewWriter": reflect.ValueOf(tar.NewWriter),
 		"TypeBlock": reflect.ValueOf(tar.TypeBlock),
 		"TypeChar": reflect.ValueOf(tar.TypeChar),
 		"TypeCont": reflect.ValueOf(tar.TypeCont),

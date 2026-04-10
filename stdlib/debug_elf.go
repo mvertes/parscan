@@ -416,6 +416,7 @@ func init() {
 		"NT_FPREGSET": reflect.ValueOf(elf.NT_FPREGSET),
 		"NT_PRPSINFO": reflect.ValueOf(elf.NT_PRPSINFO),
 		"NT_PRSTATUS": reflect.ValueOf(elf.NT_PRSTATUS),
+		"NewFile": reflect.ValueOf(elf.NewFile),
 		"Open": reflect.ValueOf(elf.Open),
 		"PF_MASKOS": reflect.ValueOf(elf.PF_MASKOS),
 		"PF_MASKPROC": reflect.ValueOf(elf.PF_MASKPROC),

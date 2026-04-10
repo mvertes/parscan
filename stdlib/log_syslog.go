@@ -39,6 +39,7 @@ func init() {
 		"LOG_UUCP": reflect.ValueOf(syslog.LOG_UUCP),
 		"LOG_WARNING": reflect.ValueOf(syslog.LOG_WARNING),
 		"New": reflect.ValueOf(syslog.New),
+		"NewLogger": reflect.ValueOf(syslog.NewLogger),
 		"Priority": reflect.ValueOf((*syslog.Priority)(nil)),
 		"Writer": reflect.ValueOf((*syslog.Writer)(nil)),
 	}

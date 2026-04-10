@@ -13,6 +13,7 @@ func init() {
 		"Magic64": reflect.ValueOf(plan9obj.Magic64),
 		"MagicAMD64": reflect.ValueOf(plan9obj.MagicAMD64),
 		"MagicARM": reflect.ValueOf(plan9obj.MagicARM),
+		"NewFile": reflect.ValueOf(plan9obj.NewFile),
 		"Open": reflect.ValueOf(plan9obj.Open),
 		"ErrNoSymbols": reflect.ValueOf(&plan9obj.ErrNoSymbols),
 		"File": reflect.ValueOf((*plan9obj.File)(nil)),

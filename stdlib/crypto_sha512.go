@@ -10,6 +10,10 @@ import (
 func init() {
 	Values["crypto/sha512"] = map[string]reflect.Value{
 		"BlockSize": reflect.ValueOf(sha512.BlockSize),
+		"New": reflect.ValueOf(sha512.New),
+		"New384": reflect.ValueOf(sha512.New384),
+		"New512_224": reflect.ValueOf(sha512.New512_224),
+		"New512_256": reflect.ValueOf(sha512.New512_256),
 		"Size": reflect.ValueOf(sha512.Size),
 		"Size224": reflect.ValueOf(sha512.Size224),
 		"Size256": reflect.ValueOf(sha512.Size256),

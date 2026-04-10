@@ -9,6 +9,8 @@ import (
 
 func init() {
 	Values["net/http/httptrace"] = map[string]reflect.Value{
+		"ContextClientTrace": reflect.ValueOf(httptrace.ContextClientTrace),
+		"WithClientTrace": reflect.ValueOf(httptrace.WithClientTrace),
 		"ClientTrace": reflect.ValueOf((*httptrace.ClientTrace)(nil)),
 		"DNSDoneInfo": reflect.ValueOf((*httptrace.DNSDoneInfo)(nil)),
 		"DNSStartInfo": reflect.ValueOf((*httptrace.DNSStartInfo)(nil)),

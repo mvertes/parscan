@@ -15,6 +15,8 @@ func init() {
 		"IEEE": reflect.ValueOf(crc32.IEEE),
 		"Koopman": reflect.ValueOf(crc32.Koopman),
 		"MakeTable": reflect.ValueOf(crc32.MakeTable),
+		"New": reflect.ValueOf(crc32.New),
+		"NewIEEE": reflect.ValueOf(crc32.NewIEEE),
 		"Size": reflect.ValueOf(crc32.Size),
 		"Update": reflect.ValueOf(crc32.Update),
 		"IEEETable": reflect.ValueOf(&crc32.IEEETable),

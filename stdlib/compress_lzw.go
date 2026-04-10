@@ -11,6 +11,8 @@ func init() {
 	Values["compress/lzw"] = map[string]reflect.Value{
 		"LSB": reflect.ValueOf(lzw.LSB),
 		"MSB": reflect.ValueOf(lzw.MSB),
+		"NewReader": reflect.ValueOf(lzw.NewReader),
+		"NewWriter": reflect.ValueOf(lzw.NewWriter),
 		"Order": reflect.ValueOf((*lzw.Order)(nil)),
 		"Reader": reflect.ValueOf((*lzw.Reader)(nil)),
 		"Writer": reflect.ValueOf((*lzw.Writer)(nil)),

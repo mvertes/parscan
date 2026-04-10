@@ -11,6 +11,9 @@ func init() {
 	Values["net/textproto"] = map[string]reflect.Value{
 		"CanonicalMIMEHeaderKey": reflect.ValueOf(textproto.CanonicalMIMEHeaderKey),
 		"Dial": reflect.ValueOf(textproto.Dial),
+		"NewConn": reflect.ValueOf(textproto.NewConn),
+		"NewReader": reflect.ValueOf(textproto.NewReader),
+		"NewWriter": reflect.ValueOf(textproto.NewWriter),
 		"TrimBytes": reflect.ValueOf(textproto.TrimBytes),
 		"TrimString": reflect.ValueOf(textproto.TrimString),
 		"Conn": reflect.ValueOf((*textproto.Conn)(nil)),

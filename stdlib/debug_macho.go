@@ -80,6 +80,8 @@ func init() {
 		"Magic32": reflect.ValueOf(macho.Magic32),
 		"Magic64": reflect.ValueOf(macho.Magic64),
 		"MagicFat": reflect.ValueOf(macho.MagicFat),
+		"NewFatFile": reflect.ValueOf(macho.NewFatFile),
+		"NewFile": reflect.ValueOf(macho.NewFile),
 		"Open": reflect.ValueOf(macho.Open),
 		"OpenFat": reflect.ValueOf(macho.OpenFat),
 		"TypeBundle": reflect.ValueOf(macho.TypeBundle),

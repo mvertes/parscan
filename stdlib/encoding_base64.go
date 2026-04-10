@@ -9,6 +9,8 @@ import (
 
 func init() {
 	Values["encoding/base64"] = map[string]reflect.Value{
+		"NewDecoder": reflect.ValueOf(base64.NewDecoder),
+		"NewEncoder": reflect.ValueOf(base64.NewEncoder),
 		"NewEncoding": reflect.ValueOf(base64.NewEncoding),
 		"NoPadding": reflect.ValueOf(base64.NoPadding),
 		"StdPadding": reflect.ValueOf(base64.StdPadding),

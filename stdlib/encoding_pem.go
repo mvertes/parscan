@@ -10,6 +10,7 @@ import (
 func init() {
 	Values["encoding/pem"] = map[string]reflect.Value{
 		"Decode": reflect.ValueOf(pem.Decode),
+		"Encode": reflect.ValueOf(pem.Encode),
 		"EncodeToMemory": reflect.ValueOf(pem.EncodeToMemory),
 		"Block": reflect.ValueOf((*pem.Block)(nil)),
 	}

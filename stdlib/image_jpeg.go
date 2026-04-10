@@ -9,7 +9,10 @@ import (
 
 func init() {
 	Values["image/jpeg"] = map[string]reflect.Value{
+		"Decode": reflect.ValueOf(jpeg.Decode),
+		"DecodeConfig": reflect.ValueOf(jpeg.DecodeConfig),
 		"DefaultQuality": reflect.ValueOf(jpeg.DefaultQuality),
+		"Encode": reflect.ValueOf(jpeg.Encode),
 		"FormatError": reflect.ValueOf((*jpeg.FormatError)(nil)),
 		"Options": reflect.ValueOf((*jpeg.Options)(nil)),
 		"UnsupportedError": reflect.ValueOf((*jpeg.UnsupportedError)(nil)),

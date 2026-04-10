@@ -1394,6 +1394,10 @@ func f() int {
 	return result
 }
 f()`, res: "606"},
+		// Closure sees variable modified after capture (capture by reference).
+		{n: "#12", src: `func f() int { i := 12; g := func() int { return i }; i = 20; return g() }; f()`, res: "20"},
+		// Two closures share same cell inside a function.
+		{n: "#13", src: `func f() int { n := 0; inc := func() { n = n+1 }; get := func() int { return n }; inc(); inc(); inc(); return get() }; f()`, res: "3"},
 	})
 }
 
@@ -1717,6 +1721,16 @@ func TestDefer(t *testing.T) {
 			}
 			r := f()
 			r`, res: "42"},
+		{n: "#05", src: `
+			// Deferred closure sees modified value (capture by reference).
+			r := 0
+			func f() {
+				i := 12
+				defer func() { r = i }()
+				i = 20
+			}
+			f()
+			r`, res: "20"},
 	})
 }
 

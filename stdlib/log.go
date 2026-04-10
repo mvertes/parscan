@@ -22,6 +22,7 @@ func init() {
 		"Lshortfile": reflect.ValueOf(log.Lshortfile),
 		"LstdFlags": reflect.ValueOf(log.LstdFlags),
 		"Ltime": reflect.ValueOf(log.Ltime),
+		"New": reflect.ValueOf(log.New),
 		"Output": reflect.ValueOf(log.Output),
 		"Panic": reflect.ValueOf(log.Panic),
 		"Panicf": reflect.ValueOf(log.Panicf),
@@ -31,7 +32,9 @@ func init() {
 		"Printf": reflect.ValueOf(log.Printf),
 		"Println": reflect.ValueOf(log.Println),
 		"SetFlags": reflect.ValueOf(log.SetFlags),
+		"SetOutput": reflect.ValueOf(log.SetOutput),
 		"SetPrefix": reflect.ValueOf(log.SetPrefix),
+		"Writer": reflect.ValueOf(log.Writer),
 		"Logger": reflect.ValueOf((*log.Logger)(nil)),
 	}
 }

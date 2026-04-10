@@ -9,6 +9,8 @@ import (
 
 func init() {
 	Values["net/http/fcgi"] = map[string]reflect.Value{
+		"ProcessEnv": reflect.ValueOf(fcgi.ProcessEnv),
+		"Serve": reflect.ValueOf(fcgi.Serve),
 		"ErrConnClosed": reflect.ValueOf(&fcgi.ErrConnClosed),
 		"ErrRequestAborted": reflect.ValueOf(&fcgi.ErrRequestAborted),
 	}

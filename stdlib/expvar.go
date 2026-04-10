@@ -11,6 +11,7 @@ func init() {
 	Values["expvar"] = map[string]reflect.Value{
 		"Do": reflect.ValueOf(expvar.Do),
 		"Get": reflect.ValueOf(expvar.Get),
+		"Handler": reflect.ValueOf(expvar.Handler),
 		"NewFloat": reflect.ValueOf(expvar.NewFloat),
 		"NewInt": reflect.ValueOf(expvar.NewInt),
 		"NewMap": reflect.ValueOf(expvar.NewMap),

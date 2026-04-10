@@ -35,7 +35,6 @@ func init() {
 		"Stat": reflect.ValueOf(fs.Stat),
 		"Sub": reflect.ValueOf(fs.Sub),
 		"ValidPath": reflect.ValueOf(fs.ValidPath),
-		"WalkDir": reflect.ValueOf(fs.WalkDir),
 		"ErrClosed": reflect.ValueOf(&fs.ErrClosed),
 		"ErrExist": reflect.ValueOf(&fs.ErrExist),
 		"ErrInvalid": reflect.ValueOf(&fs.ErrInvalid),
@@ -56,6 +55,5 @@ func init() {
 		"ReadLinkFS": reflect.ValueOf((*fs.ReadLinkFS)(nil)),
 		"StatFS": reflect.ValueOf((*fs.StatFS)(nil)),
 		"SubFS": reflect.ValueOf((*fs.SubFS)(nil)),
-		"WalkDirFunc": reflect.ValueOf((*fs.WalkDirFunc)(nil)),
 	}
 }

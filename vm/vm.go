@@ -71,6 +71,8 @@ const (
 	HeapGet                // -- v    ; v = *State.Heap[$1]
 	HeapPtr                // -- &cell ; push State.Heap[$1] itself (transitive capture)
 	HeapSet                // v --    ; *State.Heap[$1] = v
+	CellGet                // -- v    ; cell = mem[fp-1+$1].(*Value); push *cell
+	CellSet                // v --    ; cell = mem[fp-1+$1].(*Value); *cell = v
 	IfaceCall              // iface -- closure ; dynamic dispatch method $1 on iface
 	IfaceWrap              // v -- iface ; wrap v in Iface{type at $1, v}
 	Index                  // a i -- a[i] ;
@@ -1367,6 +1369,12 @@ func (m *Machine) Run() (err error) {
 			mem[sp] = *m.heap[int(c.A)]
 		case HeapSet:
 			*m.heap[int(c.A)] = mem[sp]
+			sp--
+		case CellGet:
+			sp++
+			mem[sp] = *mem[int(c.A)+fp-1].ref.Interface().(*Value)
+		case CellSet:
+			*mem[int(c.A)+fp-1].ref.Interface().(*Value) = mem[sp]
 			sp--
 		case HeapPtr:
 			if sp+1 >= len(mem) {

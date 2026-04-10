@@ -9,6 +9,15 @@ import (
 
 func init() {
 	Values["net/http/httputil"] = map[string]reflect.Value{
+		"DumpRequest": reflect.ValueOf(httputil.DumpRequest),
+		"DumpRequestOut": reflect.ValueOf(httputil.DumpRequestOut),
+		"DumpResponse": reflect.ValueOf(httputil.DumpResponse),
+		"NewChunkedReader": reflect.ValueOf(httputil.NewChunkedReader),
+		"NewChunkedWriter": reflect.ValueOf(httputil.NewChunkedWriter),
+		"NewClientConn": reflect.ValueOf(httputil.NewClientConn),
+		"NewProxyClientConn": reflect.ValueOf(httputil.NewProxyClientConn),
+		"NewServerConn": reflect.ValueOf(httputil.NewServerConn),
+		"NewSingleHostReverseProxy": reflect.ValueOf(httputil.NewSingleHostReverseProxy),
 		"ErrClosed": reflect.ValueOf(&httputil.ErrClosed),
 		"ErrLineTooLong": reflect.ValueOf(&httputil.ErrLineTooLong),
 		"ErrPersistEOF": reflect.ValueOf(&httputil.ErrPersistEOF),

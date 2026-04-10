@@ -28,6 +28,7 @@ func init() {
 		"SHA512": reflect.ValueOf(crypto.SHA512),
 		"SHA512_224": reflect.ValueOf(crypto.SHA512_224),
 		"SHA512_256": reflect.ValueOf(crypto.SHA512_256),
+		"SignMessage": reflect.ValueOf(crypto.SignMessage),
 		"Decapsulator": reflect.ValueOf((*crypto.Decapsulator)(nil)),
 		"Decrypter": reflect.ValueOf((*crypto.Decrypter)(nil)),
 		"DecrypterOpts": reflect.ValueOf((*crypto.DecrypterOpts)(nil)),

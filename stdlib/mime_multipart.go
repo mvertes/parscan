@@ -10,6 +10,8 @@ import (
 func init() {
 	Values["mime/multipart"] = map[string]reflect.Value{
 		"FileContentDisposition": reflect.ValueOf(multipart.FileContentDisposition),
+		"NewReader": reflect.ValueOf(multipart.NewReader),
+		"NewWriter": reflect.ValueOf(multipart.NewWriter),
 		"ErrMessageTooLarge": reflect.ValueOf(&multipart.ErrMessageTooLarge),
 		"FileHeader": reflect.ValueOf((*multipart.FileHeader)(nil)),
 		"Form": reflect.ValueOf((*multipart.Form)(nil)),

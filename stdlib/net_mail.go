@@ -11,6 +11,8 @@ func init() {
 	Values["net/mail"] = map[string]reflect.Value{
 		"ParseAddress": reflect.ValueOf(mail.ParseAddress),
 		"ParseAddressList": reflect.ValueOf(mail.ParseAddressList),
+		"ParseDate": reflect.ValueOf(mail.ParseDate),
+		"ReadMessage": reflect.ValueOf(mail.ReadMessage),
 		"ErrHeaderNotPresent": reflect.ValueOf(&mail.ErrHeaderNotPresent),
 		"Address": reflect.ValueOf((*mail.Address)(nil)),
 		"AddressParser": reflect.ValueOf((*mail.AddressParser)(nil)),

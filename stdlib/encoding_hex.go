@@ -15,9 +15,12 @@ func init() {
 		"DecodeString": reflect.ValueOf(hex.DecodeString),
 		"DecodedLen": reflect.ValueOf(hex.DecodedLen),
 		"Dump": reflect.ValueOf(hex.Dump),
+		"Dumper": reflect.ValueOf(hex.Dumper),
 		"Encode": reflect.ValueOf(hex.Encode),
 		"EncodeToString": reflect.ValueOf(hex.EncodeToString),
 		"EncodedLen": reflect.ValueOf(hex.EncodedLen),
+		"NewDecoder": reflect.ValueOf(hex.NewDecoder),
+		"NewEncoder": reflect.ValueOf(hex.NewEncoder),
 		"ErrLength": reflect.ValueOf(&hex.ErrLength),
 		"InvalidByteError": reflect.ValueOf((*hex.InvalidByteError)(nil)),
 	}

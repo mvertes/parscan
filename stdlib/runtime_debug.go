@@ -14,6 +14,7 @@ func init() {
 		"PrintStack": reflect.ValueOf(debug.PrintStack),
 		"ReadBuildInfo": reflect.ValueOf(debug.ReadBuildInfo),
 		"ReadGCStats": reflect.ValueOf(debug.ReadGCStats),
+		"SetCrashOutput": reflect.ValueOf(debug.SetCrashOutput),
 		"SetGCPercent": reflect.ValueOf(debug.SetGCPercent),
 		"SetMaxStack": reflect.ValueOf(debug.SetMaxStack),
 		"SetMaxThreads": reflect.ValueOf(debug.SetMaxThreads),

@@ -20,6 +20,7 @@ func init() {
 		"LevelWriteCommitted": reflect.ValueOf(sql.LevelWriteCommitted),
 		"Named": reflect.ValueOf(sql.Named),
 		"Open": reflect.ValueOf(sql.Open),
+		"OpenDB": reflect.ValueOf(sql.OpenDB),
 		"ErrConnDone": reflect.ValueOf(&sql.ErrConnDone),
 		"ErrNoRows": reflect.ValueOf(&sql.ErrNoRows),
 		"ErrTxDone": reflect.ValueOf(&sql.ErrTxDone),

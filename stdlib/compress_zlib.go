@@ -9,6 +9,11 @@ import (
 
 func init() {
 	Values["compress/zlib"] = map[string]reflect.Value{
+		"NewReader": reflect.ValueOf(zlib.NewReader),
+		"NewReaderDict": reflect.ValueOf(zlib.NewReaderDict),
+		"NewWriter": reflect.ValueOf(zlib.NewWriter),
+		"NewWriterLevel": reflect.ValueOf(zlib.NewWriterLevel),
+		"NewWriterLevelDict": reflect.ValueOf(zlib.NewWriterLevelDict),
 		"NoCompression": reflect.ValueOf(zlib.NoCompression),
 		"ErrChecksum": reflect.ValueOf(&zlib.ErrChecksum),
 		"ErrDictionary": reflect.ValueOf(&zlib.ErrDictionary),

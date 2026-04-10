@@ -9,6 +9,8 @@ import (
 
 func init() {
 	Values["image"] = map[string]reflect.Value{
+		"Decode": reflect.ValueOf(image.Decode),
+		"DecodeConfig": reflect.ValueOf(image.DecodeConfig),
 		"NewAlpha": reflect.ValueOf(image.NewAlpha),
 		"NewAlpha16": reflect.ValueOf(image.NewAlpha16),
 		"NewCMYK": reflect.ValueOf(image.NewCMYK),
@@ -17,11 +19,14 @@ func init() {
 		"NewNRGBA": reflect.ValueOf(image.NewNRGBA),
 		"NewNRGBA64": reflect.ValueOf(image.NewNRGBA64),
 		"NewNYCbCrA": reflect.ValueOf(image.NewNYCbCrA),
+		"NewPaletted": reflect.ValueOf(image.NewPaletted),
 		"NewRGBA": reflect.ValueOf(image.NewRGBA),
 		"NewRGBA64": reflect.ValueOf(image.NewRGBA64),
+		"NewUniform": reflect.ValueOf(image.NewUniform),
 		"NewYCbCr": reflect.ValueOf(image.NewYCbCr),
 		"Pt": reflect.ValueOf(image.Pt),
 		"Rect": reflect.ValueOf(image.Rect),
+		"RegisterFormat": reflect.ValueOf(image.RegisterFormat),
 		"YCbCrSubsampleRatio410": reflect.ValueOf(image.YCbCrSubsampleRatio410),
 		"YCbCrSubsampleRatio411": reflect.ValueOf(image.YCbCrSubsampleRatio411),
 		"YCbCrSubsampleRatio420": reflect.ValueOf(image.YCbCrSubsampleRatio420),

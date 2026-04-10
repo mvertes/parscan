@@ -10,7 +10,9 @@ import (
 func init() {
 	Values["runtime/coverage"] = map[string]reflect.Value{
 		"ClearCounters": reflect.ValueOf(coverage.ClearCounters),
+		"WriteCounters": reflect.ValueOf(coverage.WriteCounters),
 		"WriteCountersDir": reflect.ValueOf(coverage.WriteCountersDir),
+		"WriteMeta": reflect.ValueOf(coverage.WriteMeta),
 		"WriteMetaDir": reflect.ValueOf(coverage.WriteMetaDir),
 	}
 }

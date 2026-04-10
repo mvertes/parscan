@@ -11,6 +11,11 @@ func init() {
 	Values["bufio"] = map[string]reflect.Value{
 		"MaxScanTokenSize": reflect.ValueOf(bufio.MaxScanTokenSize),
 		"NewReadWriter": reflect.ValueOf(bufio.NewReadWriter),
+		"NewReader": reflect.ValueOf(bufio.NewReader),
+		"NewReaderSize": reflect.ValueOf(bufio.NewReaderSize),
+		"NewScanner": reflect.ValueOf(bufio.NewScanner),
+		"NewWriter": reflect.ValueOf(bufio.NewWriter),
+		"NewWriterSize": reflect.ValueOf(bufio.NewWriterSize),
 		"ScanBytes": reflect.ValueOf(bufio.ScanBytes),
 		"ScanLines": reflect.ValueOf(bufio.ScanLines),
 		"ScanRunes": reflect.ValueOf(bufio.ScanRunes),

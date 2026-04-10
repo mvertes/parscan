@@ -887,10 +887,16 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						typ = vm.TypeOf(r.Value.Interface())
 					}
 					lhs[i].Type = typ
-					c.emit(t, vm.New, lhs[i].Index, c.typeSym(typ).Index)
+					if !lhs[i].NeedsCell() {
+						c.emit(t, vm.New, lhs[i].Index, c.typeSym(typ).Index)
+					}
 					lhs[i].Used = true
 				}
 				for i := n - 1; i >= 0; i-- {
+					if lhs[i].NeedsCell() {
+						c.emit(t, vm.HeapAlloc)
+						lhs[i].CellSlot = true
+					}
 					c.emit(t, vm.SetLocal, lhs[i].Index, 0)
 				}
 				c.emit(t, vm.Pop, n)
@@ -940,7 +946,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emitIfaceWrap(t, lhss[i].Type, rhss[i].Type)
 					switch {
 					case lhss[i].Kind == symbol.LocalVar:
-						c.emit(t, vm.SetLocal, lhss[i].Index, 0)
+						if lhss[i].CellSlot {
+							c.emit(t, vm.CellSet, lhss[i].Index)
+						} else {
+							c.emit(t, vm.SetLocal, lhss[i].Index, 0)
+						}
 						slotCount++
 						namedAbove++
 					case lhss[i].Index != symbol.UnsetAddr:
@@ -981,12 +991,23 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 				}
 				if !lhs.Used {
-					c.emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
+					if !lhs.NeedsCell() {
+						c.emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
+					}
 					lhs.Used = true
 				}
 				// Wrap concrete value in Iface when assigning to interface local.
 				c.emitIfaceWrap(t, lhs.Type, rhs.Type)
-				c.emit(t, vm.SetLocal, lhs.Index, 0)
+				switch {
+				case lhs.CellSlot:
+					c.emit(t, vm.CellSet, lhs.Index)
+				case lhs.NeedsCell() && !lhs.CellSlot:
+					c.emit(t, vm.HeapAlloc)
+					lhs.CellSlot = true
+					c.emit(t, vm.SetLocal, lhs.Index, 0)
+				default:
+					c.emit(t, vm.SetLocal, lhs.Index, 0)
+				}
 				c.emit(t, vm.Pop, 1) // pop stale lhs value left by Ident's Get
 				break
 			}
@@ -1077,7 +1098,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					if fvSym.Kind == symbol.LocalVar {
 						c.emit(t, vm.GetLocal, fvSym.Index)
-						c.emit(t, vm.HeapAlloc)
+						if !fvSym.CellSlot {
+							c.emit(t, vm.HeapAlloc) // snapshot: not promoted to cell
+						}
 					} else {
 						c.emit(t, vm.GetGlobal, fvSym.Index)
 						c.emit(t, vm.HeapAlloc)
@@ -1094,6 +1117,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						break
 					}
 				}
+			}
+			if s.Kind == symbol.LocalVar && s.CellSlot {
+				c.emit(t, vm.CellGet, s.Index)
+				break
 			}
 			// Regular local or global access.
 			// Type symbols are always in global Data.
@@ -1837,7 +1864,7 @@ func (c *Compiler) PrintCode() {
 			if d, ok := labels[i+int(l.A)]; ok {
 				extra = "// " + d[0]
 			}
-		case vm.Get, vm.GetLocal, vm.GetGlobal, vm.SetLocal, vm.SetGlobal, vm.CallImm:
+		case vm.Get, vm.GetLocal, vm.GetGlobal, vm.SetLocal, vm.SetGlobal, vm.CallImm, vm.CellGet, vm.CellSet:
 			if d, ok := data[int(l.A)]; ok {
 				extra = "// " + d
 			}
@@ -1952,7 +1979,7 @@ func (c *Compiler) removeFnew(index int) {
 func (c *Compiler) removeGetLocal(index int) {
 	for i := len(c.Code) - 1; i >= 0; i-- {
 		op := c.Code[i].Op
-		if op == vm.GetLocal && int(c.Code[i].A) == index {
+		if (op == vm.GetLocal || op == vm.CellGet) && int(c.Code[i].A) == index {
 			copy(c.Code[i:], c.Code[i+1:])
 			c.Code = c.Code[:len(c.Code)-1]
 			return

@@ -9,8 +9,13 @@ import (
 
 func init() {
 	Values["encoding/json"] = map[string]reflect.Value{
+		"Compact": reflect.ValueOf(json.Compact),
+		"HTMLEscape": reflect.ValueOf(json.HTMLEscape),
+		"Indent": reflect.ValueOf(json.Indent),
 		"Marshal": reflect.ValueOf(json.Marshal),
 		"MarshalIndent": reflect.ValueOf(json.MarshalIndent),
+		"NewDecoder": reflect.ValueOf(json.NewDecoder),
+		"NewEncoder": reflect.ValueOf(json.NewEncoder),
 		"Unmarshal": reflect.ValueOf(json.Unmarshal),
 		"Valid": reflect.ValueOf(json.Valid),
 		"Decoder": reflect.ValueOf((*json.Decoder)(nil)),

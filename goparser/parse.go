@@ -44,6 +44,7 @@ type Parser struct {
 	namedOut      []string             // scoped names of named return vars for current function
 	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
 	typeOnly      bool                 // when true, addSymVar is a no-op (Phase 1 signature-only parse)
+	inForInit     bool                 // true while parsing for-init or range clause (marks LoopVar)
 	buildCtx      *buildContext        // build constraint context for file filtering
 }
 
@@ -100,6 +101,9 @@ func (p *Parser) addLocalVar(name string) string {
 	}
 	scoped := p.scopedName(name)
 	p.SymAdd(p.framelen[p.funcScope], scoped, vm.Value{}, symbol.LocalVar, nil)
+	if p.inForInit {
+		p.Symbols[scoped].LoopVar = true
+	}
 	p.framelen[p.funcScope]++
 	return scoped
 }
@@ -1054,7 +1058,10 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	case 1:
 		if hasRange {
 			init = pre[0]
-			if init, err = p.parseStmt(init); err != nil {
+			p.inForInit = true
+			init, err = p.parseStmt(init)
+			p.inForInit = false
+			if err != nil {
 				return nil, err
 			}
 			out = init
@@ -1070,7 +1077,10 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		}
 	case 3:
 		init, cond, post = pre[0], pre[1], pre[2]
-		if init, err = p.parseStmt(init); err != nil {
+		p.inForInit = true
+		init, err = p.parseStmt(init)
+		p.inForInit = false
+		if err != nil {
 			return nil, err
 		}
 		out = init

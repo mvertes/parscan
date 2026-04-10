@@ -9,10 +9,12 @@ import (
 
 func init() {
 	Values["go/constant"] = map[string]reflect.Value{
+		"BinaryOp": reflect.ValueOf(constant.BinaryOp),
 		"BitLen": reflect.ValueOf(constant.BitLen),
 		"Bool": reflect.ValueOf(constant.Bool),
 		"BoolVal": reflect.ValueOf(constant.BoolVal),
 		"Bytes": reflect.ValueOf(constant.Bytes),
+		"Compare": reflect.ValueOf(constant.Compare),
 		"Complex": reflect.ValueOf(constant.Complex),
 		"Denom": reflect.ValueOf(constant.Denom),
 		"Float": reflect.ValueOf(constant.Float),
@@ -25,6 +27,7 @@ func init() {
 		"MakeBool": reflect.ValueOf(constant.MakeBool),
 		"MakeFloat64": reflect.ValueOf(constant.MakeFloat64),
 		"MakeFromBytes": reflect.ValueOf(constant.MakeFromBytes),
+		"MakeFromLiteral": reflect.ValueOf(constant.MakeFromLiteral),
 		"MakeImag": reflect.ValueOf(constant.MakeImag),
 		"MakeInt64": reflect.ValueOf(constant.MakeInt64),
 		"MakeString": reflect.ValueOf(constant.MakeString),
@@ -32,6 +35,7 @@ func init() {
 		"MakeUnknown": reflect.ValueOf(constant.MakeUnknown),
 		"Num": reflect.ValueOf(constant.Num),
 		"Real": reflect.ValueOf(constant.Real),
+		"Shift": reflect.ValueOf(constant.Shift),
 		"Sign": reflect.ValueOf(constant.Sign),
 		"String": reflect.ValueOf(constant.String),
 		"StringVal": reflect.ValueOf(constant.StringVal),
@@ -39,6 +43,7 @@ func init() {
 		"ToFloat": reflect.ValueOf(constant.ToFloat),
 		"ToInt": reflect.ValueOf(constant.ToInt),
 		"Uint64Val": reflect.ValueOf(constant.Uint64Val),
+		"UnaryOp": reflect.ValueOf(constant.UnaryOp),
 		"Unknown": reflect.ValueOf(constant.Unknown),
 		"Val": reflect.ValueOf(constant.Val),
 		"Kind": reflect.ValueOf((*constant.Kind)(nil)),

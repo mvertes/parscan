@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Values["testing/synctest"] = map[string]reflect.Value{
+		"Test": reflect.ValueOf(synctest.Test),
 		"Wait": reflect.ValueOf(synctest.Wait),
 	}
 }

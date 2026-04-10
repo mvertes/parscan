@@ -10,6 +10,7 @@ import (
 func init() {
 	Values["hash/adler32"] = map[string]reflect.Value{
 		"Checksum": reflect.ValueOf(adler32.Checksum),
+		"New": reflect.ValueOf(adler32.New),
 		"Size": reflect.ValueOf(adler32.Size),
 	}
 }

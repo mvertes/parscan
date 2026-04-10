@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Values["go/printer"] = map[string]reflect.Value{
+		"Fprint": reflect.ValueOf(printer.Fprint),
 		"RawFormat": reflect.ValueOf(printer.RawFormat),
 		"SourcePos": reflect.ValueOf(printer.SourcePos),
 		"TabIndent": reflect.ValueOf(printer.TabIndent),

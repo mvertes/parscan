@@ -11,6 +11,7 @@ func init() {
 	Values["net/smtp"] = map[string]reflect.Value{
 		"CRAMMD5Auth": reflect.ValueOf(smtp.CRAMMD5Auth),
 		"Dial": reflect.ValueOf(smtp.Dial),
+		"NewClient": reflect.ValueOf(smtp.NewClient),
 		"PlainAuth": reflect.ValueOf(smtp.PlainAuth),
 		"SendMail": reflect.ValueOf(smtp.SendMail),
 		"Auth": reflect.ValueOf((*smtp.Auth)(nil)),

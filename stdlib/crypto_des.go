@@ -10,6 +10,8 @@ import (
 func init() {
 	Values["crypto/des"] = map[string]reflect.Value{
 		"BlockSize": reflect.ValueOf(des.BlockSize),
+		"NewCipher": reflect.ValueOf(des.NewCipher),
+		"NewTripleDESCipher": reflect.ValueOf(des.NewTripleDESCipher),
 		"KeySizeError": reflect.ValueOf((*des.KeySizeError)(nil)),
 	}
 }

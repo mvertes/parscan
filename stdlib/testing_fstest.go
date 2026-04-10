@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Values["testing/fstest"] = map[string]reflect.Value{
+		"TestFS": reflect.ValueOf(fstest.TestFS),
 		"MapFS": reflect.ValueOf((*fstest.MapFS)(nil)),
 		"MapFile": reflect.ValueOf((*fstest.MapFile)(nil)),
 	}

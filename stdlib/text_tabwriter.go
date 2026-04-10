@@ -14,6 +14,7 @@ func init() {
 		"DiscardEmptyColumns": reflect.ValueOf(tabwriter.DiscardEmptyColumns),
 		"Escape": reflect.ValueOf(tabwriter.Escape),
 		"FilterHTML": reflect.ValueOf(tabwriter.FilterHTML),
+		"NewWriter": reflect.ValueOf(tabwriter.NewWriter),
 		"StripEscape": reflect.ValueOf(tabwriter.StripEscape),
 		"TabIndent": reflect.ValueOf(tabwriter.TabIndent),
 		"Writer": reflect.ValueOf((*tabwriter.Writer)(nil)),

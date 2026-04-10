@@ -2114,6 +2114,7 @@ func init() {
 		"Wait4": reflect.ValueOf(syscall.Wait4),
 		"Write": reflect.ValueOf(syscall.Write),
 		"XCASE": reflect.ValueOf(syscall.XCASE),
+		"ForkLock": reflect.ValueOf(&syscall.ForkLock),
 		"SocketDisableIPv6": reflect.ValueOf(&syscall.SocketDisableIPv6),
 		"Stderr": reflect.ValueOf(&syscall.Stderr),
 		"Stdin": reflect.ValueOf(&syscall.Stdin),

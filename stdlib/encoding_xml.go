@@ -10,9 +10,13 @@ import (
 func init() {
 	Values["encoding/xml"] = map[string]reflect.Value{
 		"CopyToken": reflect.ValueOf(xml.CopyToken),
+		"Escape": reflect.ValueOf(xml.Escape),
+		"EscapeText": reflect.ValueOf(xml.EscapeText),
 		"Header": reflect.ValueOf(xml.Header),
 		"Marshal": reflect.ValueOf(xml.Marshal),
 		"MarshalIndent": reflect.ValueOf(xml.MarshalIndent),
+		"NewDecoder": reflect.ValueOf(xml.NewDecoder),
+		"NewEncoder": reflect.ValueOf(xml.NewEncoder),
 		"NewTokenDecoder": reflect.ValueOf(xml.NewTokenDecoder),
 		"Unmarshal": reflect.ValueOf(xml.Unmarshal),
 		"HTMLAutoClose": reflect.ValueOf(&xml.HTMLAutoClose),

@@ -29,8 +29,11 @@ func init() {
 		"SplitList": reflect.ValueOf(filepath.SplitList),
 		"ToSlash": reflect.ValueOf(filepath.ToSlash),
 		"VolumeName": reflect.ValueOf(filepath.VolumeName),
+		"Walk": reflect.ValueOf(filepath.Walk),
+		"WalkDir": reflect.ValueOf(filepath.WalkDir),
 		"ErrBadPattern": reflect.ValueOf(&filepath.ErrBadPattern),
 		"SkipAll": reflect.ValueOf(&filepath.SkipAll),
 		"SkipDir": reflect.ValueOf(&filepath.SkipDir),
+		"WalkFunc": reflect.ValueOf((*filepath.WalkFunc)(nil)),
 	}
 }

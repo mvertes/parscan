@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Values["crypto/rand"] = map[string]reflect.Value{
+		"Prime": reflect.ValueOf(rand.Prime),
 		"Read": reflect.ValueOf(rand.Read),
 		"Text": reflect.ValueOf(rand.Text),
 		"Reader": reflect.ValueOf(&rand.Reader),

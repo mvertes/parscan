@@ -9,17 +9,20 @@ import (
 
 func init() {
 	Values["net/rpc"] = map[string]reflect.Value{
+		"Accept": reflect.ValueOf(rpc.Accept),
 		"DefaultDebugPath": reflect.ValueOf(rpc.DefaultDebugPath),
 		"DefaultRPCPath": reflect.ValueOf(rpc.DefaultRPCPath),
 		"Dial": reflect.ValueOf(rpc.Dial),
 		"DialHTTP": reflect.ValueOf(rpc.DialHTTP),
 		"DialHTTPPath": reflect.ValueOf(rpc.DialHTTPPath),
 		"HandleHTTP": reflect.ValueOf(rpc.HandleHTTP),
+		"NewClient": reflect.ValueOf(rpc.NewClient),
 		"NewClientWithCodec": reflect.ValueOf(rpc.NewClientWithCodec),
 		"NewServer": reflect.ValueOf(rpc.NewServer),
 		"Register": reflect.ValueOf(rpc.Register),
 		"RegisterName": reflect.ValueOf(rpc.RegisterName),
 		"ServeCodec": reflect.ValueOf(rpc.ServeCodec),
+		"ServeConn": reflect.ValueOf(rpc.ServeConn),
 		"ServeRequest": reflect.ValueOf(rpc.ServeRequest),
 		"DefaultServer": reflect.ValueOf(&rpc.DefaultServer),
 		"ErrShutdown": reflect.ValueOf(&rpc.ErrShutdown),

@@ -106,6 +106,7 @@ func init() {
 		"IMAGE_SUBSYSTEM_WINDOWS_CUI": reflect.ValueOf(pe.IMAGE_SUBSYSTEM_WINDOWS_CUI),
 		"IMAGE_SUBSYSTEM_WINDOWS_GUI": reflect.ValueOf(pe.IMAGE_SUBSYSTEM_WINDOWS_GUI),
 		"IMAGE_SUBSYSTEM_XBOX": reflect.ValueOf(pe.IMAGE_SUBSYSTEM_XBOX),
+		"NewFile": reflect.ValueOf(pe.NewFile),
 		"Open": reflect.ValueOf(pe.Open),
 		"COFFSymbol": reflect.ValueOf((*pe.COFFSymbol)(nil)),
 		"COFFSymbolAuxFormat5": reflect.ValueOf((*pe.COFFSymbolAuxFormat5)(nil)),

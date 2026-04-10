@@ -30,6 +30,7 @@ func init() {
 		"ReadTrace": reflect.ValueOf(runtime.ReadTrace),
 		"SetBlockProfileRate": reflect.ValueOf(runtime.SetBlockProfileRate),
 		"SetCPUProfileRate": reflect.ValueOf(runtime.SetCPUProfileRate),
+		"SetCgoTraceback": reflect.ValueOf(runtime.SetCgoTraceback),
 		"SetDefaultGOMAXPROCS": reflect.ValueOf(runtime.SetDefaultGOMAXPROCS),
 		"SetFinalizer": reflect.ValueOf(runtime.SetFinalizer),
 		"SetMutexProfileFraction": reflect.ValueOf(runtime.SetMutexProfileFraction),

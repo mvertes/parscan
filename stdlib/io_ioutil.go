@@ -9,8 +9,13 @@ import (
 
 func init() {
 	Values["io/ioutil"] = map[string]reflect.Value{
+		"NopCloser": reflect.ValueOf(ioutil.NopCloser),
+		"ReadAll": reflect.ValueOf(ioutil.ReadAll),
+		"ReadDir": reflect.ValueOf(ioutil.ReadDir),
 		"ReadFile": reflect.ValueOf(ioutil.ReadFile),
 		"TempDir": reflect.ValueOf(ioutil.TempDir),
+		"TempFile": reflect.ValueOf(ioutil.TempFile),
+		"WriteFile": reflect.ValueOf(ioutil.WriteFile),
 		"Discard": reflect.ValueOf(&ioutil.Discard),
 	}
 }

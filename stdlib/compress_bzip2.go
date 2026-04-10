@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Values["compress/bzip2"] = map[string]reflect.Value{
+		"NewReader": reflect.ValueOf(bzip2.NewReader),
 		"StructuralError": reflect.ValueOf((*bzip2.StructuralError)(nil)),
 	}
 }

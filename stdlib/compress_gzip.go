@@ -9,6 +9,9 @@ import (
 
 func init() {
 	Values["compress/gzip"] = map[string]reflect.Value{
+		"NewReader": reflect.ValueOf(gzip.NewReader),
+		"NewWriter": reflect.ValueOf(gzip.NewWriter),
+		"NewWriterLevel": reflect.ValueOf(gzip.NewWriterLevel),
 		"NoCompression": reflect.ValueOf(gzip.NoCompression),
 		"ErrChecksum": reflect.ValueOf(&gzip.ErrChecksum),
 		"ErrHeader": reflect.ValueOf(&gzip.ErrHeader),

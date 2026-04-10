@@ -9,6 +9,7 @@ import (
 
 func init() {
 	Values["crypto/ed25519"] = map[string]reflect.Value{
+		"GenerateKey": reflect.ValueOf(ed25519.GenerateKey),
 		"NewKeyFromSeed": reflect.ValueOf(ed25519.NewKeyFromSeed),
 		"PrivateKeySize": reflect.ValueOf(ed25519.PrivateKeySize),
 		"PublicKeySize": reflect.ValueOf(ed25519.PublicKeySize),

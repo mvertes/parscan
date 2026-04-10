@@ -21,9 +21,11 @@ func init() {
 		"ErrPredefinedEscaper": reflect.ValueOf(template.ErrPredefinedEscaper),
 		"ErrRangeLoopReentry": reflect.ValueOf(template.ErrRangeLoopReentry),
 		"ErrSlashAmbig": reflect.ValueOf(template.ErrSlashAmbig),
+		"HTMLEscape": reflect.ValueOf(template.HTMLEscape),
 		"HTMLEscapeString": reflect.ValueOf(template.HTMLEscapeString),
 		"HTMLEscaper": reflect.ValueOf(template.HTMLEscaper),
 		"IsTrue": reflect.ValueOf(template.IsTrue),
+		"JSEscape": reflect.ValueOf(template.JSEscape),
 		"JSEscapeString": reflect.ValueOf(template.JSEscapeString),
 		"JSEscaper": reflect.ValueOf(template.JSEscaper),
 		"Must": reflect.ValueOf(template.Must),
@@ -34,6 +36,7 @@ func init() {
 		"URLQueryEscaper": reflect.ValueOf(template.URLQueryEscaper),
 		"Error": reflect.ValueOf((*template.Error)(nil)),
 		"ErrorCode": reflect.ValueOf((*template.ErrorCode)(nil)),
+		"FuncMap": reflect.ValueOf((*template.FuncMap)(nil)),
 		"Template": reflect.ValueOf((*template.Template)(nil)),
 	}
 }
