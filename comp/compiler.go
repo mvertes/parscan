@@ -1328,6 +1328,31 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emitField(t, f.Index)
 					break
 				}
+				// Native method on concrete reflect type: use IfaceCall for
+				// reflect-based dispatch at runtime.
+				methodName := t.Str[1:]
+				rtype := s.Type.Rtype
+				rm, ok := rtype.MethodByName(methodName)
+				if !ok && rtype.Kind() != reflect.Pointer {
+					rm, ok = reflect.PointerTo(rtype).MethodByName(methodName)
+				}
+				if ok {
+					// Build bound method signature (without receiver) so the
+					// Call handler sees the correct parameter/return types.
+					mt := rm.Type
+					in := make([]reflect.Type, mt.NumIn()-1)
+					for i := range in {
+						in[i] = mt.In(i + 1)
+					}
+					out := make([]reflect.Type, mt.NumOut())
+					for i := range out {
+						out[i] = mt.Out(i)
+					}
+					boundType := reflect.FuncOf(in, out, mt.IsVariadic())
+					push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: boundType}})
+					c.emit(t, vm.IfaceCall, c.methodID(methodName))
+					break
+				}
 				return goparser.ErrUndefined{Name: t.Str[1:]}
 			}
 
