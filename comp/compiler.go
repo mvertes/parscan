@@ -1363,8 +1363,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				methodName := t.Str[1:]
 				rtype := s.Type.Rtype
 				rm, ok := rtype.MethodByName(methodName)
+				needAddr := false
 				if !ok && rtype.Kind() != reflect.Pointer {
 					rm, ok = reflect.PointerTo(rtype).MethodByName(methodName)
+					needAddr = true
 				}
 				if ok {
 					// Build bound method signature (without receiver) so the
@@ -1380,6 +1382,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					boundType := reflect.FuncOf(in, out, mt.IsVariadic())
 					push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: boundType}})
+					if needAddr {
+						c.emit(t, vm.Addr)
+					}
 					c.emit(t, vm.IfaceCall, c.methodID(methodName))
 					break
 				}
