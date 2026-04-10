@@ -856,6 +856,16 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 
 		case lang.Composite:
+			sliceLen := t.Arg[0].(int)
+			if sliceLen > 0 {
+				idx := int32(c.Symbols[t.Str].Index) //nolint:gosec
+				for i := len(c.Code) - 1; i >= 0; i-- {
+					if c.Code[i].Op == vm.Fnew && c.Code[i].A == idx {
+						c.Code[i].B = int32(sliceLen) //nolint:gosec
+						break
+					}
+				}
+			}
 
 		case lang.Grow:
 			growPos = append(growPos, len(c.Code))
@@ -1141,7 +1151,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				if s.Kind == symbol.Type {
 					switch s.Type.Rtype.Kind() {
 					case reflect.Slice:
-						c.emit(t, vm.Fnew, s.Index, s.SliceLen)
+						c.emit(t, vm.Fnew, s.Index, 0)
 					case reflect.Pointer:
 						c.emit(t, vm.FnewE, s.Index, 1)
 					default:

@@ -39,7 +39,6 @@ type Symbol struct {
 	PkgPath  string         //
 	Type     *vm.Type       //
 	Value    vm.Value       //
-	SliceLen int            // initial slice length (slice types only)
 	Cval     constant.Value //
 	Used     bool           //
 	Captured bool           // true if this variable escapes to a heap cell
