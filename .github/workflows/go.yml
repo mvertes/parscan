@@ -24,6 +24,7 @@ jobs:
       uses: golangci/golangci-lint-action@v9
       with:
         version: latest
+        skip-cache: true
 
     - name: Build
       run: go build -v ./...
