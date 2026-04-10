@@ -1305,7 +1305,7 @@ func TestImport(t *testing.T) {
 		{n: "#09", src: `import "context"; ctx := context.WithValue(context.Background(), "a", "b"); ctx.Value("a").(string)`, res: "b"},
 		{n: "#10", src: `import "strings"; r := strings.NewReader("hello"); r.Len()`, res: "5"},
 		{n: "#11", src: `import "os"; f, _ := os.CreateTemp("", "test"); n := f.Name(); f.Close(); os.Remove(n); len(n) > 0`, res: "true"},
-		{n: "#12", skip: true, src: `import "bytes"; b := bytes.NewBuffer(nil); b.WriteString("hello"); b.String()`, res: "hello"},
+		{n: "#12", src: `import "bytes"; b := bytes.NewBuffer(nil); b.WriteString("hello"); b.String()`, res: "hello"},
 	})
 }
 

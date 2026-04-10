@@ -2487,7 +2487,7 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 	numIn := funcType.NumIn()
 	isVariadic := funcType.IsVariadic()
 	for i, rv := range in {
-		if !rv.IsValid() || rv.Kind() != reflect.Interface || rv.IsNil() {
+		if rv.IsValid() && (rv.Kind() != reflect.Interface || rv.IsNil()) {
 			continue
 		}
 		var paramType reflect.Type
@@ -2499,10 +2499,13 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 		default:
 			continue
 		}
-		if rv.Type() == paramType {
-			continue
+		if !rv.IsValid() {
+			// Nil was passed: create a typed zero value so reflect.Call
+			// receives a valid argument.
+			in[i] = reflect.Zero(paramType)
+		} else if rv.Type() != paramType {
+			in[i] = rv.Elem()
 		}
-		in[i] = rv.Elem()
 	}
 }
 
