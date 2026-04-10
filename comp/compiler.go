@@ -1262,7 +1262,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						if !ok {
 							return goparser.ErrUndefined{Name: methodName}
 						}
-						methodSym = &symbol.Symbol{Kind: symbol.Func, Type: &vm.Type{Rtype: rm.Type}}
+						// Use Kind=Value so the Call handler emits a regular Call
+						// (not CallImm which would incorrectly remove a GetGlobal).
+						methodSym = &symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rm.Type}}
 					}
 					push(methodSym)
 					c.emit(t, vm.IfaceCall, c.methodID(methodName))
