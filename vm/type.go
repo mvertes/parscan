@@ -50,10 +50,10 @@ type Iface struct {
 	Val Value // the concrete value
 }
 
-var (
-	ifaceRtype = reflect.TypeOf(Iface{})
-	anyRtype   = reflect.TypeOf((*interface{})(nil)).Elem()
-)
+// AnyRtype is the reflect.Type for the empty interface (any).
+var AnyRtype = reflect.TypeOf((*any)(nil)).Elem()
+
+var ifaceRtype = reflect.TypeOf(Iface{})
 
 // ParscanFunc bundles a parscan func value with its native Go reflect.MakeFunc wrapper.
 // Stored when a parscan func is assigned to a struct field of func type:
@@ -229,7 +229,7 @@ func NewValue(typ reflect.Type, arg ...int) Value {
 	case reflect.Func, reflect.Interface:
 		// Func/interface variables hold heterogeneous values (int, Closure, Iface).
 		// Use interface{} so reflect.Set can accept any of them.
-		return Value{ref: reflect.New(anyRtype).Elem()}
+		return Value{ref: reflect.New(AnyRtype).Elem()}
 	}
 	return Value{ref: reflect.New(typ).Elem()}
 }
@@ -493,7 +493,7 @@ func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 		rf[i].PkgPath = f.PkgPath
 		// Interface fields use interface{} so vm.Iface values can be stored via reflect.Set.
 		if f.Rtype.Kind() == reflect.Interface {
-			rf[i].Type = anyRtype
+			rf[i].Type = AnyRtype
 		} else {
 			rf[i].Type = f.Rtype
 		}

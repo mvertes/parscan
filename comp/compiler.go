@@ -733,6 +733,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					ifaceTyp := &vm.Type{Rtype: rtyp.In(k)}
 					depth := narg - 1 - k
 					c.emitIfaceWrapAt(t, ifaceTyp, argSym.Type, depth)
+					if !ifaceTyp.IsInterface() {
+						c.emitConstConvert(t, argSym, ifaceTyp, depth)
+					}
 				}
 				if rtyp.IsVariadic() && !spread {
 					nFixed := nIn - 1

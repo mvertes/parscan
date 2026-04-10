@@ -184,6 +184,21 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 
 		case lang.BraceBlock:
+			// Check for package-qualified composite type: pkg.Type{}.
+			if ctype == "" && len(out) > 0 && len(ops) > 0 && ops[len(ops)-1].Tok == lang.Period {
+				pkgTok := out[len(out)-1]
+				if s := p.Symbols[pkgTok.Str]; pkgTok.Tok == lang.Ident && s != nil && s.Kind == symbol.Pkg {
+					typeName := ops[len(ops)-1].Str[1:] // Strip leading ".".
+					if typ, err := p.resolvePkgType(s, typeName); err == nil {
+						ctype = typ.String()
+						if p.Symbols[ctype] == nil {
+							p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
+						}
+						out[len(out)-1] = newIdent(ctype, pkgTok.Pos)
+						ops = ops[:len(ops)-1] // Remove Period operator.
+					}
+				}
+			}
 			if ctype == "" {
 				// Infer composite inner type from passed typeStr.
 				sym := p.Symbols[typeStr]

@@ -53,6 +53,27 @@ func (p *Parser) resolveEllipsisArray(elemTyp *vm.Type, toks Tokens, braceIdx in
 
 // parseTypeExpr returns the expression type from its tokens, the number of consumed tokens
 // for the type and the parse error.
+// resolvePkgType resolves a type name from a package symbol.
+// It handles binary package stubs and pointer-wrapped type values.
+func (p *Parser) resolvePkgType(s *symbol.Symbol, name string) (*vm.Type, error) {
+	pkg, ok := p.Packages[s.PkgPath]
+	if !ok {
+		return nil, fmt.Errorf("package not found: %s", s.PkgPath)
+	}
+	v, ok := pkg.Values[name]
+	if !ok {
+		if pkg.Bin {
+			return &vm.Type{Name: name, Rtype: vm.AnyRtype}, nil
+		}
+		return nil, ErrUndefined{s.Name + "." + name}
+	}
+	rt := v.Type()
+	if rt.Kind() == reflect.Pointer {
+		rt = rt.Elem()
+	}
+	return &vm.Type{Name: rt.Name(), Rtype: rt}, nil
+}
+
 func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 	switch in[0].Tok {
 	case lang.BracketBlock:
@@ -151,27 +172,11 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			return nil, 0, ErrUndefined{in[0].Str}
 		}
 		if s.Kind == symbol.Pkg && len(in) >= 3 && in[1].Tok == lang.Period {
-			// Selector expression: pkg.Type
-			pkg, ok := p.Packages[s.PkgPath]
-			if !ok {
-				return nil, 0, fmt.Errorf("package not found: %s", s.PkgPath)
+			typ, err := p.resolvePkgType(s, in[2].Str)
+			if err != nil {
+				return nil, 0, err
 			}
-			name := in[2].Str
-			v, ok := pkg.Values[name]
-			if !ok {
-				if pkg.Bin {
-					// Binary package stub without this value (e.g. extractor
-					// with empty dependency stubs). Return a placeholder type
-					// so parsing can continue.
-					return &vm.Type{Name: name, Rtype: reflect.TypeOf((*any)(nil)).Elem()}, 3, nil
-				}
-				return nil, 0, ErrUndefined{s.Name + "." + name}
-			}
-			rt := v.Type()
-			if rt.Kind() == reflect.Pointer {
-				rt = rt.Elem()
-			}
-			return &vm.Type{Name: rt.Name(), Rtype: rt}, 3, nil
+			return typ, 3, nil
 		}
 		if s.Kind != symbol.Type {
 			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
@@ -236,7 +241,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		block := in[1].Block()
 		if strings.TrimSpace(block) == "" {
 			// Empty interface (equivalent to any).
-			return &vm.Type{Rtype: reflect.TypeOf((*any)(nil)).Elem()}, 2, nil
+			return &vm.Type{Rtype: vm.AnyRtype}, 2, nil
 		}
 		toks, err := p.Scan(block, false)
 		if err != nil {
@@ -273,7 +278,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		}
 		// Use any as underlying reflect type; method set is tracked in IfaceMethods.
 		return &vm.Type{
-			Rtype:        reflect.TypeOf((*any)(nil)).Elem(),
+			Rtype:        vm.AnyRtype,
 			IfaceMethods: methods,
 		}, 2, nil
 

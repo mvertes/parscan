@@ -1329,6 +1329,8 @@ func TestComposite(t *testing.T) {
 		{n: "#15", src: `type T *struct {b bool}; m := []T{{true}}; m[0]`, res: `&{true}`},
 		{n: "#16", src: `type T *struct {b bool}; m := []T{{true}}; m[0].b`, res: `true`},
 		{n: "#17", src: `a := [3]int{1, 2, 3}; a`, res: `[1 2 3]`},
+		{n: "#18", src: `import "time"; t := time.Time{}; t.IsZero()`, res: `true`},
+		{n: "#19", src: `import "time"; t := &time.Time{}; t.IsZero()`, res: `true`},
 	})
 }
 
