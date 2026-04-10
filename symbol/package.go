@@ -17,6 +17,12 @@ type Package struct {
 func BinPkg(m map[string]reflect.Value, name string) *Package {
 	p := &Package{Path: name, Bin: true, Values: map[string]vm.Value{}}
 	for k, v := range m {
+		// Dereference the wrapper pointer for package variables stored as &var
+		// (for addressability). This removes the extra indirection level so the
+		// compiler and VM see the variable's actual type (e.g. *T instead of **T).
+		if v.Kind() == reflect.Pointer && v.Elem().CanSet() {
+			v = v.Elem()
+		}
 		p.Values[k] = vm.FromReflect(v)
 	}
 	return p
