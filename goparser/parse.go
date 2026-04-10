@@ -45,6 +45,7 @@ type Parser struct {
 	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
 	typeOnly      bool                 // when true, addSymVar is a no-op (Phase 1 signature-only parse)
 	inForInit     bool                 // true while parsing for-init or range clause (marks LoopVar)
+	funcDepth     int                  // nesting depth of function bodies (>0 means inside a function)
 	buildCtx      *buildContext        // build constraint context for file filtering
 }
 
@@ -680,7 +681,7 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		if l := len(in); l >= 2 && (in[l-1].Tok == lang.Inc || in[l-1].Tok == lang.Dec) {
 			return p.parseIncDec(in)
 		}
-		return p.parseExpr(in, "")
+		return p.parseExprStmt(in)
 	case lang.Ident:
 		if in.Index(lang.Colon) == 1 {
 			return p.parseLabel(in)
@@ -707,8 +708,27 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		}
 		fallthrough
 	default:
-		return p.parseExpr(in, "")
+		return p.parseExprStmt(in)
 	}
+}
+
+// parseExprStmt parses an expression used as a statement, bracketing it with
+// PopExpr markers so the compiler discards any unused return values.
+func (p *Parser) parseExprStmt(in Tokens) (Tokens, error) {
+	expr, err := p.parseExpr(in, "")
+	if err != nil {
+		return expr, err
+	}
+	// Only wrap function calls inside function bodies.
+	// At the top level (REPL), the last expression's value is the program result.
+	if len(expr) > 0 && expr[len(expr)-1].Tok == lang.Call && p.funcDepth > 0 {
+		out := make(Tokens, 0, len(expr)+2)
+		out = append(out, newToken(lang.PopExpr, "", in[0].Pos, 0)) // mark start
+		out = append(out, expr...)
+		out = append(out, newToken(lang.PopExpr, "", in[0].Pos, 1)) // pop excess
+		return out, nil
+	}
+	return expr, nil
 }
 
 func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
@@ -1251,7 +1271,9 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	}
 	p.function = s
 
+	p.funcDepth++
 	toks, err := p.Parse(in[bi].Block())
+	p.funcDepth--
 	if err != nil {
 		return out, err
 	}

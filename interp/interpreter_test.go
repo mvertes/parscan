@@ -399,6 +399,7 @@ func TestFor(t *testing.T) {
 		{n: "#31", src: `ch := make(chan string, 2); ch <- "a"; ch <- "bb"; close(ch); n := 0; for v := range ch { n += len(v) }; n`, res: "3"},
 		{n: "#32", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; close(ch); n := 0; for range ch { n++ }; n`, res: "3"},
 		{n: "#33", src: `func f() int { ch := make(chan int, 3); ch <- 10; ch <- 20; ch <- 30; close(ch); s := 0; for v := range ch { s += v }; return s }; f()`, res: "60"},
+		{n: "range_call_ret", src: `import "fmt"; func f() string { ch := make(chan string, 1); ch <- "ok"; close(ch); s := ""; for v := range ch { fmt.Println(v); s = v }; return s }; f()`, res: "ok"},
 		{n: "#20", src: `
 func f() string {
 	s := make([]map[string]string, 0)
