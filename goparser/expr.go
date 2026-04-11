@@ -223,7 +223,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			ops = append(ops, newComposite(ctype, t.Pos, sliceLen))
 
 		case lang.BracketBlock:
-			if i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Range {
+			if i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Range || in[i-1].Tok == lang.Colon {
 				// Array or slice type expression.
 				elemTyp, n, err := p.parseTypeExpr(in[i:])
 				if errors.Is(err, ErrEllipsisArray) {
