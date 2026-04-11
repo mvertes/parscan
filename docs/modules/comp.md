@@ -97,6 +97,42 @@ target is a named non-closure function, `removeGetGlobal` retracts the
 `B` = narg. Otherwise it emits `GoCall narg`, which reads the function
 value from the stack at runtime.
 
+### Intrinsics
+
+The compiler replaces calls to known standard library functions with
+direct VM opcodes, avoiding the reflection-based native `Call` path
+(which allocates a `[]reflect.Value`, converts arguments, and dispatches
+via `reflect.Value.Call`).
+
+`compileIntrinsic` is checked in the `lang.Call` handler right after
+`compileBuiltin`. It looks up the symbol's qualified name (e.g.
+`"math.Abs"`, `"math/bits.LeadingZeros64"`) in the `intrinsicOp` table.
+On a match it removes the preceding `GetGlobal` (via `removeGetGlobal`),
+pops argument/function symbols, pushes the return type, and emits the
+opcode directly -- no frame setup, no reflection.
+
+Current intrinsic mappings:
+
+| Function | Opcode |
+|----------|--------|
+| `math.Abs` | `AbsFloat64` |
+| `math.Sqrt` | `SqrtFloat64` |
+| `math.Ceil` | `CeilFloat64` |
+| `math.Floor` | `FloorFloat64` |
+| `math.Trunc` | `TruncFloat64` |
+| `math.RoundToEven` | `NearestFloat64` |
+| `math.Min` | `MinFloat64` |
+| `math.Max` | `MaxFloat64` |
+| `math.Copysign` | `CopysignFloat64` |
+| `math/bits.LeadingZeros[32\|64]` | `Clz32` / `Clz64` |
+| `math/bits.TrailingZeros[32\|64]` | `Ctz32` / `Ctz64` |
+| `math/bits.OnesCount[32\|64]` | `Popcnt32` / `Popcnt64` |
+| `math/bits.RotateLeft[32\|64]` | `Rotl32` / `Rotl64` |
+
+The opcode set is intentionally aligned with WASM's computational
+instructions to enable a future WASM-to-parscan translation path.
+See [ADR-010](../decisions/ADR-010-intrinsics.md).
+
 ### Goroutine and channel compilation
 
 **`go` statements.** `lang.Go` tokens are emitted by the parser's

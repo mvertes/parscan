@@ -630,6 +630,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				break
 			}
+			if ok, err := c.compileIntrinsic(s, narg, t, push, pop); ok {
+				if err != nil {
+					return err
+				}
+				break
+			}
 			if s.Kind == symbol.Type {
 				if narg != 1 {
 					return errorf("type conversion requires exactly one argument")
@@ -2230,4 +2236,74 @@ func (c *Compiler) typeSym(t *vm.Type) *symbol.Symbol {
 		c.Data = append(c.Data, vm.TypeValue(t.Rtype))
 	}
 	return tsym
+}
+
+// intrinsicInfo describes a VM intrinsic that replaces a native function call.
+type intrinsicInfo struct {
+	op   vm.Op
+	narg int
+}
+
+// intrinsicOp maps "pkgPath.funcName" to a VM opcode and its arity.
+var intrinsicOp = map[string]intrinsicInfo{
+	// math: float64 unary.
+	"math.Abs":         {vm.AbsFloat64, 1},
+	"math.Sqrt":        {vm.SqrtFloat64, 1},
+	"math.Ceil":        {vm.CeilFloat64, 1},
+	"math.Floor":       {vm.FloorFloat64, 1},
+	"math.Trunc":       {vm.TruncFloat64, 1},
+	"math.RoundToEven": {vm.NearestFloat64, 1},
+	// math: float64 binary.
+	"math.Min":      {vm.MinFloat64, 2},
+	"math.Max":      {vm.MaxFloat64, 2},
+	"math.Copysign": {vm.CopysignFloat64, 2},
+	// math/bits: leading/trailing zeros.
+	"math/bits.LeadingZeros":    {vm.Clz64, 1},
+	"math/bits.LeadingZeros32":  {vm.Clz32, 1},
+	"math/bits.LeadingZeros64":  {vm.Clz64, 1},
+	"math/bits.TrailingZeros":   {vm.Ctz64, 1},
+	"math/bits.TrailingZeros32": {vm.Ctz32, 1},
+	"math/bits.TrailingZeros64": {vm.Ctz64, 1},
+	// math/bits: population count.
+	"math/bits.OnesCount":   {vm.Popcnt64, 1},
+	"math/bits.OnesCount32": {vm.Popcnt32, 1},
+	"math/bits.OnesCount64": {vm.Popcnt64, 1},
+	// math/bits: rotate.
+	"math/bits.RotateLeft":   {vm.Rotl64, 2},
+	"math/bits.RotateLeft32": {vm.Rotl32, 2},
+	"math/bits.RotateLeft64": {vm.Rotl64, 2},
+}
+
+// compileIntrinsic replaces known native function calls with direct VM opcodes,
+// avoiding the overhead of reflection-based calls.
+func (c *Compiler) compileIntrinsic(
+	s *symbol.Symbol, narg int, t goparser.Token,
+	push func(*symbol.Symbol), pop func() *symbol.Symbol,
+) (bool, error) {
+	if s.Kind != symbol.Value {
+		return false, nil
+	}
+	info, ok := intrinsicOp[s.Name]
+	if !ok {
+		return false, nil
+	}
+	if narg != info.narg {
+		return false, nil
+	}
+	// Remove the GetGlobal that loaded the function value onto the stack.
+	if !c.removeGetGlobal(s.Index) {
+		return false, nil
+	}
+	// Pop function symbol and argument symbols, push return type.
+	for i := 0; i < narg; i++ {
+		pop()
+	}
+	pop() // function symbol
+	// Determine the return type from the native function's reflect type.
+	rv := s.Value.Reflect()
+	if rv.IsValid() && rv.Type().Kind() == reflect.Func && rv.Type().NumOut() > 0 {
+		push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rv.Type().Out(0)}})
+	}
+	c.emit(t, info.op)
+	return true, nil
 }

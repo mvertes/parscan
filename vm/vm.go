@@ -7,6 +7,7 @@ import (
 	"iter"
 	"log"  // for tracing only
 	"math" // for float arithmetic
+	"math/bits"
 	"os"
 	"reflect"
 	"strings"
@@ -246,6 +247,38 @@ const (
 	BitShl    // n1 n2 -- n1 << n2
 	BitShr    // n1 n2 -- n1 >> n2 (arithmetic for signed)
 	BitComp   // n -- ^n
+
+	// Bit manipulation opcodes (32-bit and 64-bit variants).
+	Clz32    // n -- count ; count leading zeros (32-bit)
+	Clz64    // n -- count ; count leading zeros (64-bit)
+	Ctz32    // n -- count ; count trailing zeros (32-bit)
+	Ctz64    // n -- count ; count trailing zeros (64-bit)
+	Popcnt32 // n -- count ; population count (32-bit)
+	Popcnt64 // n -- count ; population count (64-bit)
+	Rotl32   // n k -- result ; rotate left (32-bit)
+	Rotl64   // n k -- result ; rotate left (64-bit)
+	Rotr32   // n k -- result ; rotate right (32-bit)
+	Rotr64   // n k -- result ; rotate right (64-bit)
+
+	// Float math opcodes (unary: 1 operand; binary: 2 operands).
+	AbsFloat32      // n -- |n|
+	AbsFloat64      // n -- |n|
+	SqrtFloat32     // n -- sqrt(n)
+	SqrtFloat64     // n -- sqrt(n)
+	CeilFloat32     // n -- ceil(n)
+	CeilFloat64     // n -- ceil(n)
+	FloorFloat32    // n -- floor(n)
+	FloorFloat64    // n -- floor(n)
+	TruncFloat32    // n -- trunc(n)
+	TruncFloat64    // n -- trunc(n)
+	NearestFloat32  // n -- nearest(n)
+	NearestFloat64  // n -- nearest(n)
+	MinFloat32      // a b -- min(a,b)
+	MinFloat64      // a b -- min(a,b)
+	MaxFloat32      // a b -- max(a,b)
+	MaxFloat64      // a b -- max(a,b)
+	CopysignFloat32 // a b -- copysign(a,b)
+	CopysignFloat64 // a b -- copysign(a,b)
 
 	// Immediate operand variants: fold Push+BinOp into one instruction.
 	// Arg[0] holds the right-hand constant (int, sign-extended to int64).
@@ -1340,6 +1373,110 @@ func (m *Machine) Run() (err error) {
 		case BitComp:
 			mem[sp].num = ^mem[sp].num
 			resetNumRef(&mem[sp])
+
+		// Bit manipulation.
+		case Clz32:
+			mem[sp].num = uint64(bits.LeadingZeros32(uint32(mem[sp].num))) //nolint:gosec
+			mem[sp].ref = zint
+		case Clz64:
+			mem[sp].num = uint64(bits.LeadingZeros64(mem[sp].num)) //nolint:gosec
+			mem[sp].ref = zint
+		case Ctz32:
+			mem[sp].num = uint64(bits.TrailingZeros32(uint32(mem[sp].num))) //nolint:gosec
+			mem[sp].ref = zint
+		case Ctz64:
+			mem[sp].num = uint64(bits.TrailingZeros64(mem[sp].num)) //nolint:gosec
+			mem[sp].ref = zint
+		case Popcnt32:
+			mem[sp].num = uint64(bits.OnesCount32(uint32(mem[sp].num))) //nolint:gosec
+			mem[sp].ref = zint
+		case Popcnt64:
+			mem[sp].num = uint64(bits.OnesCount64(mem[sp].num)) //nolint:gosec
+			mem[sp].ref = zint
+		case Rotl32:
+			k := int(mem[sp].num) //nolint:gosec
+			sp--
+			mem[sp].num = uint64(bits.RotateLeft32(uint32(mem[sp].num), k)) //nolint:gosec
+			resetNumRef(&mem[sp])
+		case Rotl64:
+			k := int(mem[sp].num) //nolint:gosec
+			sp--
+			mem[sp].num = bits.RotateLeft64(mem[sp].num, k)
+			resetNumRef(&mem[sp])
+		case Rotr32:
+			k := int(mem[sp].num) //nolint:gosec
+			sp--
+			mem[sp].num = uint64(bits.RotateLeft32(uint32(mem[sp].num), -k)) //nolint:gosec
+			resetNumRef(&mem[sp])
+		case Rotr64:
+			k := int(mem[sp].num) //nolint:gosec
+			sp--
+			mem[sp].num = bits.RotateLeft64(mem[sp].num, -k)
+			resetNumRef(&mem[sp])
+
+		// Float math (unary).
+		case AbsFloat32:
+			mem[sp].num = putf32(float32(math.Abs(float64(getf32(mem[sp].num)))))
+			mem[sp].ref = zfloat32
+		case AbsFloat64:
+			mem[sp].num = math.Float64bits(math.Abs(math.Float64frombits(mem[sp].num)))
+			mem[sp].ref = zfloat64
+		case SqrtFloat32:
+			mem[sp].num = putf32(float32(math.Sqrt(float64(getf32(mem[sp].num)))))
+			mem[sp].ref = zfloat32
+		case SqrtFloat64:
+			mem[sp].num = math.Float64bits(math.Sqrt(math.Float64frombits(mem[sp].num)))
+			mem[sp].ref = zfloat64
+		case CeilFloat32:
+			mem[sp].num = putf32(float32(math.Ceil(float64(getf32(mem[sp].num)))))
+			mem[sp].ref = zfloat32
+		case CeilFloat64:
+			mem[sp].num = math.Float64bits(math.Ceil(math.Float64frombits(mem[sp].num)))
+			mem[sp].ref = zfloat64
+		case FloorFloat32:
+			mem[sp].num = putf32(float32(math.Floor(float64(getf32(mem[sp].num)))))
+			mem[sp].ref = zfloat32
+		case FloorFloat64:
+			mem[sp].num = math.Float64bits(math.Floor(math.Float64frombits(mem[sp].num)))
+			mem[sp].ref = zfloat64
+		case TruncFloat32:
+			mem[sp].num = putf32(float32(math.Trunc(float64(getf32(mem[sp].num)))))
+			mem[sp].ref = zfloat32
+		case TruncFloat64:
+			mem[sp].num = math.Float64bits(math.Trunc(math.Float64frombits(mem[sp].num)))
+			mem[sp].ref = zfloat64
+		case NearestFloat32:
+			mem[sp].num = putf32(float32(math.RoundToEven(float64(getf32(mem[sp].num)))))
+			mem[sp].ref = zfloat32
+		case NearestFloat64:
+			mem[sp].num = math.Float64bits(math.RoundToEven(math.Float64frombits(mem[sp].num)))
+			mem[sp].ref = zfloat64
+
+		// Float math (binary).
+		case MinFloat32:
+			mem[sp-1].num = putf32(float32(math.Min(float64(getf32(mem[sp-1].num)), float64(getf32(mem[sp].num)))))
+			mem[sp-1].ref = zfloat32
+			sp--
+		case MinFloat64:
+			mem[sp-1].num = math.Float64bits(math.Min(math.Float64frombits(mem[sp-1].num), math.Float64frombits(mem[sp].num)))
+			mem[sp-1].ref = zfloat64
+			sp--
+		case MaxFloat32:
+			mem[sp-1].num = putf32(float32(math.Max(float64(getf32(mem[sp-1].num)), float64(getf32(mem[sp].num)))))
+			mem[sp-1].ref = zfloat32
+			sp--
+		case MaxFloat64:
+			mem[sp-1].num = math.Float64bits(math.Max(math.Float64frombits(mem[sp-1].num), math.Float64frombits(mem[sp].num)))
+			mem[sp-1].ref = zfloat64
+			sp--
+		case CopysignFloat32:
+			mem[sp-1].num = putf32(float32(math.Copysign(float64(getf32(mem[sp-1].num)), float64(getf32(mem[sp].num)))))
+			mem[sp-1].ref = zfloat32
+			sp--
+		case CopysignFloat64:
+			mem[sp-1].num = math.Float64bits(math.Copysign(math.Float64frombits(mem[sp-1].num), math.Float64frombits(mem[sp].num)))
+			mem[sp-1].ref = zfloat64
+			sp--
 
 		case Swap:
 			a, b := sp-int(c.A), sp-int(c.B)

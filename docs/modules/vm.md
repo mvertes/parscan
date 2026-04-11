@@ -79,7 +79,7 @@ metadata).
 
 ### Opcodes
 
-- **`Op`** (int enum) -- 200+ opcodes organized in groups:
+- **`Op`** (int enum) -- 230+ opcodes organized in groups:
   - Stack/control: `Nop`, `Pop`, `Push`, `Swap`, `Exit`, `Jump`,
     `JumpTrue`, `JumpFalse`, `JumpSetTrue`, `JumpSetFalse`, `Call`,
     `CallImm`, `Return`.
@@ -104,6 +104,16 @@ metadata).
     `GreaterUintImm`, `LowerIntImm`, `LowerUintImm`.
   - Bitwise: `BitAnd`, `BitOr`, `BitXor`, `BitAndNot`, `BitShl`,
     `BitShr`, `BitComp`.
+  - Bit manipulation: `Clz32`, `Clz64`, `Ctz32`, `Ctz64`, `Popcnt32`,
+    `Popcnt64`, `Rotl32`, `Rotl64`, `Rotr32`, `Rotr64`. Unary ops
+    (clz/ctz/popcnt) set `ref = zint`; binary ops (rotl/rotr) preserve
+    the input type. Implemented via `math/bits`.
+  - Float math (unary): `AbsFloat32`, `AbsFloat64`, `SqrtFloat32`,
+    `SqrtFloat64`, `CeilFloat32`, `CeilFloat64`, `FloorFloat32`,
+    `FloorFloat64`, `TruncFloat32`, `TruncFloat64`, `NearestFloat32`,
+    `NearestFloat64`. Implemented via `math`.
+  - Float math (binary): `MinFloat32`, `MinFloat64`, `MaxFloat32`,
+    `MaxFloat64`, `CopysignFloat32`, `CopysignFloat64`.
   - Collections: `Index`, `IndexAddr`, `IndexSet`, `MapIndex`,
     `MapIndexOk`, `MapSet`, `Slice`, `Slice3`, `Field`, `FieldSet`,
     `FieldFset`. `IndexAddr` takes an array/slice and index and pushes
@@ -226,6 +236,11 @@ opcode rather than a typed numeric block.
 The helper functions `add[T]`, `sub[T]`, etc. in `numops.go` use Go
 generics internally; each typed opcode dispatches to exactly one
 instantiation with zero runtime branching.
+
+Float32 values are stored as `math.Float64bits(float64(f32value))` --
+the float32 is promoted to float64 before encoding into `uint64`. The
+helpers `getf32(n uint64) float32` and `putf32(f float32) uint64` in
+`numops.go` encapsulate this encoding for the float math opcodes.
 
 ### Instruction encoding
 

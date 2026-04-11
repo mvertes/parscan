@@ -28,6 +28,7 @@ Parscan is an experimental Go interpreter built from a pipeline of composable pa
 - [ADR-007: Super instructions and instruction fusion](decisions/ADR-007-super-instructions.md)
 - [ADR-008: Goroutine and channel support](decisions/ADR-008-goroutines-and-channels.md)
 - [ADR-009: Interface bridging for native Go calls](decisions/ADR-009-interface-bridging.md)
+- [ADR-010: Compiler intrinsics for math and bit manipulation](decisions/ADR-010-intrinsics.md)
 
 ## Proposals
 

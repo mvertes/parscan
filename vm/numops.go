@@ -35,3 +35,9 @@ func divf[T float](a, b uint64) uint64 {
 func negf[T float](a uint64) uint64 {
 	return math.Float64bits(float64(-T(math.Float64frombits(a))))
 }
+
+// getf32 extracts a float32 from a Value's uint64 storage (float64-bits encoding).
+func getf32(n uint64) float32 { return float32(math.Float64frombits(n)) }
+
+// putf32 stores a float32 into a Value's uint64 storage (float64-bits encoding).
+func putf32(f float32) uint64 { return math.Float64bits(float64(f)) }

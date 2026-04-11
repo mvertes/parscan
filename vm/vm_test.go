@@ -277,4 +277,153 @@ var tests = []struct {
 		{Op: Exit},               // 22
 	},
 	start: 0, end: 1, mem: "[8]",
+}, { // #15 -- clz32: leading zeros of 1 is 31.
+	code: []Instruction{
+		{Op: Push, A: 1},
+		{Op: Clz32},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[31]",
+}, { // #16 -- clz64: leading zeros of 1 is 63.
+	code: []Instruction{
+		{Op: Push, A: 1},
+		{Op: Clz64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[63]",
+}, { // #17 -- ctz32: trailing zeros of 8 is 3.
+	code: []Instruction{
+		{Op: Push, A: 8},
+		{Op: Ctz32},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[3]",
+}, { // #18 -- ctz64: trailing zeros of 16 is 4.
+	code: []Instruction{
+		{Op: Push, A: 16},
+		{Op: Ctz64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[4]",
+}, { // #19 -- popcnt32: popcount of 0xFF is 8.
+	code: []Instruction{
+		{Op: Push, A: 0xFF},
+		{Op: Popcnt32},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[8]",
+}, { // #20 -- popcnt64: popcount of 7 is 3.
+	code: []Instruction{
+		{Op: Push, A: 7},
+		{Op: Popcnt64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[3]",
+}, { // #21 -- rotl32: rotate left 1 by 3 = 8.
+	code: []Instruction{
+		{Op: Push, A: 1},
+		{Op: Push, A: 3},
+		{Op: Rotl32},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[8]",
+}, { // #22 -- rotl64: rotate left 1 by 3 = 8.
+	code: []Instruction{
+		{Op: Push, A: 1},
+		{Op: Push, A: 3},
+		{Op: Rotl64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[8]",
+}, { // #23 -- rotr32: rotate right 8 by 3 = 1.
+	code: []Instruction{
+		{Op: Push, A: 8},
+		{Op: Push, A: 3},
+		{Op: Rotr32},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[1]",
+}, { // #24 -- rotr64: rotate right 8 by 3 = 1.
+	code: []Instruction{
+		{Op: Push, A: 8},
+		{Op: Push, A: 3},
+		{Op: Rotr64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[1]",
+}, { // #25 -- absFloat64: abs(-3.14) = 3.14.
+	sym: []Value{ValueOf(-3.14)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: AbsFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[3.14]",
+}, { // #26 -- sqrtFloat64: sqrt(4) = 2.
+	sym: []Value{ValueOf(4.0)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: SqrtFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[2]",
+}, { // #27 -- ceilFloat64: ceil(3.2) = 4.
+	sym: []Value{ValueOf(3.2)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: CeilFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[4]",
+}, { // #28 -- floorFloat64: floor(3.7) = 3.
+	sym: []Value{ValueOf(3.7)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: FloorFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[3]",
+}, { // #29 -- truncFloat64: trunc(3.9) = 3.
+	sym: []Value{ValueOf(3.9)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: TruncFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[3]",
+}, { // #30 -- nearestFloat64: nearest(2.5) = 2 (round to even).
+	sym: []Value{ValueOf(2.5)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: NearestFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[2]",
+}, { // #31 -- minFloat64: min(1.5, 2.5) = 1.5.
+	sym: []Value{ValueOf(1.5), ValueOf(2.5)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: GetGlobal, A: 1},
+		{Op: MinFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[1.5]",
+}, { // #32 -- maxFloat64: max(1.5, 2.5) = 2.5.
+	sym: []Value{ValueOf(1.5), ValueOf(2.5)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: GetGlobal, A: 1},
+		{Op: MaxFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[2.5]",
+}, { // #33 -- copysignFloat64: copysign(3.0, -1.0) = -3.
+	sym: []Value{ValueOf(3.0), ValueOf(-1.0)},
+	code: []Instruction{
+		{Op: GetGlobal, A: 0},
+		{Op: GetGlobal, A: 1},
+		{Op: CopysignFloat64},
+		{Op: Exit},
+	},
+	start: 0, end: 1, mem: "[-3]",
 }}
