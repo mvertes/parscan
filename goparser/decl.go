@@ -134,6 +134,28 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 	t := in[l]
 	id := t.Tok
 	switch {
+	case id == lang.Period:
+		if l < 1 || in[l-1].Tok != lang.Ident {
+			return nil, 0, errors.New("invalid package selector")
+		}
+		pkgName := in[l-1].Str
+		s, _, ok := p.Symbols.Get(pkgName, p.scope)
+		if !ok || s.Kind != symbol.Pkg {
+			return nil, 0, ErrUndefined{pkgName}
+		}
+		pkg, ok := p.Packages[s.PkgPath]
+		if !ok {
+			return nil, 0, fmt.Errorf("package not found: %s", s.PkgPath)
+		}
+		v, ok := pkg.Values[t.Str[1:]]
+		if !ok {
+			return nil, 0, fmt.Errorf("symbol not found in package %s: %s", s.PkgPath, t.Str[1:])
+		}
+		cv, err := vmValueToConst(v)
+		if err != nil {
+			return nil, 0, err
+		}
+		return cv, 2, nil // consumes Ident (pkg) + Period
 	case id.IsBinaryOp():
 		op2, l2, err := p.evalConstExpr(in[:l])
 		if err != nil {
@@ -300,6 +322,24 @@ func constConvert(cv constant.Value, typ *vm.Type) constant.Value {
 		return cv
 	}
 	return cv
+}
+
+// vmValueToConst converts a vm.Value to a constant.Value for compile-time evaluation.
+func vmValueToConst(v vm.Value) (constant.Value, error) {
+	k := v.Kind()
+	switch {
+	case k == reflect.Bool:
+		return constant.MakeBool(v.Bool()), nil
+	case k >= reflect.Int && k <= reflect.Int64:
+		return constant.MakeInt64(v.Int()), nil
+	case k >= reflect.Uint && k <= reflect.Uintptr:
+		return constant.MakeUint64(v.Uint()), nil
+	case k == reflect.Float32 || k == reflect.Float64:
+		return constant.MakeFloat64(v.Float()), nil
+	case k == reflect.String:
+		return constant.MakeString(v.Reflect().String()), nil
+	}
+	return nil, fmt.Errorf("cannot use package value of kind %s as constant", k)
 }
 
 // Correspondence between language independent parscan tokens and Go stdlib tokens,
