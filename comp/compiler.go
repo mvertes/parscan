@@ -360,7 +360,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Push, int(r))
 				break
 			}
-			s := t.Block()
+			s, err2 := strconv.Unquote(t.Str)
+			if err2 != nil {
+				return err2
+			}
 			push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(s), Type: c.Symbols["string"].Type})
 			c.emit(t, vm.GetGlobal, c.stringIndex(s))
 

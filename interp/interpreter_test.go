@@ -1561,6 +1561,8 @@ func TestString(t *testing.T) {
 
 		{n: "rune_lit", src: `'a'`, res: "97"},
 		{n: "rune_lit_escape", src: `'\n'`, res: "10"},
+		{n: "string_lit_escape", src: `"hello\nworld"`, res: "hello\nworld"},
+		{n: "raw_string_lit", src: "`hello\\nworld`", res: `hello\nworld`},
 		{n: "rune_compare", src: `var r rune = 97; r == 'a'`, res: "true"},
 	})
 }
