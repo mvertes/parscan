@@ -2656,8 +2656,8 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 		}
 		if rv.Kind() == reflect.Interface && !rv.IsNil() {
 			in[i] = rv.Elem()
-		} else if rv.Kind() == paramType.Kind() {
-			// Same underlying kind: convert named types (e.g. int64 to time.Duration).
+		} else if rv.Kind() == paramType.Kind() || (isNum(rv.Kind()) && isNum(paramType.Kind())) {
+			// Convert named types or across numeric kinds (e.g. int to time.Duration).
 			in[i] = rv.Convert(paramType)
 		}
 	}
