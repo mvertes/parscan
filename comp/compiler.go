@@ -863,6 +863,16 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				c.emitIfaceWrap(t, ft, vs.Type)
 				c.emit(t, vm.FieldSet, j...)
+
+			case symbol.Value:
+				if ts.Type != nil && ts.Type.Rtype.Kind() == reflect.Map {
+					elemTyp := ts.Type.Elem()
+					if elemTyp.IsPtr() && vs.Kind == symbol.Type {
+						c.emit(t, vm.Addr)
+					}
+					c.emitIfaceWrap(t, elemTyp, vs.Type)
+					c.emit(t, vm.MapSet)
+				}
 			}
 
 		case lang.Composite:

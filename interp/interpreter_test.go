@@ -402,6 +402,7 @@ func TestFor(t *testing.T) {
 		{n: "range_call_ret", src: `import "fmt"; func f() string { ch := make(chan string, 1); ch <- "ok"; close(ch); s := ""; for v := range ch { fmt.Println(v); s = v }; return s }; f()`, res: "ok"},
 		{n: "range_index_assign", src: `a := []int{1, 2, 3}; for i, v := range a { a[i] = v * 2 }; a[0] + a[1] + a[2]`, res: "12"},
 		{n: "range_map_assign", src: `m := map[string]int{"a": 1, "b": 2}; for k := range m { m[k] = 0 }; m["a"] + m["b"]`, res: "0"},
+		{n: "map_func_key", src: `func f() string { return "a" }; m := map[string]int{f(): 1}; m["a"]`, res: "1"},
 		{n: "#20", src: `
 func f() string {
 	s := make([]map[string]string, 0)
