@@ -774,8 +774,25 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 			}
 			out = append(out, toks...)
 			if out[len(out)-1].Tok == lang.Range {
-				// Pass the the number of values to set to range.
-				out[len(out)-1].Arg = []any{len(lhs)}
+				// Pass the number of values to set to range.
+				// When all LHS variables are blank identifiers ("_ = range x"),
+				// treat as "range x" (n=0) and remove the blank ident tokens.
+				nVars := len(lhs)
+				allBlank := !define
+				for _, l := range lhs {
+					if len(l) != 1 || l[0].Tok != lang.Ident || l[0].Str != "_" {
+						allBlank = false
+						break
+					}
+				}
+				if allBlank {
+					for j := nVars - 1; j >= 0; j-- {
+						pos := lhsPositions[j]
+						out = append(out[:pos], out[pos+1:]...)
+					}
+					nVars = 0
+				}
+				out[len(out)-1].Arg = []any{nVars}
 			} else {
 				out = append(out, newToken(in[aindex].Tok, "", in[aindex].Pos, len(lhs)))
 			}
