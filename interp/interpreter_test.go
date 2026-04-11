@@ -865,6 +865,8 @@ func TestMap(t *testing.T) {
 		{n: "iface_elem", src: `type I interface { Foo() int }; type S1 struct { i int }; func (s S1) Foo() int { return s.i }; type S2 struct{}; func (s *S2) Foo() int { return 42 }; Is := map[string]I{"foo": S1{21}, "bar": &S2{}}; n := 0; for _, s := range Is { n += s.Foo() }; n`, res: "63"},
 		{n: "iface_addr_lit", src: `type I interface { Foo() int }; type S struct{}; func (s *S) Foo() int { return 7 }; m := map[string]I{"k": &S{}}; m["k"].Foo()`, res: "7"},
 		{n: "append_missing_key", src: `m := map[string][]int{}; m["x"] = append(m["x"], 1); m["x"][0]`, res: "1"},
+		{n: "slice_val_lit", src: `m := map[string][]string{"a": []string{"x", "y"}}; m["a"][1]`, res: "y"},
+		{n: "nested_range", src: `import "sort"; m := map[string][]string{"a": []string{"1", "2"}, "b": []string{"3"}}; var r []string; for k, vs := range m { for _, v := range vs { r = append(r, k+v) } }; sort.Strings(r); r`, res: "[a1 a2 b3]"},
 	})
 }
 

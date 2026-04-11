@@ -109,8 +109,7 @@ const (
 	SetS                   // dest val -- ; dest.Set(val)
 	Slice                  // a l h -- a; a = a [l:h]
 	Slice3                 // a l h m -- a; a = a[l:h:m]
-	Stop                   // -- iterator stop
-	Stop0                  // -- iterator stop, no variable
+	Stop                   // -- iterator stop; sp -= 3 + $1
 	Swap                   // --
 	Trap                   // -- ; pause VM execution and enter debug mode
 	TypeAssert             // iface -- v [ok] ; assert iface holds type at mem[$1]; $2=0 panics, $2=1 ok form
@@ -1307,10 +1306,7 @@ func (m *Machine) Run() (err error) {
 			sp -= 3
 		case Stop:
 			mem[sp].ref.Interface().(func())()
-			sp -= 4
-		case Stop0:
-			mem[sp].ref.Interface().(func())()
-			sp -= 3
+			sp -= 3 + int(c.A)
 		// Generic bitwise.
 		case BitAnd:
 			mem[sp-1].num &= mem[sp].num

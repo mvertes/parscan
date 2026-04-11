@@ -1531,11 +1531,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 
 		case lang.Stop:
-			if t.Arg[0].(int) == 0 {
-				c.emit(t, vm.Stop0)
-			} else {
-				c.emit(t, vm.Stop)
-			}
+			c.emit(t, vm.Stop, t.Arg[0].(int))
 
 		case lang.Defer:
 			if len(hasDefer) > 0 {
