@@ -2381,17 +2381,19 @@ func (m *Machine) newGoroutine(fval Value, args []Value) {
 	mem[narg+3] = Value{num: 0} // prevFP = 0
 
 	child := &Machine{
-		globals:  m.globals,
-		code:     m.code[:m.baseCodeLen:m.baseCodeLen],
-		heap:     heap,
-		ip:       nip,
-		fp:       frameBase,
-		mem:      mem,
-		in:       m.in,
-		out:      m.out,
-		err:      m.err,
-		debugIn:  m.debugIn,
-		debugOut: m.debugOut,
+		globals:     m.globals,
+		code:        m.code[:m.baseCodeLen:m.baseCodeLen],
+		baseCodeLen: m.baseCodeLen,
+		heap:        heap,
+		ip:          nip,
+		fp:          frameBase,
+		mem:         mem,
+		in:          m.in,
+		out:         m.out,
+		err:         m.err,
+		debugIn:     m.debugIn,
+		debugOut:    m.debugOut,
+		MethodNames: m.MethodNames,
 	}
 	go func() { _ = child.Run() }()
 }

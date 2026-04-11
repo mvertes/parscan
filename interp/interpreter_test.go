@@ -533,6 +533,9 @@ len(buf{}.data)`, res: "32"},
 
 		{n: "sub_add_chain", src: `const (a = 2; b = 10; c = b - a + 1); c`, res: "9"},                                        // right-assoc: 10-(2+1)=7
 		{n: "typed_sub_add", src: `type L int8; const (a L = -1; b L = 5; d = b - a + 1); type A [d]int; len(A{})`, res: "7"}, // right-assoc: b-(a+1)=5
+
+		{n: "pkg_value_expr", skip: true, src: `import "time"; const period = 300 * time.Millisecond; int(period)`, res: "300000000"},
+		{n: "grouped_pkg_value", skip: true, src: `import "time"; const (a = 300 * time.Millisecond; b = 30 * time.Millisecond); int(b)`, res: "30000000"},
 	})
 }
 
@@ -2040,6 +2043,25 @@ go func() { select {} // block forever
 }()
 r = <-ch
 r`, res: "1"},
+
+		{n: "select_native_chan", src: `
+import "time"
+ticker := time.NewTicker(time.Millisecond)
+r := false
+select { case t := <-ticker.C: r = t.Unix() > 0 }
+ticker.Stop()
+r`, res: "true"},
+
+		{n: "select_native_chan_goroutine", src: `
+import "time"
+ticker := time.NewTicker(time.Millisecond)
+ch := make(chan bool)
+go func() {
+	select { case t := <-ticker.C: ch <- t.Unix() > 0 }
+}()
+r := <-ch
+ticker.Stop()
+r`, res: "true"},
 	})
 }
 

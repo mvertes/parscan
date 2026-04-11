@@ -597,10 +597,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				okForm = t.Arg[0].(int)
 			}
 			ch := pop()
-			elemType := ch.Type.ElemType
-			if elemType == nil {
+			if ch.Type.Rtype.Kind() != reflect.Chan {
 				return errorf("invalid channel receive: not a channel type")
 			}
+			elemType := ch.Type.Elem()
 			push(&symbol.Symbol{Kind: symbol.Value, Type: elemType})
 			if okForm == 1 {
 				push(&symbol.Symbol{Kind: symbol.Value, Type: c.Symbols["bool"].Type})
@@ -1669,7 +1669,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					pop() // value
 					pop() // channel
 				case reflect.SelectRecv:
-					chanTypes[i] = pop().Type.ElemType
+					chanTypes[i] = pop().Type.Elem()
 				}
 			}
 			for i, d := range descs {
