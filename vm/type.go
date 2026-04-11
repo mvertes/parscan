@@ -360,6 +360,14 @@ func (v Value) Seq() iter.Seq[reflect.Value] { return v.Reflect().Seq() }
 // Seq2 returns a range-over-2 iterator for the value v.
 func (v Value) Seq2() iter.Seq2[reflect.Value, reflect.Value] { return v.ref.Seq2() }
 
+// CopyArray returns a Value holding a copy of the array in v, so that
+// range iterates over a snapshot (Go spec: range over array uses a copy).
+func (v Value) CopyArray() Value {
+	cp := reflect.New(v.ref.Type()).Elem()
+	cp.Set(v.ref)
+	return Value{ref: cp}
+}
+
 // FromReflect wraps a reflect.Value into a Value.
 func FromReflect(rv reflect.Value) Value {
 	if isNum(rv.Kind()) {

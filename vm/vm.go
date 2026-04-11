@@ -1035,7 +1035,11 @@ func (m *Machine) Run() (err error) {
 			sp++
 			mem[sp] = Value{num: uint64(int(c.A)), ref: zint} //nolint:gosec
 		case Pull:
-			next, stop := iter.Pull(mem[sp].Seq())
+			v := mem[sp]
+			if c.A != 0 {
+				v = v.CopyArray()
+			}
+			next, stop := iter.Pull(v.Seq())
 			if sp+2 >= len(mem) {
 				mem = growStack(mem, sp, 2)
 			}
@@ -1043,7 +1047,11 @@ func (m *Machine) Run() (err error) {
 			mem[sp+2] = ValueOf(stop)
 			sp += 2
 		case Pull2:
-			next, stop := iter.Pull2(mem[sp].Seq2())
+			v := mem[sp]
+			if c.A != 0 {
+				v = v.CopyArray()
+			}
+			next, stop := iter.Pull2(v.Seq2())
 			if sp+2 >= len(mem) {
 				mem = growStack(mem, sp, 2)
 			}

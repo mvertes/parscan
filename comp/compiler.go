@@ -1470,6 +1470,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if vt != nil {
 				rangeKind = vt.Rtype.Kind()
 			}
+			// Go spec: range over an array iterates a copy; range over
+			// a pointer-to-array or a slice uses the original.
+			var copyArray int
+			if rangeKind == reflect.Array {
+				copyArray = 1
+			}
 			if rangeKind == reflect.Pointer {
 				vt = vt.Elem()
 				rangeKind = vt.Rtype.Kind()
@@ -1499,15 +1505,15 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				switch n {
 				case 0:
-					c.emit(t, vm.Pull)
+					c.emit(t, vm.Pull, copyArray)
 				case 1:
 					initRangeVar(stack[len(stack)-2], c.Symbols["int"].Type)
-					c.emit(t, vm.Pull)
+					c.emit(t, vm.Pull, copyArray)
 				case 2:
 					k, v := stack[len(stack)-3], stack[len(stack)-2]
 					initRangeVar(k, c.Symbols["int"].Type)
 					initRangeVar(v, vType)
-					c.emit(t, vm.Pull2)
+					c.emit(t, vm.Pull2, copyArray)
 				}
 			case reflect.Map:
 				keyType := vt.Key()

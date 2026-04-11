@@ -42,6 +42,12 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 		ops = append(ops, t)
 	}
 
+	// isUnaryCtx reports whether position i is in a unary-operator context,
+	// i.e. the preceding token implies the next operator is unary, not binary.
+	isUnaryCtx := func(i int) bool {
+		return i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Colon || in[i-1].Tok == lang.Range
+	}
+
 	lin := len(in)
 	for i := 0; i < lin; i++ {
 		switch t := in[i]; t.Tok {
@@ -94,7 +100,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			addop(t)
 
 		case lang.Mul:
-			if i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Colon {
+			if isUnaryCtx(i) {
 				if i+1 < lin && in[i+1].Tok == lang.Ident {
 					// Known non-type identifier after * is a dereference.
 					if s, _, ok := p.Symbols.Get(in[i+1].Str, p.scope); ok && s.Kind != symbol.Type {
@@ -117,7 +123,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 
 		case lang.Add, lang.And, lang.AndNot, lang.Equal, lang.Greater, lang.GreaterEqual, lang.Less, lang.LessEqual, lang.Not, lang.NotEqual, lang.Or, lang.Quo, lang.Rem, lang.Sub, lang.Shl, lang.Shr, lang.Xor:
-			if i == 0 || in[i-1].Tok.IsOperator() || in[i-1].Tok == lang.Colon {
+			if isUnaryCtx(i) {
 				t.Tok = lang.UnaryOp[t.Tok]
 			}
 			addop(t)
