@@ -1638,6 +1638,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				stack = stack[:len(stack)-3]
 			}
 			rtype := coll.Type.Rtype
+			if rtype.Kind() == reflect.Ptr && rtype.Elem().Kind() == reflect.Array {
+				rtype = rtype.Elem()
+			}
 			if rtype.Kind() == reflect.Array {
 				rtype = reflect.SliceOf(rtype.Elem())
 			}
@@ -2131,9 +2134,12 @@ func (c *Compiler) compileBuiltin(
 				c.emit(t, vm.WrapFunc, funcTypeIdx, nvals-1-i)
 			}
 		}
-		if nvals == 1 {
+		switch {
+		case len(t.Arg) > 1 && t.Arg[1].(int) != 0:
+			c.emit(t, vm.AppendSlice, 0, elemIdx) // 0 signals spread mode
+		case nvals == 1:
 			c.emit(t, vm.Append, 1, elemIdx)
-		} else {
+		default:
 			c.emit(t, vm.AppendSlice, nvals, elemIdx)
 		}
 		return true, nil

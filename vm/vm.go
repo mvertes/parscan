@@ -47,7 +47,7 @@ const (
 	Nop          Op = iota // --
 	Addr                   // a -- &a ;
 	Append                 // slice [v0..vn-1] -- slice' ; append $0 values to slice
-	AppendSlice            // slice [v0..vn-1] -- slice' ; pack $0 values into []T, reflect.AppendSlice; elem type at mem[$1]
+	AppendSlice            // slice [v0..vn-1] -- slice' ; pack $0 values into []T, reflect.AppendSlice; elem type at mem[$1]; $0=0 means spread mode: append(a, b...)
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
 	CallImm                // [a1 .. ai] -- [r1 .. rj] ; $1=dataIdx of func, $2=narg<<16|nret
 	Cap                    // -- x ; x = cap(mem[sp-$0])
@@ -1337,13 +1337,13 @@ func (m *Machine) Run() (err error) {
 		case Slice:
 			low := int(mem[sp-1].num) //nolint:gosec
 			high := int(mem[sp].num)  //nolint:gosec
-			mem[sp-2] = Value{ref: mem[sp-2].ref.Slice(low, high)}
+			mem[sp-2] = Value{ref: derefArray(mem[sp-2].ref).Slice(low, high)}
 			sp -= 2
 		case Slice3:
 			low := int(mem[sp-2].num)  //nolint:gosec
 			high := int(mem[sp-1].num) //nolint:gosec
 			hi := int(mem[sp].num)     //nolint:gosec
-			mem[sp-3] = Value{ref: mem[sp-3].ref.Slice3(low, high, hi)}
+			mem[sp-3] = Value{ref: derefArray(mem[sp-3].ref).Slice3(low, high, hi)}
 			sp -= 3
 		case Stop:
 			mem[sp].ref.Interface().(func())()
@@ -1577,12 +1577,28 @@ func (m *Machine) Run() (err error) {
 			result := mem[sp-n].ref
 			elemType := result.Type().Elem()
 			for i := range n {
-				result = reflect.Append(result, m.wrapForFunc(mem[sp-n+1+i], elemType))
+				v := m.wrapForFunc(mem[sp-n+1+i], elemType)
+				if !v.IsValid() {
+					v = reflect.Zero(elemType)
+				}
+				result = reflect.Append(result, v)
 			}
 			mem[sp-n] = Value{ref: result}
 			sp -= n
 		case AppendSlice:
 			n := int(c.A)
+			if n == 0 {
+				// Spread mode: append(a, b...)
+				src := mem[sp].ref
+				if src.Kind() == reflect.String {
+					// append([]byte, string...) special case.
+					src = reflect.ValueOf([]byte(src.String()))
+				}
+				result := reflect.AppendSlice(mem[sp-1].ref, src)
+				sp--
+				mem[sp] = Value{ref: result}
+				break
+			}
 			result := mem[sp-n].ref
 			elemType := result.Type().Elem()
 			temp := reflect.MakeSlice(result.Type(), n, n)
@@ -2593,6 +2609,14 @@ func numSet(dst reflect.Value, src Value) {
 	} else {
 		dst.Set(src.Reflect())
 	}
+}
+
+// derefArray dereferences a pointer-to-array so it can be sliced.
+func derefArray(v reflect.Value) reflect.Value {
+	if v.Kind() == reflect.Ptr && v.Elem().Kind() == reflect.Array {
+		return v.Elem()
+	}
+	return v
 }
 
 func numReflect(t reflect.Type, src Value) reflect.Value {
