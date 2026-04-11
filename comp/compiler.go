@@ -1069,6 +1069,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			default:
 				return errorf("not a map or array: %s", s.Name)
 			}
+			c.emit(t, vm.Pop, 1)
 			stack = stack[:len(stack)-3]
 
 		case lang.Equal:

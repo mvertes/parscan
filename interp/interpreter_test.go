@@ -400,6 +400,8 @@ func TestFor(t *testing.T) {
 		{n: "#32", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; close(ch); n := 0; for range ch { n++ }; n`, res: "3"},
 		{n: "#33", src: `func f() int { ch := make(chan int, 3); ch <- 10; ch <- 20; ch <- 30; close(ch); s := 0; for v := range ch { s += v }; return s }; f()`, res: "60"},
 		{n: "range_call_ret", src: `import "fmt"; func f() string { ch := make(chan string, 1); ch <- "ok"; close(ch); s := ""; for v := range ch { fmt.Println(v); s = v }; return s }; f()`, res: "ok"},
+		{n: "range_index_assign", src: `a := []int{1, 2, 3}; for i, v := range a { a[i] = v * 2 }; a[0] + a[1] + a[2]`, res: "12"},
+		{n: "range_map_assign", src: `m := map[string]int{"a": 1, "b": 2}; for k := range m { m[k] = 0 }; m["a"] + m["b"]`, res: "0"},
 		{n: "#20", src: `
 func f() string {
 	s := make([]map[string]string, 0)
@@ -859,7 +861,7 @@ func TestMap(t *testing.T) {
 		{n: "#01", src: `m := map[string]bool{"foo": true}; m["foo"]`, res: `true`},
 		{n: "#02", src: src0 + `m := M{"xx": true}; m`, res: `map[xx:true]`},
 		{n: "#03", src: src0 + `var m = M{"xx": true}; m`, res: `map[xx:true]`},
-		{n: "#04", src: src0 + `var m = M{"xx": true}; m["xx"] = false`, res: `map[xx:false]`},
+		{n: "#04", src: src0 + `var m = M{"xx": true}; m["xx"] = false; m`, res: `map[xx:false]`},
 		{n: "#05", src: "var m map[string]int64; func f() {m = make(map[string]int64)}; f(); len(m)", res: "0"},
 		{n: "ptr_elem", src: `type T struct{v int}; m := map[int]*T{0: {v: 2}}; m[0].v`, res: "2"},
 		{n: "iface_elem", src: `type I interface { Foo() int }; type S1 struct { i int }; func (s S1) Foo() int { return s.i }; type S2 struct{}; func (s *S2) Foo() int { return 42 }; Is := map[string]I{"foo": S1{21}, "bar": &S2{}}; n := 0; for _, s := range Is { n += s.Foo() }; n`, res: "63"},
