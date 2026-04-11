@@ -140,7 +140,6 @@ package stdlib
 //go:generate go run ../cmd/extract -gen -o structs.go structs $GOROOT/src/structs
 //go:generate go run ../cmd/extract -gen -o sync.go sync $GOROOT/src/sync
 //go:generate go run ../cmd/extract -gen -o sync_atomic.go sync/atomic $GOROOT/src/sync/atomic
-//go:generate go run ../cmd/extract -gen -o syscall.go syscall $GOROOT/src/syscall
 //go:generate go run ../cmd/extract -gen -o testing.go testing $GOROOT/src/testing
 //go:generate go run ../cmd/extract -gen -o testing_fstest.go testing/fstest $GOROOT/src/testing/fstest
 //go:generate go run ../cmd/extract -gen -o testing_iotest.go testing/iotest $GOROOT/src/testing/iotest

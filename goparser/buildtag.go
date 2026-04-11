@@ -104,6 +104,25 @@ var knownArch = map[string]bool{
 	"s390x": true, "wasm": true,
 }
 
+// SetBuildContext overrides the parser's target GOOS/GOARCH for build constraint filtering.
+func (p *Parser) SetBuildContext(goos, goarch string) {
+	p.buildCtx = &buildContext{
+		GOOS:      goos,
+		GOARCH:    goarch,
+		GoVersion: p.buildCtx.GoVersion,
+	}
+}
+
+// MatchFileNameFor reports whether name matches the given GOOS/GOARCH constraints
+// encoded in the file name. It is like MatchFileName but for an explicit platform.
+func MatchFileNameFor(name, goos, goarch string) bool {
+	return MatchFileName(name, &buildContext{
+		GOOS:      goos,
+		GOARCH:    goarch,
+		GoVersion: version.Lang(runtime.Version()),
+	})
+}
+
 var unixOS = map[string]bool{
 	"aix": true, "android": true, "darwin": true, "dragonfly": true,
 	"freebsd": true, "hurd": true, "illumos": true, "ios": true,

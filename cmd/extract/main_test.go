@@ -49,7 +49,7 @@ func TestExtractQuoted(t *testing.T) {
 
 func TestExtractImports(t *testing.T) {
 	dir := filepath.Join("..", "..", "vm")
-	imports, err := extractImports(dir)
+	imports, err := extractImports(dir, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
