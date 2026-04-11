@@ -2638,10 +2638,10 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 	for i, rv := range in {
 		var paramType reflect.Type
 		switch {
+		case isVariadic && i >= numIn-1:
+			paramType = funcType.In(numIn - 1).Elem()
 		case i < numIn:
 			paramType = funcType.In(i)
-		case isVariadic:
-			paramType = funcType.In(numIn - 1).Elem()
 		default:
 			continue
 		}
