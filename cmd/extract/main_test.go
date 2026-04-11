@@ -78,6 +78,11 @@ func TestRun(t *testing.T) {
 			consts: []string{"Const", "Func", "Type", "Var", "UnsetAddr"},
 			types:  []string{"Symbol", "Kind", "SymMap", "Package"},
 		},
+		{
+			dir:   filepath.Join("testdata", "bodyless"),
+			types: []string{"Duration"},
+			funcs: []string{"Sleep", "Now"},
+		},
 	}
 
 	for _, tt := range tests {

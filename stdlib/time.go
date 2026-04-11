@@ -56,6 +56,7 @@ func init() {
 		"Second": reflect.ValueOf(time.Second),
 		"September": reflect.ValueOf(time.September),
 		"Since": reflect.ValueOf(time.Since),
+		"Sleep": reflect.ValueOf(time.Sleep),
 		"Stamp": reflect.ValueOf(time.Stamp),
 		"StampMicro": reflect.ValueOf(time.StampMicro),
 		"StampMilli": reflect.ValueOf(time.StampMilli),

@@ -2636,9 +2636,6 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 	numIn := funcType.NumIn()
 	isVariadic := funcType.IsVariadic()
 	for i, rv := range in {
-		if rv.IsValid() && (rv.Kind() != reflect.Interface || rv.IsNil()) {
-			continue
-		}
 		var paramType reflect.Type
 		switch {
 		case i < numIn:
@@ -2649,11 +2646,17 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 			continue
 		}
 		if !rv.IsValid() {
-			// Nil was passed: create a typed zero value so reflect.Call
-			// receives a valid argument.
 			in[i] = reflect.Zero(paramType)
-		} else if rv.Type() != paramType {
+			continue
+		}
+		if rv.Type() == paramType {
+			continue
+		}
+		if rv.Kind() == reflect.Interface && !rv.IsNil() {
 			in[i] = rv.Elem()
+		} else if rv.Kind() == paramType.Kind() {
+			// Same underlying kind: convert named types (e.g. int64 to time.Duration).
+			in[i] = rv.Convert(paramType)
 		}
 	}
 }

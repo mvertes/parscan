@@ -225,7 +225,14 @@ func (p *Parser) stmtEnd(toks Tokens) (int, error) {
 		firstTok = toks[2].Tok
 	}
 	if p.TokenProps[firstTok].HasInit {
-		for toks[end-1].Tok != lang.BraceBlock {
+		for {
+			last := end - 1
+			for last >= 0 && toks[last].Tok == lang.Comment {
+				last--
+			}
+			if toks[last].Tok == lang.BraceBlock {
+				break
+			}
 			e2 := toks[end+1:].Index(lang.Semicolon)
 			if e2 == -1 {
 				return -1, scan.ErrBlock
@@ -447,6 +454,9 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 		if err := p.registerFunc(toks); err != nil {
 			return false, err
 		}
+		if toks.LastIndex(lang.BraceBlock) < 0 {
+			return true, nil // Body-less function (e.g. runtime-linked): signature only.
+		}
 		return false, nil // Body still needs full parse + generate.
 	case lang.Var:
 		return p.parseVarDecl(toks)
@@ -464,9 +474,6 @@ func (p *Parser) registerFunc(toks Tokens) error {
 	var sigToks Tokens     // tokens to pass to parseTypeExpr (signature without receiver)
 
 	bi := toks.LastIndex(lang.BraceBlock)
-	if bi < 0 {
-		return nil
-	}
 
 	switch {
 	case toks[1].Tok == lang.Ident:
@@ -475,7 +482,11 @@ func (p *Parser) registerFunc(toks Tokens) error {
 		if fname == "init" {
 			return nil // init functions are handled in Phase 2 only.
 		}
-		sigToks = toks[:bi]
+		if bi > 0 {
+			sigToks = toks[:bi]
+		} else {
+			sigToks = toks // Body-less function (e.g. runtime-linked).
+		}
 
 	case toks[1].Tok == lang.ParenBlock && len(toks) > 2 && toks[2].Tok == lang.Ident:
 		// Method or anonymous function. Disambiguate: if toks[2] is a known
@@ -500,9 +511,13 @@ func (p *Parser) registerFunc(toks Tokens) error {
 			recvVarName = recvr[0].Str
 		}
 		// Build signature tokens without receiver: [func, Name, params..., rettype].
-		sigToks = make(Tokens, 0, 1+bi-2)
+		end := bi
+		if end < 0 {
+			end = len(toks) // Body-less method (e.g. runtime-linked).
+		}
+		sigToks = make(Tokens, 0, 1+end-2)
 		sigToks = append(sigToks, toks[0])
-		sigToks = append(sigToks, toks[2:bi]...)
+		sigToks = append(sigToks, toks[2:end]...)
 
 	default:
 		return nil // Anonymous function.

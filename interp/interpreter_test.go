@@ -2031,6 +2031,33 @@ case v := <-ch1: r = "int"
 case v := <-ch2: r = v
 }
 r`, res: "ok"},
+
+		{n: "select_empty_block_comment", src: `
+ch := make(chan int, 1)
+ch <- 1
+r := 0
+go func() { select {} // block forever
+}()
+r = <-ch
+r`, res: "1"},
+	})
+}
+
+func TestCommentAfterBlock(t *testing.T) {
+	run(t, []etest{
+		{n: "if_comment", src: `a := 1; if true {} // comment
+a`, res: "1"},
+		{n: "for_comment", src: `a := 0; for i := 0; i < 3; i++ {} // comment
+a`, res: "0"},
+		{n: "switch_comment", src: `a := 1; switch {} // comment
+a`, res: "1"},
+	})
+}
+
+func TestTimeSleep(t *testing.T) {
+	run(t, []etest{
+		{n: "sleep_duration", src: `import "time"; time.Sleep(time.Nanosecond); 1`, res: "1"},
+		{n: "sleep_int_coerce", src: `import "time"; time.Sleep(1); 1`, res: "1"},
 	})
 }
 
