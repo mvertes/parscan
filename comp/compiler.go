@@ -1209,7 +1209,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 							for len(ts.Type.Methods) <= id {
 								ts.Type.Methods = append(ts.Type.Methods, vm.Method{Index: -1})
 							}
-							ts.Type.Methods[id] = vm.Method{Index: s.Index}
+							ts.Type.Methods[id] = vm.Method{Index: s.Index, PtrRecv: strings.HasPrefix(parts[0], "*")}
 						}
 					}
 				} else {

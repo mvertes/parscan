@@ -865,6 +865,47 @@ func (p *Parser) parseAssignMultiRHS(in Tokens, lhs, rhs []Tokens, aindex int, d
 			return out, err
 		}
 	}
+	// For multi-assignment with non-simple LHS (e.g. s[0], s[1] = s[1], s[0]),
+	// capture all RHS values into temporaries first, then assign to LHS.
+	// This ensures all RHS are evaluated before any LHS is modified.
+	if !define && len(rhs) > 1 && p.funcScope != "" {
+		pos := in[aindex].Pos
+		// Phase 1: evaluate each RHS into a temporary local.
+		tmpNames := make([]string, len(rhs))
+		for i, e := range rhs {
+			tmpNames[i] = p.addLocalVar(fmt.Sprintf("_swap_%d_", i))
+			toks, err := p.parseExpr(e, "")
+			if err != nil {
+				return out, err
+			}
+			out = append(out, newToken(lang.Ident, tmpNames[i], pos, 0))
+			out = append(out, toks...)
+			out = append(out, newToken(lang.Define, "", pos, 1))
+		}
+		// Phase 2: assign from temporaries to LHS.
+		for i := range lhs {
+			toks, err := p.parseExpr(lhs[i], "")
+			if err != nil {
+				return out, err
+			}
+			out = append(out, toks...)
+			rhsTok := newToken(lang.Ident, tmpNames[i], pos, 0)
+			switch out[len(out)-1].Tok {
+			case lang.Index:
+				out = out[:len(out)-1]
+				out = append(out, rhsTok)
+				out = append(out, newToken(lang.IndexAssign, "", pos, 1))
+			case lang.Deref:
+				out = out[:len(out)-1]
+				out = append(out, rhsTok)
+				out = append(out, newToken(lang.DerefAssign, "", pos, 1))
+			default:
+				out = append(out, rhsTok)
+				out = append(out, newToken(lang.Assign, "", pos, 1))
+			}
+		}
+		return out, err
+	}
 	for i, e := range rhs {
 		lhsPos := len(out)
 		toks, err := p.parseExpr(lhs[i], "")

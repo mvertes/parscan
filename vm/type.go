@@ -14,6 +14,7 @@ type Method struct {
 	Index      int   // data index of code address (-1 if unset or EmbedIface)
 	Path       []int // field index path to embedded receiver (nil = direct, []int{} = deref only)
 	EmbedIface bool  // Path leads to an embedded interface field; dispatch through it
+	PtrRecv    bool  // true if the method has a pointer receiver (e.g. *T)
 }
 
 // EmbeddedField records a parscan embedded field within a struct type.

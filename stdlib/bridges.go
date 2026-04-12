@@ -1,7 +1,9 @@
 package stdlib
 
 import (
+	"container/heap"
 	"reflect"
+	"sort"
 
 	"github.com/mvertes/parscan/vm"
 )
@@ -28,8 +30,36 @@ type BridgeString struct{ Fn func() string }
 // String implements fmt.Stringer.
 func (b *BridgeString) String() string { return b.Fn() }
 
+// BridgeSortInterface bridges sort.Interface (Len, Less, Swap).
+type BridgeSortInterface struct {
+	FnLen  func() int
+	FnLess func(int, int) bool
+	FnSwap func(int, int)
+}
+
+func (b *BridgeSortInterface) Len() int           { return b.FnLen() }
+func (b *BridgeSortInterface) Less(i, j int) bool { return b.FnLess(i, j) }
+func (b *BridgeSortInterface) Swap(i, j int)      { b.FnSwap(i, j) }
+
+// BridgeHeapInterface bridges heap.Interface (Len, Less, Swap, Push, Pop).
+// Embeds BridgeSortInterface for the sort.Interface methods.
+type BridgeHeapInterface struct {
+	BridgeSortInterface
+	FnPush func(any)
+	FnPop  func() any
+}
+
+// Push implements heap.Interface.
+func (b *BridgeHeapInterface) Push(x any) { b.FnPush(x) }
+
+// Pop implements heap.Interface.
+func (b *BridgeHeapInterface) Pop() any { return b.FnPop() }
+
 func init() {
 	vm.Bridges["Error"] = reflect.TypeOf((*BridgeError)(nil))
 	vm.Bridges["GoString"] = reflect.TypeOf((*BridgeGoString)(nil))
 	vm.Bridges["String"] = reflect.TypeOf((*BridgeString)(nil))
+
+	vm.InterfaceBridges[reflect.TypeOf((*sort.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeSortInterface)(nil))
+	vm.InterfaceBridges[reflect.TypeOf((*heap.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeHeapInterface)(nil))
 }

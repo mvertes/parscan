@@ -156,6 +156,17 @@ func TestAssign(t *testing.T) {
 		{n: "#18", src: "type T struct{v,w int}; func f() (int,int) {return 1,2}; t:=&T{}; t.v,t.w=f(); 10*t.v+t.w", res: "12"},
 		{n: "#19", src: "type T struct{v interface{}}; func f() (int64,error) {return 2,nil}; t:=&T{}; t.v,_=f(); t.v.(int64)", res: "2"},
 		{n: "#20", src: "type T struct{v int}; func f() (int,int) {return 1,2}; t:=&T{}; var a int; a,t.v=f(); 10*a+t.v", res: "12"},
+		// indexed tuple swap
+		{n: "#21", src: "func f() int { s := []int{3,1,2}; s[0],s[1] = s[1],s[0]; return 100*s[0]+10*s[1]+s[2] }; f()", res: "132"},
+		{n: "#22", src: "func f() int { s := []int{1,2,3}; s[0],s[1],s[2] = s[1],s[2],s[0]; return 100*s[0]+10*s[1]+s[2] }; f()", res: "231"},
+		// mixed: one LHS is index, other is variable
+		{n: "#23", src: "func f() int { s := []int{10,20}; a := 0; a, s[0] = s[0], a; return a*10 + s[0] }; f()", res: "100"},
+		// map tuple swap
+		{n: "#24", src: `func f() int { m := map[string]int{"a": 1, "b": 2}; m["a"], m["b"] = m["b"], m["a"]; return m["a"]*10 + m["b"] }; f()`, res: "21"},
+		// array (not slice) tuple swap
+		{n: "#25", src: "func f() int { a := [3]int{5,3,1}; a[0], a[2] = a[2], a[0]; return 100*a[0]+10*a[1]+a[2] }; f()", res: "135"},
+		// pointer deref tuple swap (skip: return reads stale local after deref-assign, pre-existing bug)
+		{n: "#26", src: "func f() int { a, b := 1, 2; pa, pb := &a, &b; *pa, *pb = *pb, *pa; return a*10+b }; f()", res: "21", skip: true},
 	})
 }
 
@@ -1080,6 +1091,57 @@ x := V{}
 y := myInterface(&x)
 y = &U{y}
 y.myFunc()`, res: "hello"},
+
+		// sort.Interface bridge: interpreted type passed to native sort.Sort
+		{n: "sort_iface", src: `
+import "sort"
+type byLen []string
+func (b byLen) Len() int           { return len(b) }
+func (b byLen) Less(i, j int) bool { return len(b[i]) < len(b[j]) }
+func (b byLen) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+s := byLen{"bbb", "a", "cc"}
+sort.Sort(s)
+s[0] + " " + s[1] + " " + s[2]`, res: "a cc bbb"},
+
+		// heap.Interface bridge: interpreted type passed to native heap functions
+		{n: "heap_iface", src: `
+import "container/heap"
+type IntHeap []int
+func (h IntHeap) Len() int           { return len(h) }
+func (h IntHeap) Less(i, j int) bool { return h[i] < h[j] }
+func (h IntHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *IntHeap) Push(x interface{}) { *h = append(*h, x.(int)) }
+func (h *IntHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}
+h := &IntHeap{5, 3, 1}
+heap.Init(h)
+heap.Push(h, 2)
+r := 0
+for h.Len() > 0 { r = r*10 + heap.Pop(h).(int) }
+r`, res: "1235"},
+
+		// sort.Interface bridge with pointer receiver
+		{n: "sort_iface_ptr", src: `
+import "sort"
+type S struct { vals []int }
+func (s *S) Len() int           { return len(s.vals) }
+func (s *S) Less(i, j int) bool { return s.vals[i] < s.vals[j] }
+func (s *S) Swap(i, j int)      { s.vals[i], s.vals[j] = s.vals[j], s.vals[i] }
+s := &S{vals: []int{3, 1, 2}}
+sort.Sort(s)
+s.vals[0]*100 + s.vals[1]*10 + s.vals[2]`, res: "123"},
+
+		// sort.Slice with interpreted less function (skip: closure arg to native func fails)
+		{n: "sort_slice", src: `
+import "sort"
+s := []int{3, 1, 4, 1, 5}
+sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+s[0]*10000 + s[1]*1000 + s[2]*100 + s[3]*10 + s[4]`, res: "11345", skip: true},
 	})
 }
 

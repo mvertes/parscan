@@ -12,6 +12,7 @@ package stdlib
 //go:generate go run ../cmd/extract -gen -o compress_gzip.go compress/gzip $GOROOT/src/compress/gzip
 //go:generate go run ../cmd/extract -gen -o compress_lzw.go compress/lzw $GOROOT/src/compress/lzw
 //go:generate go run ../cmd/extract -gen -o compress_zlib.go compress/zlib $GOROOT/src/compress/zlib
+//go:generate go run ../cmd/extract -gen -o container_heap.go container/heap $GOROOT/src/container/heap
 //go:generate go run ../cmd/extract -gen -o container_list.go container/list $GOROOT/src/container/list
 //go:generate go run ../cmd/extract -gen -o container_ring.go container/ring $GOROOT/src/container/ring
 //go:generate go run ../cmd/extract -gen -o context.go context $GOROOT/src/context

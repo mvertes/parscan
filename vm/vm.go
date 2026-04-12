@@ -481,7 +481,7 @@ func (m *Machine) Run() (err error) {
 					for i := range in {
 						in[i] = mem[sp-narg+1+i].Reflect()
 					}
-					m.bridgeArgs(in)
+					m.bridgeArgs(in, rv.Type())
 					coerceInterfaceArgs(in, rv.Type())
 					sp -= narg + 1
 					for _, v := range rv.Call(in) {
@@ -2254,25 +2254,46 @@ func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 	return m.makeCallFunc(val, funcType)
 }
 
+// runnerState captures the Machine fields needed to create lightweight runner
+// Machines for re-entrant execution (bridge callbacks, MakeFunc adapters).
+// Snapshot once, reuse across closures to avoid drift between call sites.
+type runnerState struct {
+	globals     []Value
+	code        []Instruction
+	baseCodeLen int
+	out, err    io.Writer
+	methodNames []string
+}
+
+func (m *Machine) captureRunnerState() runnerState {
+	return runnerState{
+		globals:     m.globals,
+		code:        m.code[:m.baseCodeLen:m.baseCodeLen],
+		baseCodeLen: m.baseCodeLen,
+		out:         m.out,
+		err:         m.err,
+		methodNames: m.MethodNames,
+	}
+}
+
+func (rs *runnerState) newRunner() *Machine {
+	return &Machine{
+		globals:     rs.globals,
+		code:        rs.code,
+		baseCodeLen: rs.baseCodeLen,
+		out:         rs.out,
+		err:         rs.err,
+		MethodNames: rs.methodNames,
+	}
+}
+
 // makeCallFunc wraps a parscan function value in a reflect.MakeFunc adapter
 // that creates a fresh Machine and calls CallFunc for re-entrant execution.
 // Captures VM state rather than m to avoid data races with goroutines.
 func (m *Machine) makeCallFunc(fval Value, fnType reflect.Type) reflect.Value {
-	globals := m.globals
-	code := m.code[:m.baseCodeLen:m.baseCodeLen]
-	baseCodeLen := m.baseCodeLen
-	stdout, stderr := m.out, m.err
-	methodNames := m.MethodNames
+	rs := m.captureRunnerState()
 	return reflect.MakeFunc(fnType, func(args []reflect.Value) []reflect.Value {
-		runner := &Machine{
-			globals:     globals,
-			code:        code,
-			baseCodeLen: baseCodeLen,
-			out:         stdout,
-			err:         stderr,
-			MethodNames: methodNames,
-		}
-		out, err := runner.CallFunc(fval, fnType, args)
+		out, err := rs.newRunner().CallFunc(fval, fnType, args)
 		if err != nil {
 			panic(err)
 		}
@@ -2631,8 +2652,15 @@ func numReflect(t reflect.Type, src Value) reflect.Value {
 // bridgeArgs scans native-call arguments for Iface values and replaces them
 // with wrapper instances that implement Go interfaces via registered bridges.
 // Non-bridged Iface values are unwrapped to their concrete value.
-func (m *Machine) bridgeArgs(in []reflect.Value) {
+func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
 	hasBridges := len(Bridges) > 0 && len(m.MethodNames) > 0
+	hasIfaceBridges := len(InterfaceBridges) > 0 && len(m.MethodNames) > 0
+	var numIn int
+	var isVariadic bool
+	if hasIfaceBridges {
+		numIn = funcType.NumIn()
+		isVariadic = funcType.IsVariadic()
+	}
 	for i, rv := range in {
 		if !rv.IsValid() || rv.Type() != ifaceRtype {
 			// Also check inside interface{} wrapping.
@@ -2644,6 +2672,24 @@ func (m *Machine) bridgeArgs(in []reflect.Value) {
 			}
 		}
 		ifc := rv.Interface().(Iface)
+		// Try multi-method interface bridge first (e.g. heap.Interface).
+		if hasIfaceBridges {
+			var paramType reflect.Type
+			switch {
+			case isVariadic && i >= numIn-1:
+				paramType = funcType.In(numIn - 1).Elem()
+			case i < numIn:
+				paramType = funcType.In(i)
+			}
+			if paramType != nil && paramType.Kind() == reflect.Interface {
+				if bridgePtrType, ok := InterfaceBridges[paramType]; ok {
+					if w := m.wrapIfaceMulti(ifc, bridgePtrType); w.IsValid() {
+						in[i] = w
+						continue
+					}
+				}
+			}
+		}
 		if hasBridges {
 			if w := m.wrapIface(ifc); w.IsValid() {
 				in[i] = w
@@ -2687,6 +2733,19 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 	}
 }
 
+// ifaceMethodTypes returns the types to scan for methods: the type itself
+// and, for pointer types, the element type. Methods are registered on the
+// base type T, not *T, so both must be checked.
+func ifaceMethodTypes(typ *Type) (types [2]*Type, n int) {
+	types[0] = typ
+	n = 1
+	if typ.Rtype.Kind() == reflect.Pointer && typ.ElemType != nil {
+		types[1] = typ.ElemType
+		n = 2
+	}
+	return
+}
+
 // wrapIface creates a bridge value that implements a Go interface for the
 // first method with a registered bridge. Returns an invalid Value if no
 // bridges match. Methods are checked on both the type and its element type
@@ -2696,14 +2755,7 @@ func (m *Machine) wrapIface(ifc Iface) reflect.Value {
 		return reflect.Value{}
 	}
 
-	var methodTypes [2]*Type
-	n := 1
-	methodTypes[0] = ifc.Typ
-	if ifc.Typ.Rtype.Kind() == reflect.Pointer && ifc.Typ.ElemType != nil {
-		methodTypes[1] = ifc.Typ.ElemType
-		n = 2
-	}
-
+	methodTypes, n := ifaceMethodTypes(ifc.Typ)
 	for _, mt := range methodTypes[:n] {
 		for id, method := range mt.Methods {
 			if method.Index < 0 || id >= len(m.MethodNames) {
@@ -2722,9 +2774,55 @@ func (m *Machine) wrapIface(ifc Iface) reflect.Value {
 	return reflect.Value{}
 }
 
+// wrapIfaceMulti creates a bridge that implements a multi-method interface
+// (e.g. heap.Interface). The bridge struct has fields named Fn<MethodName>
+// for each method. All matching methods on the interpreted type are wired up.
+func (m *Machine) wrapIfaceMulti(ifc Iface, bridgePtrType reflect.Type) reflect.Value {
+	if ifc.Typ == nil {
+		return reflect.Value{}
+	}
+
+	bridge := reflect.New(bridgePtrType.Elem())
+	elem := bridge.Elem()
+	matched := false
+
+	methodTypes, n := ifaceMethodTypes(ifc.Typ)
+	isPtr := ifc.Typ.Rtype.Kind() == reflect.Pointer
+	for _, mt := range methodTypes[:n] {
+		for id, method := range mt.Methods {
+			if method.Index < 0 || id >= len(m.MethodNames) {
+				continue
+			}
+			fnField := elem.FieldByName("Fn" + m.MethodNames[id])
+			if !fnField.IsValid() {
+				continue
+			}
+			// Value-receiver methods called on a pointer need the pointer
+			// dereferenced at each call time so mutations are visible.
+			deref := isPtr && !method.PtrRecv
+			fnField.Set(m.makeBridgeClosureImpl(ifc, method, fnField.Type(), deref))
+			matched = true
+		}
+	}
+
+	if !matched {
+		return reflect.Value{}
+	}
+	return bridge
+}
+
 // makeBridgeClosure returns a reflect.Value of a function that, when called,
 // invokes the interpreted method on the given Iface receiver.
 func (m *Machine) makeBridgeClosure(ifc Iface, method Method, fnType reflect.Type) reflect.Value {
+	return m.makeBridgeClosureImpl(ifc, method, fnType, false)
+}
+
+// makeBridgeClosureImpl builds the bridge closure. When deref is true, the
+// receiver pointer is dereferenced at each call, which is required for
+// value-receiver methods invoked on a pointer (e.g. (IntHeap).Len called
+// on *IntHeap). The dereference must happen at call time so mutations from
+// pointer-receiver methods (Push/Pop) are visible.
+func (m *Machine) makeBridgeClosureImpl(ifc Iface, method Method, fnType reflect.Type, deref bool) reflect.Value {
 	// Build the receiver cell (same pattern as IfaceCall).
 	codeAddr := int(m.globals[method.Index].num) //nolint:gosec
 	cell := new(Value)
@@ -2740,5 +2838,18 @@ func (m *Machine) makeBridgeClosure(ifc Iface, method Method, fnType reflect.Typ
 		*cell = FromReflect(rv)
 	}
 	fval := Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Heap: []*Value{cell}})}
-	return m.makeCallFunc(fval, fnType)
+	if !deref {
+		return m.makeCallFunc(fval, fnType)
+	}
+	// For value-receiver methods: dereference the pointer at each call.
+	ptrVal := ifc.Val
+	rs := m.captureRunnerState()
+	return reflect.MakeFunc(fnType, func(args []reflect.Value) []reflect.Value {
+		*cell = FromReflect(reflect.Indirect(ptrVal.Reflect()))
+		out, err := rs.newRunner().CallFunc(fval, fnType, args)
+		if err != nil {
+			panic(err)
+		}
+		return out
+	})
 }
