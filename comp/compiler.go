@@ -264,6 +264,22 @@ func (c *Compiler) emitIfaceWrapAt(t goparser.Token, ifaceTyp, concreteTyp *vm.T
 	c.emit(t, vm.IfaceWrap, c.typeIndex(concreteTyp), depth)
 }
 
+// emitTypeOrGlobal emits Fnew (or FnewE) for type symbols, or GetGlobal for values.
+func (c *Compiler) emitTypeOrGlobal(t goparser.Token, sym *symbol.Symbol, index int) {
+	if sym.Kind == symbol.Type {
+		switch sym.Type.Rtype.Kind() {
+		case reflect.Slice:
+			c.emit(t, vm.Fnew, index, 0)
+		case reflect.Pointer:
+			c.emit(t, vm.FnewE, index, 1)
+		default:
+			c.emit(t, vm.Fnew, index, 1)
+		}
+	} else {
+		c.emit(t, vm.GetGlobal, index)
+	}
+}
+
 // generate generates vm code and data from parsed tokens, or returns an error.
 func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 	fixList := goparser.Tokens{}  // list of tokens to fix after all necessary information is gathered
@@ -1169,18 +1185,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						c.Data = append(c.Data, s.Value)
 					}
 				}
-				if s.Kind == symbol.Type {
-					switch s.Type.Rtype.Kind() {
-					case reflect.Slice:
-						c.emit(t, vm.Fnew, s.Index, 0)
-					case reflect.Pointer:
-						c.emit(t, vm.FnewE, s.Index, 1)
-					default:
-						c.emit(t, vm.Fnew, s.Index, 1)
-					}
-				} else {
-					c.emit(t, vm.GetGlobal, s.Index)
-				}
+				c.emitTypeOrGlobal(t, s, s.Index)
 			}
 
 		case lang.Label:
@@ -1312,12 +1317,20 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					l = sym.Index
 				} else {
 					l = len(c.Data)
-					c.Data = append(c.Data, v)
-					c.SymAdd(l, name, v, symbol.Value, vm.TypeOf(v.Interface()))
+					if v.Kind() == reflect.Pointer && v.Reflect().IsNil() {
+						// Stdlib wrappers encode exported types as (*T)(nil); extract T.
+						rtype := v.Type().Elem()
+						nv := vm.NewValue(rtype)
+						c.Data = append(c.Data, nv)
+						c.SymAdd(l, name, nv, symbol.Type, &vm.Type{Name: rtype.Name(), Rtype: rtype})
+					} else {
+						c.Data = append(c.Data, v)
+						c.SymAdd(l, name, v, symbol.Value, vm.TypeOf(v.Interface()))
+					}
 					sym = c.Symbols[name]
 				}
 				push(sym)
-				c.emit(t, vm.GetGlobal, l)
+				c.emitTypeOrGlobal(t, sym, l)
 			case symbol.Unset:
 				return errorf("invalid symbol: %s", s.Name)
 			default:

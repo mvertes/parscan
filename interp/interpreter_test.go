@@ -1995,6 +1995,7 @@ func TestBuiltin(t *testing.T) {
 		{n: "make_slice", src: `a := make([]int, 3); len(a)`, res: "3"},
 		{n: "make_slice_cap", src: `a := make([]int, 2, 10); cap(a)`, res: "10"},
 		{n: "make_map", src: `m := make(map[string]int); m["x"] = 5; m["x"]`, res: "5"},
+		{n: "make_pkg_type", src: `import "net/http"; h := make(http.Header); len(h)`, res: "0"},
 		{n: "append_basic", src: `a := []int{1, 2}; a = append(a, 3); a`, res: "[1 2 3]"},
 		{n: "append_multi", src: `a := []int{1}; a = append(a, 2, 3, 4); a`, res: "[1 2 3 4]"},
 		{n: "append_spread", src: `a := []int{1, 2}; b := []int{3, 4}; a = append(a, b...); a`, res: "[1 2 3 4]"},
