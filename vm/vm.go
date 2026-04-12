@@ -477,12 +477,14 @@ func (m *Machine) Run() (err error) {
 					rv = rv.Elem()
 				}
 				if rv.Kind() == reflect.Func {
+					funcType := rv.Type()
 					in := make([]reflect.Value, narg)
 					for i := range in {
 						in[i] = mem[sp-narg+1+i].Reflect()
 					}
-					m.bridgeArgs(in, rv.Type())
-					coerceInterfaceArgs(in, rv.Type())
+					m.bridgeArgs(in, funcType)
+					coerceInterfaceArgs(in, funcType)
+					m.wrapFuncArgs(in, mem[sp-narg+1:sp+1], funcType)
 					sp -= narg + 1
 					for _, v := range rv.Call(in) {
 						if sp+1 >= len(mem) {
@@ -1276,6 +1278,7 @@ func (m *Machine) Run() (err error) {
 						rin[i] = mem[dh-narg-2+i].Reflect()
 					}
 					coerceInterfaceArgs(rin, funcVal.ref.Type())
+					m.wrapFuncArgs(rin, mem[dh-narg-2:dh-2], funcVal.ref.Type())
 					funcVal.ref.Call(rin)
 					// Move return values (at dh+1..dh+nret) down over the defer entry.
 					for i := 0; i < nret; i++ {
@@ -2149,6 +2152,7 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 				rin[i] = (*mem)[dh-narg-2+i].Reflect()
 			}
 			coerceInterfaceArgs(rin, funcVal.ref.Type())
+			m.wrapFuncArgs(rin, (*mem)[dh-narg-2:dh-2], funcVal.ref.Type())
 			funcVal.ref.Call(rin)
 			return popDefer()
 		}
@@ -2401,6 +2405,7 @@ func (m *Machine) newGoroutine(fval Value, args []Value) {
 			in[i] = a.Reflect()
 		}
 		coerceInterfaceArgs(in, rv.Type())
+		m.wrapFuncArgs(in, args, rv.Type())
 		go func() { rv.Call(in) }()
 		return
 	}
@@ -2668,12 +2673,6 @@ func numReflect(t reflect.Type, src Value) reflect.Value {
 func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
 	hasBridges := len(Bridges) > 0 && len(m.MethodNames) > 0
 	hasIfaceBridges := len(InterfaceBridges) > 0 && len(m.MethodNames) > 0
-	var numIn int
-	var isVariadic bool
-	if hasIfaceBridges {
-		numIn = funcType.NumIn()
-		isVariadic = funcType.IsVariadic()
-	}
 	for i, rv := range in {
 		if !rv.IsValid() || rv.Type() != ifaceRtype {
 			// Also check inside interface{} wrapping.
@@ -2687,14 +2686,7 @@ func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
 		ifc := rv.Interface().(Iface)
 		// Try multi-method interface bridge first (e.g. heap.Interface).
 		if hasIfaceBridges {
-			var paramType reflect.Type
-			switch {
-			case isVariadic && i >= numIn-1:
-				paramType = funcType.In(numIn - 1).Elem()
-			case i < numIn:
-				paramType = funcType.In(i)
-			}
-			if paramType != nil && paramType.Kind() == reflect.Interface {
+			if paramType := paramTypeFor(funcType, i); paramType != nil && paramType.Kind() == reflect.Interface {
 				if bridgePtrType, ok := InterfaceBridges[paramType]; ok {
 					if w := m.wrapIfaceMulti(ifc, bridgePtrType); w.IsValid() {
 						in[i] = w
@@ -2714,20 +2706,27 @@ func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
 	}
 }
 
+// paramTypeFor returns the expected parameter type for argument i of funcType.
+// For variadic functions past the last fixed param, it returns the slice element type.
+func paramTypeFor(funcType reflect.Type, i int) reflect.Type {
+	numIn := funcType.NumIn()
+	switch {
+	case funcType.IsVariadic() && i >= numIn-1:
+		return funcType.In(numIn - 1).Elem()
+	case i < numIn:
+		return funcType.In(i)
+	default:
+		return nil
+	}
+}
+
 // coerceInterfaceArgs unwraps interface-typed arguments whose type does not match
 // the function's expected parameter type. This handles native interface values
 // (e.g. context.Context) stored in generic interface{} variable slots.
 func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
-	numIn := funcType.NumIn()
-	isVariadic := funcType.IsVariadic()
 	for i, rv := range in {
-		var paramType reflect.Type
-		switch {
-		case isVariadic && i >= numIn-1:
-			paramType = funcType.In(numIn - 1).Elem()
-		case i < numIn:
-			paramType = funcType.In(i)
-		default:
+		paramType := paramTypeFor(funcType, i)
+		if paramType == nil {
 			continue
 		}
 		if !rv.IsValid() {
@@ -2742,6 +2741,23 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 		} else if rv.Kind() == paramType.Kind() || (isNum(rv.Kind()) && isNum(paramType.Kind())) {
 			// Convert named types or across numeric kinds (e.g. int to time.Duration).
 			in[i] = rv.Convert(paramType)
+		}
+	}
+}
+
+// wrapFuncArgs wraps parscan function values (Closures or code addresses) into
+// native Go functions when the expected parameter type is func.
+func (m *Machine) wrapFuncArgs(in []reflect.Value, args []Value, funcType reflect.Type) {
+	for i := range in {
+		paramType := paramTypeFor(funcType, i)
+		if paramType == nil || paramType.Kind() != reflect.Func {
+			continue
+		}
+		if in[i].IsValid() && in[i].Type() == paramType {
+			continue
+		}
+		if gf := m.wrapForFunc(args[i], paramType); gf.IsValid() {
+			in[i] = gf
 		}
 	}
 }

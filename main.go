@@ -4,6 +4,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,6 +13,21 @@ import (
 	"github.com/mvertes/parscan/lang/golang"
 	"github.com/mvertes/parscan/stdlib"
 )
+
+// newlineTracker wraps a writer and tracks whether the last byte written was a newline.
+type newlineTracker struct {
+	w       io.Writer
+	written bool
+	last    byte
+}
+
+func (t *newlineTracker) Write(p []byte) (int, error) {
+	if len(p) > 0 {
+		t.written = true
+		t.last = p[len(p)-1]
+	}
+	return t.w.Write(p)
+}
 
 func main() {
 	log.SetFlags(log.Lshortfile)
@@ -36,18 +52,28 @@ func run(arg []string) error {
 
 	i := interp.NewInterpreter(golang.GoSpec)
 	i.ImportPackageValues(stdlib.Values)
-	if str != "" {
-		_, err := i.Eval("m:"+str, str)
-		return err
-	}
-	if len(args) == 0 {
+
+	out := &newlineTracker{w: os.Stdout}
+	i.SetIO(os.Stdin, out, os.Stderr)
+
+	var err error
+	switch {
+	case str != "":
+		_, err = i.Eval("m:"+str, str)
+	case len(args) == 0:
 		return i.Repl(os.Stdin)
+	default:
+		fpath := filepath.Clean(args[0])
+		var buf []byte
+		buf, err = os.ReadFile(fpath)
+		if err != nil {
+			return err
+		}
+		_, err = i.Eval("f:"+fpath, string(buf))
 	}
-	fpath := filepath.Clean(args[0])
-	buf, err := os.ReadFile(fpath)
-	if err != nil {
-		return err
+	// Ensure output ends with a newline so the shell prompt is not overwritten.
+	if out.written && out.last != '\n' {
+		_, _ = fmt.Fprintln(os.Stdout)
 	}
-	_, err = i.Eval("f:"+fpath, string(buf))
 	return err
 }

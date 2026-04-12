@@ -1136,12 +1136,12 @@ s := &S{vals: []int{3, 1, 2}}
 sort.Sort(s)
 s.vals[0]*100 + s.vals[1]*10 + s.vals[2]`, res: "123"},
 
-		// sort.Slice with interpreted less function (skip: closure arg to native func fails)
+		// sort.Slice with interpreted less function
 		{n: "sort_slice", src: `
 import "sort"
 s := []int{3, 1, 4, 1, 5}
 sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
-s[0]*10000 + s[1]*1000 + s[2]*100 + s[3]*10 + s[4]`, res: "11345", skip: true},
+s[0]*10000 + s[1]*1000 + s[2]*100 + s[3]*10 + s[4]`, res: "11345"},
 	})
 }
 
@@ -1807,6 +1807,15 @@ func TestDefer(t *testing.T) {
 			}
 			f()
 			r`, res: "20"},
+		{n: "defer_native_func_arg", src: `
+import "sort"
+func f() []int {
+	s := []int{3, 1, 2}
+	defer sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+	return s
+}
+s := f()
+s[0]*100 + s[1]*10 + s[2]`, res: "123"},
 	})
 }
 
@@ -2048,6 +2057,16 @@ ch1 := make(chan int)
 go filter(ch, ch1, prime)
 ch = ch1
 <-ch`, res: "3"},
+		{n: "go_native_func_arg", src: `
+import "sort"
+ch := make(chan bool, 1)
+s := []int{3, 1, 2}
+go func() {
+	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+	ch <- true
+}()
+<-ch
+s[0]*100 + s[1]*10 + s[2]`, res: "123"},
 	})
 }
 
