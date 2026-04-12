@@ -542,8 +542,21 @@ func (m *Machine) Run() (err error) {
 		case DerefSet:
 			ptr := mem[sp-1]
 			val := mem[sp]
-			numSet(ptr.ref.Elem(), val)
+			elem := ptr.ref.Elem()
+			numSet(elem, val)
 			sp -= 2
+			// After writing through a pointer, update the .num cache of any
+			// frame slot whose ref shares the same underlying address, so
+			// fused GetLocal*Imm instructions see the updated value.
+			if isNum(elem.Kind()) {
+				addr := elem.UnsafeAddr()
+				n := numBits(elem)
+				for i := fp; i <= sp; i++ {
+					if mem[i].ref.CanAddr() && mem[i].ref.UnsafeAddr() == addr {
+						mem[i].num = n
+					}
+				}
+			}
 		case GetLocal:
 			sp++
 			mem[sp] = mem[int(c.A)+fp-1]

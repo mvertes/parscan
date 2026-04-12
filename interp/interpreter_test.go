@@ -165,8 +165,8 @@ func TestAssign(t *testing.T) {
 		{n: "#24", src: `func f() int { m := map[string]int{"a": 1, "b": 2}; m["a"], m["b"] = m["b"], m["a"]; return m["a"]*10 + m["b"] }; f()`, res: "21"},
 		// array (not slice) tuple swap
 		{n: "#25", src: "func f() int { a := [3]int{5,3,1}; a[0], a[2] = a[2], a[0]; return 100*a[0]+10*a[1]+a[2] }; f()", res: "135"},
-		// pointer deref tuple swap (skip: return reads stale local after deref-assign, pre-existing bug)
-		{n: "#26", src: "func f() int { a, b := 1, 2; pa, pb := &a, &b; *pa, *pb = *pb, *pa; return a*10+b }; f()", res: "21", skip: true},
+		// pointer deref tuple swap
+		{n: "#26", src: "func f() int { a, b := 1, 2; pa, pb := &a, &b; *pa, *pb = *pb, *pa; return a*10+b }; f()", res: "21"},
 	})
 }
 
