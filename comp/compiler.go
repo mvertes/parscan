@@ -144,6 +144,32 @@ func (c *Compiler) findTypeSym(rtype reflect.Type) *vm.Type {
 	return nil
 }
 
+// findEmbeddedMethod walks embedded fields looking for a native method that
+// reflect.StructOf failed to promote. Returns the reflect.Method, the field
+// index path to the embedded receiver, and whether an Addr is needed.
+func findEmbeddedMethod(typ *vm.Type, rtype reflect.Type, name string, path []int) (reflect.Method, []int, bool) {
+	for _, emb := range typ.Embedded {
+		embRtype := rtype.Field(emb.FieldIdx).Type
+		fieldPath := append(path[:len(path):len(path)], emb.FieldIdx) //nolint:gocritic // intentionally creates a new slice
+		rt := embRtype
+		if rt.Kind() == reflect.Pointer {
+			rt = rt.Elem()
+		}
+		if rm, ok := rt.MethodByName(name); ok {
+			return rm, fieldPath, false
+		}
+		if rm, ok := reflect.PointerTo(rt).MethodByName(name); ok {
+			return rm, fieldPath, embRtype.Kind() != reflect.Pointer
+		}
+		if emb.Type != nil {
+			if rm, p, na := findEmbeddedMethod(emb.Type, rt, name, fieldPath); rm.Type != nil {
+				return rm, p, na
+			}
+		}
+	}
+	return reflect.Method{}, nil, false
+}
+
 func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 	isPtr := typ.Rtype.Kind() == reflect.Pointer
 	lookupTyp := typ
@@ -1500,7 +1526,27 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					rm, ok = reflect.PointerTo(rtype).MethodByName(methodName)
 					needAddr = true
 				}
+				// reflect.StructOf does not promote methods from embedded fields.
+				// Walk embedded fields to find native methods promoted through embedding.
+				var embFieldPath []int
+				if !ok {
+					lookupTyp := s.Type
+					lr := rtype
+					if lr.Kind() == reflect.Pointer {
+						lr = lr.Elem()
+						if lt := lookupTyp.Elem(); lt != nil {
+							lookupTyp = lt
+						}
+					}
+					if rm, embFieldPath, needAddr = findEmbeddedMethod(lookupTyp, lr, methodName, nil); rm.Type != nil {
+						ok = true
+					}
+				}
 				if ok {
+					// Extract embedded receiver if method is promoted through embedded fields.
+					if len(embFieldPath) > 0 {
+						c.emitField(t, embFieldPath)
+					}
 					// Build bound method signature (without receiver) so the
 					// Call handler sees the correct parameter/return types.
 					mt := rm.Type
@@ -1521,7 +1567,16 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					// the named type during arithmetic.  Pass the receiver type index+1
 					// in B so the VM can convert before method lookup (0 means unset).
 					var recvTypeHint int
-					if rtype.Kind() >= reflect.Bool && rtype.Kind() <= reflect.Float64 && rtype.Name() != "" && rtype.Name() != rtype.Kind().String() {
+					embRtype := rtype
+					if len(embFieldPath) > 0 {
+						for _, idx := range embFieldPath {
+							if embRtype.Kind() == reflect.Pointer {
+								embRtype = embRtype.Elem()
+							}
+							embRtype = embRtype.Field(idx).Type
+						}
+					}
+					if embRtype.Kind() >= reflect.Bool && embRtype.Kind() <= reflect.Float64 && embRtype.Name() != "" && embRtype.Name() != embRtype.Kind().String() {
 						recvTypeHint = c.typeSym(s.Type).Index + 1
 					}
 					c.emit(t, vm.IfaceCall, c.methodID(methodName), recvTypeHint)

@@ -797,6 +797,19 @@ func (nop) Reset() string { return "ok" }
 func f(e Transformer) string { return e.Reset() }
 e := Encoder{Transformer: nop{}}
 f(e)`, res: "ok"},
+
+		// Package-qualified embedded field with promoted native method.
+		{n: "pkg_embed", src: `import "time"
+type MyTime struct { time.Time; index int }
+t := MyTime{}
+t.Time = time.Date(2009, time.November, 10, 23, 4, 5, 0, time.UTC)
+t.Minute()`, res: "4"},
+
+		{n: "pkg_embed_ptr_recv", src: `import "time"
+type MyTime struct { time.Time }
+t := MyTime{}
+t.Time = time.Date(2009, time.November, 10, 23, 4, 5, 0, time.UTC)
+t.Second()`, res: "5"},
 	})
 }
 

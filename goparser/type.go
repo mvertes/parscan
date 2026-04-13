@@ -451,7 +451,8 @@ func baseNames(scoped []string) []string {
 }
 
 // parseEmbeddedField checks if lt matches an embedded (anonymous) struct field pattern
-// (`TypeName` or `*TypeName`). Returns the field type and the symbol-table type, or nil, nil.
+// (`TypeName`, `*TypeName`, `pkg.TypeName`, or `*pkg.TypeName`).
+// Returns the field type and the symbol-table type, or nil, nil.
 func (p *Parser) parseEmbeddedField(lt Tokens) (fieldType, origType *vm.Type) {
 	isPtr := false
 	toks := lt
@@ -459,6 +460,25 @@ func (p *Parser) parseEmbeddedField(lt Tokens) (fieldType, origType *vm.Type) {
 		isPtr = true
 		toks = toks[1:]
 	}
+
+	// Package-qualified embedded field: pkg.TypeName
+	if len(toks) == 3 && toks[0].Tok == lang.Ident && toks[1].Tok == lang.Period && toks[2].Tok == lang.Ident {
+		s, _, ok := p.Symbols.Get(toks[0].Str, p.scope)
+		if !ok || s.Kind != symbol.Pkg {
+			return nil, nil
+		}
+		typ, err := p.resolvePkgType(s, toks[2].Str)
+		if err != nil {
+			return nil, nil
+		}
+		ft := *typ
+		ft.Name = toks[2].Str
+		if isPtr {
+			return vm.PointerTo(&ft), typ
+		}
+		return &ft, typ
+	}
+
 	if len(toks) != 1 || toks[0].Tok != lang.Ident {
 		return nil, nil
 	}
