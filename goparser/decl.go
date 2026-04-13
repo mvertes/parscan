@@ -112,7 +112,29 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		}
 		cval, ctyp, _, err := p.evalConstExpr(v)
 		if err != nil {
-			return out, err
+			// Forward references (ErrUndefined) must propagate so the
+			// retry loop in parseConst / ParseAll can re-attempt later.
+			var eu ErrUndefined
+			if errors.As(err, &eu) {
+				return out, err
+			}
+			// For other failures (e.g. referencing a symbol in a stub
+			// binary package), register the const name so it is
+			// discoverable by tools like extract.
+			if i < len(vars) {
+				name := p.scopedName(vars[i])
+				var typ *vm.Type
+				if i < len(types) {
+					typ = types[i]
+				}
+				p.SymSet(name, &symbol.Symbol{
+					Kind:  symbol.Const,
+					Index: symbol.UnsetAddr,
+					Type:  typ,
+					Used:  true,
+				})
+			}
+			continue
 		}
 		name := p.scopedName(vars[i])
 		var typ *vm.Type

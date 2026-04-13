@@ -1630,20 +1630,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp] = Value{ref: reflect.MakeMap(mapType)}
 		case Append:
 			n := int(c.A)
-			result := mem[sp-n].ref
-			elemType := result.Type().Elem()
-			for i := range n {
-				val := mem[sp-n+1+i]
-				var v reflect.Value
-				if val.ref.IsValid() {
-					v = m.reflectForSend(val, elemType)
-				}
-				if !v.IsValid() {
-					v = reflect.Zero(elemType)
-				}
-				result = reflect.Append(result, v)
-			}
-			mem[sp-n] = Value{ref: result}
+			m.appendValues(mem, sp, n)
 			sp -= n
 		case AppendSlice:
 			n := int(c.A)
@@ -1659,25 +1646,7 @@ func (m *Machine) Run() (err error) {
 				mem[sp] = Value{ref: result}
 				break
 			}
-			result := mem[sp-n].ref
-			elemType := result.Type().Elem()
-			temp := reflect.MakeSlice(result.Type(), n, n)
-			if elemType.Kind() == reflect.Func {
-				for i := range n {
-					src := mem[sp-n+1+i]
-					if pf, ok := src.ref.Interface().(ParscanFunc); ok {
-						temp.Index(i).Set(pf.GF)
-					} else {
-						temp.Index(i).Set(src.Reflect())
-					}
-				}
-			} else {
-				for i := range n {
-					numSet(temp.Index(i), mem[sp-n+1+i])
-				}
-			}
-			result = reflect.AppendSlice(result, temp)
-			mem[sp-n] = Value{ref: result}
+			m.appendValues(mem, sp, n)
 			sp -= n
 		case CopySlice:
 			dst := mem[sp-1].ref
@@ -2296,6 +2265,24 @@ func (m *Machine) Push(v ...Value) (l int) {
 	l = len(m.globals)
 	m.globals = append(m.globals, v...)
 	return l
+}
+
+// appendValues appends n values from mem[sp-n+1..sp] to the slice at mem[sp-n].
+func (m *Machine) appendValues(mem []Value, sp, n int) {
+	result := mem[sp-n].ref
+	elemType := result.Type().Elem()
+	for i := range n {
+		val := mem[sp-n+1+i]
+		var v reflect.Value
+		if val.ref.IsValid() {
+			v = m.reflectForSend(val, elemType)
+		}
+		if !v.IsValid() {
+			v = reflect.Zero(elemType)
+		}
+		result = reflect.Append(result, v)
+	}
+	mem[sp-n] = Value{ref: result}
 }
 
 func (m *Machine) reflectForSend(val Value, elemType reflect.Type) reflect.Value {

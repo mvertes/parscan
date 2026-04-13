@@ -16,6 +16,8 @@ func init() {
 		"Jacobi": reflect.ValueOf(big.Jacobi),
 		"MaxBase": reflect.ValueOf(big.MaxBase),
 		"MaxExp": reflect.ValueOf(big.MaxExp),
+		"MaxPrec": reflect.ValueOf(big.MaxPrec),
+		"MinExp": reflect.ValueOf(big.MinExp),
 		"NewFloat": reflect.ValueOf(big.NewFloat),
 		"NewInt": reflect.ValueOf(big.NewInt),
 		"NewRat": reflect.ValueOf(big.NewRat),

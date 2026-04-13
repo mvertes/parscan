@@ -21,6 +21,7 @@ func init() {
 		"IsAbs": reflect.ValueOf(filepath.IsAbs),
 		"IsLocal": reflect.ValueOf(filepath.IsLocal),
 		"Join": reflect.ValueOf(filepath.Join),
+		"ListSeparator": reflect.ValueOf(filepath.ListSeparator),
 		"Localize": reflect.ValueOf(filepath.Localize),
 		"Match": reflect.ValueOf(filepath.Match),
 		"Rel": reflect.ValueOf(filepath.Rel),
