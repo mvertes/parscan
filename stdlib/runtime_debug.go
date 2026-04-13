@@ -20,6 +20,7 @@ func init() {
 		"SetMaxThreads": reflect.ValueOf(debug.SetMaxThreads),
 		"SetMemoryLimit": reflect.ValueOf(debug.SetMemoryLimit),
 		"SetPanicOnFault": reflect.ValueOf(debug.SetPanicOnFault),
+		"SetTraceback": reflect.ValueOf(debug.SetTraceback),
 		"Stack": reflect.ValueOf(debug.Stack),
 		"BuildInfo": reflect.ValueOf((*debug.BuildInfo)(nil)),
 		"BuildSetting": reflect.ValueOf((*debug.BuildSetting)(nil)),

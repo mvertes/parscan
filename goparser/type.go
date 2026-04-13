@@ -119,8 +119,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		var indexArgs int
 		var recvr string
 		switch l, in1 := len(in), in[1]; {
-		case l >= 4 && in1.Tok == lang.ParenBlock && in[2].Tok == lang.Ident:
-			// TODO: make sure that it is not an anonymous closure output type.
+		case l >= 4 && in1.Tok == lang.ParenBlock && in[2].Tok == lang.Ident && in[3].Tok == lang.ParenBlock:
 			recvr = in1.Block()
 			indexArgs, out = 3, in[4:]
 		case l >= 3 && in1.Tok == lang.Ident:

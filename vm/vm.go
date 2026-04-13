@@ -63,6 +63,7 @@ const (
 	Exit                   // -- ;
 	Field                  // s -- f ; f = s.FieldIndex($1, ...)
 	FieldFset              // s i v -- s; s.FieldIndex(i) = v
+	FieldRefSet            // fref v -- ; fref = v (via setFuncField)
 	FieldSet               // s d -- s ; s.FieldIndex($1, ...) = d
 	Fnew                   // -- x; x = new mem[$1]
 	FnewE                  // -- x; x = new mem[$1].Elem()
@@ -957,6 +958,9 @@ func (m *Machine) Run() (err error) {
 			sp--
 		case FieldFset:
 			m.setFuncField(forceSettable(mem[sp-2].ref.Field(int(mem[sp-1].num))), mem[sp]) //nolint:gosec
+			sp -= 2
+		case FieldRefSet:
+			m.setFuncField(forceSettable(mem[sp-1].ref), mem[sp])
 			sp -= 2
 		case Jump:
 			ip += int(c.A)
@@ -2584,6 +2588,16 @@ func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 		// (e.g. uint field, int value from untyped const).
 		setNumReflect(fv, val.num)
 		return
+	}
+	if fv.Kind() == reflect.Interface && val.IsIface() {
+		iv := val.IfaceVal()
+		// Unwrap Iface for native types so reflect-based code (e.g. fmt.Println)
+		// sees raw Go values. Keep Iface for interpreted types that need it for
+		// method dispatch.
+		if len(iv.Typ.Methods) == 0 {
+			fv.Set(numReflect(iv.Typ.Rtype, iv.Val))
+			return
+		}
 	}
 	fv.Set(val.Reflect())
 }

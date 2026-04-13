@@ -640,6 +640,8 @@ func TestStruct(t *testing.T) {
 		{n: "#03", src: "type T struct {a int}; var t T = T{1}; t.a", res: "1"},
 		{n: "#04", src: "type T struct {a int}; var t *T = &T{1}; t.a", res: "1"},
 		{n: "field_name_matches_var", src: `type T struct{x int}; x := 42; t := T{x: x}; t.x`, res: "42"},
+		{n: "iface_field_fmt", src: `import "fmt"; type T struct{V interface{}}; t := T{V: "hello"}; fmt.Sprint(t)`, res: "{hello}"},
+		{n: "iface_field_assign_fmt", src: `import "fmt"; type T struct{V interface{}}; t := T{}; t.V = 42; fmt.Sprint(t)`, res: "{42}"},
 	})
 }
 
@@ -885,6 +887,7 @@ func TestMap(t *testing.T) {
 		{n: "append_missing_key", src: `m := map[string][]int{}; m["x"] = append(m["x"], 1); m["x"][0]`, res: "1"},
 		{n: "slice_val_lit", src: `m := map[string][]string{"a": []string{"x", "y"}}; m["a"][1]`, res: "y"},
 		{n: "nested_range", src: `import "sort"; m := map[string][]string{"a": []string{"1", "2"}, "b": []string{"3"}}; var r []string; for k, vs := range m { for _, v := range vs { r = append(r, k+v) } }; sort.Strings(r); r`, res: "[a1 a2 b3]"},
+		{n: "func_val_ret", src: `func f(s string) string { return "hi " + s }; m := map[string]func(string) string{"f": f}; m["f"]("x")`, res: "hi x"},
 	})
 }
 
@@ -1380,6 +1383,7 @@ func TestImport(t *testing.T) {
 		{n: "#10", src: `import "strings"; r := strings.NewReader("hello"); r.Len()`, res: "5"},
 		{n: "#11", src: `import "os"; f, _ := os.CreateTemp("", "test"); n := f.Name(); f.Close(); os.Remove(n); len(n) > 0`, res: "true"},
 		{n: "#12", src: `import "bytes"; b := bytes.NewBuffer(nil); b.WriteString("hello"); b.String()`, res: "hello"},
+		{n: "#13", src: `import "net/url"; v := url.Values{}; v.Set("a", "b"); v.Get("a")`, res: "b"},
 	})
 }
 

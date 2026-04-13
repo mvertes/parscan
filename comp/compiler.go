@@ -1011,7 +1011,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						for j := 0; j < d-1; j++ {
 							c.emit(t, vm.Swap, d-j, d-j-1)
 						}
-						c.emit(t, vm.SetS, 1)
+						c.emit(t, vm.FieldRefSet)
 					}
 				}
 				if slotCount > 0 {
@@ -1068,7 +1068,13 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			// Wrap concrete value in Iface when assigning to interface variable.
 			c.emitIfaceWrap(t, lhs.Type, rhs.Type)
-			c.emit(t, vm.SetS, n)
+			if lhs.Index == symbol.UnsetAddr {
+				// Struct field ref: route through setFuncField which unwraps
+				// Iface for native types so reflect-based code sees raw values.
+				c.emit(t, vm.FieldRefSet)
+			} else {
+				c.emit(t, vm.SetS, n)
+			}
 
 		case lang.DerefAssign:
 			if err := checkTopN(2); err != nil { // check rhs and pointer target
@@ -1404,19 +1410,21 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				if isPtr {
 					typ = typ.Elem()
 				}
-				if f, ok := typ.FieldByName(t.Str[1:]); ok {
-					// Look up struct type in symbol table to get parscan-level Fields/Params info.
-					structType := c.findTypeSym(typ)
-					if structType == nil {
-						if isPtr {
-							structType = s.Type.Elem()
-						} else {
-							structType = s.Type
+				if typ.Kind() == reflect.Struct {
+					if f, ok := typ.FieldByName(t.Str[1:]); ok {
+						// Look up struct type in symbol table to get parscan-level Fields/Params info.
+						structType := c.findTypeSym(typ)
+						if structType == nil {
+							if isPtr {
+								structType = s.Type.Elem()
+							} else {
+								structType = s.Type
+							}
 						}
+						push(&symbol.Symbol{Kind: symbol.Var, Index: symbol.UnsetAddr, Type: structType.FieldType(t.Str[1:])})
+						c.emitField(t, f.Index)
+						break
 					}
-					push(&symbol.Symbol{Kind: symbol.Var, Index: symbol.UnsetAddr, Type: structType.FieldType(t.Str[1:])})
-					c.emitField(t, f.Index)
-					break
 				}
 				// Native method on concrete reflect type: use IfaceCall for
 				// reflect-based dispatch at runtime.
