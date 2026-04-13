@@ -156,6 +156,7 @@ var GoSpec = &lang.Spec{
 		lang.BitComp:      {Precedence: 6},
 		lang.Not:          {Precedence: 6},
 		lang.Call:         {Precedence: 8},
+		lang.Composite:    {Precedence: 9},
 		lang.Index:        {Precedence: 8},
 		lang.Period:       {Precedence: 8},
 		lang.Colon:        {Precedence: 0},

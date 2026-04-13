@@ -945,6 +945,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 				}
 			}
+			// Mark the stack top as a composite literal value so that a
+			// subsequent Period treats it as a method call, not a method
+			// expression (Type.Method).
+			if len(stack) > 0 && top().Kind == symbol.Type {
+				s := *top()
+				s.Composite = true
+				stack[len(stack)-1] = &s
+			}
 
 		case lang.Grow:
 			growPos = append(growPos, len(c.Code))
@@ -1411,7 +1419,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				if m, fieldPath := c.Symbols.MethodByName(s, t.Str[1:]); m != nil {
 					// Method expression: Type.Method yields a func with receiver as first arg.
-					if s.Kind == symbol.Type {
+					// A composite literal (T{}.Method) is a value, not a method expression.
+					if s.Kind == symbol.Type && !s.Composite {
 						c.removeFnew(s.Index)
 						push(&symbol.Symbol{
 							Kind:       symbol.Func,

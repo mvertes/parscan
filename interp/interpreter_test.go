@@ -1535,6 +1535,11 @@ func TestMethod(t *testing.T) {
 		{n: "mexpr_val", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; T.Add(T{3}, 4)`, res: "7"},
 		// Method expression: pointer receiver.
 		{n: "mexpr_ptr", src: `type T struct{n int}; func(t *T) Get() int { return t.n }; (*T).Get(&T{n: 5})`, res: "5"},
+
+		// Method call on composite literal.
+		{n: "comp_lit", src: `type T struct{n int}; func(t T) N() int { return t.n }; T{5}.N()`, res: "5"},
+		// Method call on composite literal with promoted method.
+		{n: "comp_lit_promoted", src: `type Foo struct{}; func (Foo) Call() string { return "Foo" }; type Bar struct{ Foo }; Bar{}.Call()`, res: "Foo"},
 	})
 }
 
