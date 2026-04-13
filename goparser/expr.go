@@ -3,6 +3,7 @@ package goparser
 import (
 	"errors"
 	"log"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -111,6 +112,9 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				}
 				if typ, n, err2 := p.parseTypeExpr(in[i:]); err2 == nil {
 					ctype = typ.String()
+					if typ.Rtype.Kind() == reflect.Pointer && !strings.HasPrefix(ctype, "*") {
+						ctype = "*" + ctype
+					}
 					p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
 					out = append(out, newIdent(ctype, t.Pos))
 					i += n - 1

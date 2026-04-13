@@ -33,21 +33,22 @@ const UnsetAddr = -65535
 
 // Symbol structure used in parser and compiler.
 type Symbol struct {
-	Kind     Kind
-	Name     string         //
-	Index    int            // address of symbol in frame
-	PkgPath  string         //
-	Type     *vm.Type       //
-	Value    vm.Value       //
-	Cval     constant.Value //
-	Used     bool           //
-	Captured bool           // true if this variable escapes to a heap cell
-	LoopVar  bool           // true if this is a for-init or range variable (snapshot capture)
-	CellSlot bool           // true if the local frame slot holds a heap cell pointer (promoted)
-	FreeVars []string       // closure: scoped names of captured outer-scope locals, in Heap order
-	RecvName string         // for methods: raw receiver variable name
-	InNames  []string       // raw input param names, cached from Phase 1 for Phase 2
-	OutNames []string       // raw output param names, cached from Phase 1 for Phase 2
+	Kind       Kind
+	Name       string         //
+	Index      int            // address of symbol in frame
+	PkgPath    string         //
+	Type       *vm.Type       //
+	Value      vm.Value       //
+	Cval       constant.Value //
+	Used       bool           //
+	Captured   bool           // true if this variable escapes to a heap cell
+	LoopVar    bool           // true if this is a for-init or range variable (snapshot capture)
+	CellSlot   bool           // true if the local frame slot holds a heap cell pointer (promoted)
+	FreeVars   []string       // closure: scoped names of captured outer-scope locals, in Heap order
+	RecvName   string         // for methods: raw receiver variable name
+	InNames    []string       // raw input param names, cached from Phase 1 for Phase 2
+	OutNames   []string       // raw output param names, cached from Phase 1 for Phase 2
+	MethodExpr bool           // true if this is a method expression (Type.Method)
 }
 
 // NeedsCell reports whether this variable should be promoted to a heap cell
@@ -122,6 +123,12 @@ func (sm SymMap) MethodByName(sym *Symbol, name string) (*Symbol, []int) {
 	case Type:
 		if m := sm[sym.Name+"."+name]; m != nil {
 			return m, nil
+		}
+		// Pointer type: also try value-receiver methods (*T includes T's method set).
+		if strings.HasPrefix(sym.Name, "*") {
+			if m := sm[sym.Name[1:]+"."+name]; m != nil {
+				return m, nil
+			}
 		}
 		return sm.promotedMethod(sym.Type, name, nil)
 	case Var, LocalVar, Value:

@@ -670,6 +670,49 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				break
 			}
+			if s.MethodExpr {
+				// Method expression call: Type.Method(receiver, args...)
+				// VM stack: [receiver, arg1, ..., argN-1] (no func slot — Fnew was removed).
+				if narg < 1 {
+					return errorf("method expression call requires at least a receiver argument")
+				}
+				methodNarg := narg - 1
+				methodWantsPtr := strings.HasPrefix(s.Name, "*")
+				recvSym := stack[len(stack)-narg]
+				recvIsPtr := recvSym.Type != nil && recvSym.Type.Rtype.Kind() == reflect.Pointer
+
+				// Bring receiver to top of stack.
+				if narg > 1 {
+					c.emit(t, vm.Swap, 0, narg-1)
+				}
+				switch {
+				case methodWantsPtr && !recvIsPtr:
+					c.emit(t, vm.Addr)
+				case !methodWantsPtr && recvIsPtr:
+					c.emit(t, vm.Deref)
+				}
+				// Create closure binding receiver to method.
+				c.emit(t, vm.HeapAlloc)
+				c.emit(t, vm.GetGlobal, s.Index)
+				c.emit(t, vm.Swap, 0, 1)
+				c.emit(t, vm.MkClosure, 1)
+				// Move closure to function position (bottom of args).
+				if narg > 1 {
+					c.emit(t, vm.Swap, 0, narg-1)
+				}
+
+				pop() // method expression symbol
+				for i := 0; i < narg; i++ {
+					pop()
+				}
+				typ := s.Type
+				nret := typ.Rtype.NumOut()
+				for i := 0; i < nret; i++ {
+					push(&symbol.Symbol{Kind: symbol.Value, Type: typ.ReturnType(i)})
+				}
+				c.emit(t, vm.Call, methodNarg, nret)
+				break
+			}
 			if s.Kind != symbol.Value {
 				typ := s.Type
 				if typ == nil {
@@ -1367,6 +1410,18 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					break
 				}
 				if m, fieldPath := c.Symbols.MethodByName(s, t.Str[1:]); m != nil {
+					// Method expression: Type.Method yields a func with receiver as first arg.
+					if s.Kind == symbol.Type {
+						c.removeFnew(s.Index)
+						push(&symbol.Symbol{
+							Kind:       symbol.Func,
+							Name:       m.Name,
+							Index:      m.Index,
+							Type:       m.Type,
+							MethodExpr: true,
+						})
+						break
+					}
 					push(m)
 					// Extract embedded receiver if method is promoted through embedded fields.
 					if len(fieldPath) > 0 {
