@@ -481,7 +481,13 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 	}
 	s, _, ok := p.Symbols.Get(in[0].Str, p.scope)
 	if ok && s.Kind == symbol.Pkg {
-		return false // Qualified type expression: pkg.Type.
+		// Only treat as a qualified type expression (pkg.Type) if followed by '.'.
+		// Otherwise, the ident is a parameter name that shadows the package
+		// (e.g. `func f(time string)` where `time` is a param, not pkg qualifier).
+		if len(in) > 1 && in[1].Tok == lang.Period {
+			return false
+		}
+		return true
 	}
 	if !ok || s.Kind != symbol.Type {
 		return true

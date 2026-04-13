@@ -973,6 +973,12 @@ func f() int {
 }
 f()`, res: "1"},
 
+		// Parameter name shadows an imported package.
+		{n: "param_shadows_pkg", src: `
+import "time"
+func test(time string, t time.Time) string { return time }
+test("ok", time.Now())`, res: "ok"},
+
 		// Struct field name shadows a builtin type (e.g. rune).
 		{n: "field_shadows_type", src: `
 type P struct { pos uint8; size uint8 }
