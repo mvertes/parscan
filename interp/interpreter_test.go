@@ -1192,6 +1192,17 @@ s := []int{3, 1, 4, 1, 5}
 sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
 s[0]*10000 + s[1]*1000 + s[2]*100 + s[3]*10 + s[4]`, res: "11345"},
 
+		// native interface conversion: wrap interpreted *T in native io.Reader
+		{n: "native_iface_conv", src: `
+import "io"
+type T struct { r io.Reader }
+func (t *T) Read(p []byte) (int, error) { return t.r.Read(p) }
+x := io.LimitedReader{}
+y := io.Reader(&x)
+y = &T{y}
+n, err := y.Read([]byte(""))
+n`, res: "0"},
+
 		// interface embedding a package-qualified interface
 		{n: "embed_pkg_iface", src: `
 import "io"
