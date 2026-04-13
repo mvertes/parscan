@@ -30,6 +30,18 @@ type BridgeString struct{ Fn func() string }
 // String implements fmt.Stringer.
 func (b *BridgeString) String() string { return b.Fn() }
 
+// BridgeMarshalJSON bridges the json.Marshaler interface method.
+type BridgeMarshalJSON struct{ Fn func() ([]byte, error) }
+
+// MarshalJSON implements json.Marshaler.
+func (b *BridgeMarshalJSON) MarshalJSON() ([]byte, error) { return b.Fn() }
+
+// BridgeUnmarshalJSON bridges the json.Unmarshaler interface method.
+type BridgeUnmarshalJSON struct{ Fn func([]byte) error }
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (b *BridgeUnmarshalJSON) UnmarshalJSON(data []byte) error { return b.Fn(data) }
+
 // BridgeSortInterface bridges sort.Interface (Len, Less, Swap).
 type BridgeSortInterface struct {
 	FnLen  func() int
@@ -58,7 +70,9 @@ func (b *BridgeHeapInterface) Pop() any { return b.FnPop() }
 func init() {
 	vm.Bridges["Error"] = reflect.TypeOf((*BridgeError)(nil))
 	vm.Bridges["GoString"] = reflect.TypeOf((*BridgeGoString)(nil))
+	vm.Bridges["MarshalJSON"] = reflect.TypeOf((*BridgeMarshalJSON)(nil))
 	vm.Bridges["String"] = reflect.TypeOf((*BridgeString)(nil))
+	vm.Bridges["UnmarshalJSON"] = reflect.TypeOf((*BridgeUnmarshalJSON)(nil))
 
 	vm.InterfaceBridges[reflect.TypeOf((*sort.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeSortInterface)(nil))
 	vm.InterfaceBridges[reflect.TypeOf((*heap.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeHeapInterface)(nil))

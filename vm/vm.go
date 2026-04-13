@@ -2285,11 +2285,40 @@ func (m *Machine) reflectForSend(val Value, elemType reflect.Type) reflect.Value
 	if elemType.Kind() == reflect.Func {
 		return m.wrapForFunc(val, elemType)
 	}
+	// Bridge-wrap so the value satisfies the interface.
+	if elemType.Kind() == reflect.Interface && val.IsIface() {
+		return m.bridgeIface(val.IfaceVal(), elemType)
+	}
 	rv := val.Reflect()
 	if rv.Type() != elemType {
 		rv = rv.Convert(elemType)
 	}
 	return rv
+}
+
+// bridgeIface wraps an Iface value for a target interface type, trying
+// InterfaceBridges, then single-method Bridges, then concrete unwrap.
+func (m *Machine) bridgeIface(ifc Iface, targetType reflect.Type) reflect.Value {
+	if len(m.MethodNames) > 0 {
+		if bridgePtrType, ok := InterfaceBridges[targetType]; ok {
+			if w := m.wrapIfaceMulti(ifc, bridgePtrType); w.IsValid() {
+				return w
+			}
+		}
+		if w := m.wrapIface(ifc); w.IsValid() {
+			return w
+		}
+	}
+	val := ifc.Val.Reflect()
+	if ifc.Typ != nil && (!val.IsValid() || (val.Kind() == reflect.Interface && val.IsNil())) {
+		return reflect.Zero(ifc.Typ.Rtype)
+	}
+	if ifc.Typ != nil && ifc.Typ.Rtype.Kind() == reflect.Func {
+		if gf := m.wrapForFunc(ifc.Val, ifc.Typ.Rtype); gf.IsValid() {
+			return gf
+		}
+	}
+	return val
 }
 
 func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
@@ -2422,7 +2451,12 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 	// Return values land at m.mem[0:nret] after the call frame tears down.
 	out := make([]reflect.Value, nret)
 	for i := range out {
-		out[i] = m.mem[i].Reflect()
+		rv := m.mem[i].Reflect()
+		if !rv.IsValid() {
+			// A nil/zero value (e.g. nil error) must be typed for MakeFunc callers.
+			rv = reflect.Zero(funcType.Out(i))
+		}
+		out[i] = rv
 	}
 	return out, nil
 }
@@ -2719,8 +2753,6 @@ func numReflect(t reflect.Type, src Value) reflect.Value {
 // with wrapper instances that implement Go interfaces via registered bridges.
 // Non-bridged Iface values are unwrapped to their concrete value.
 func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
-	hasBridges := len(Bridges) > 0 && len(m.MethodNames) > 0
-	hasIfaceBridges := len(InterfaceBridges) > 0 && len(m.MethodNames) > 0
 	for i, rv := range in {
 		if !rv.IsValid() || rv.Type() != ifaceRtype {
 			// Also check inside interface{} wrapping.
@@ -2732,39 +2764,11 @@ func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
 			}
 		}
 		ifc := rv.Interface().(Iface)
-		// Try multi-method interface bridge first (e.g. heap.Interface).
-		if hasIfaceBridges {
-			if paramType := paramTypeFor(funcType, i); paramType != nil && paramType.Kind() == reflect.Interface {
-				if bridgePtrType, ok := InterfaceBridges[paramType]; ok {
-					if w := m.wrapIfaceMulti(ifc, bridgePtrType); w.IsValid() {
-						in[i] = w
-						continue
-					}
-				}
-			}
+		targetType := paramTypeFor(funcType, i)
+		if targetType == nil {
+			targetType = AnyRtype
 		}
-		if hasBridges {
-			if w := m.wrapIface(ifc); w.IsValid() {
-				in[i] = w
-				continue
-			}
-		}
-		// No bridges matched (or none registered): unwrap to the concrete value.
-		// When the value is nil but carries type info, produce a typed nil so
-		// that native functions like fmt.Printf(%T) see the correct type.
-		val := ifc.Val.Reflect()
-		if ifc.Typ != nil && (!val.IsValid() || (val.Kind() == reflect.Interface && val.IsNil())) {
-			in[i] = reflect.Zero(ifc.Typ.Rtype)
-			continue
-		}
-		// Parscan func value going to interface{} param: produce a proper Go func.
-		if ifc.Typ != nil && ifc.Typ.Rtype.Kind() == reflect.Func {
-			if gf := m.wrapForFunc(ifc.Val, ifc.Typ.Rtype); gf.IsValid() {
-				in[i] = gf
-				continue
-			}
-		}
-		in[i] = val
+		in[i] = m.bridgeIface(ifc, targetType)
 	}
 }
 

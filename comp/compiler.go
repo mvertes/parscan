@@ -1755,8 +1755,12 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 
 		case lang.ChanSend:
-			pop() // value
-			pop() // channel
+			vs := pop() // value
+			ch := pop() // channel
+			if ch.Type != nil {
+				elemTyp := ch.Type.Elem()
+				c.emitIfaceWrap(t, elemTyp, vs.Type)
+			}
 			c.emit(t, vm.ChanSend)
 
 		case lang.Return:
