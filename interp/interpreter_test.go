@@ -238,6 +238,10 @@ func TestFunc(t *testing.T) {
 		{n: "#21", src: `import "fmt"; func f() func() { return nil }; g := f(); fmt.Sprintf("%T", g)`, res: "func()"},
 		// func with return type whose body is only a panic
 		{n: "#22", src: `func f() string { panic("boom") }; f()`, err: "panic: boom"},
+		// %T on non-nil func values shows correct function type
+		{n: "#23", src: `import "fmt"; fn := func(a int) string { return "" }; fmt.Sprintf("%T", fn)`, res: "func(int) string"},
+		{n: "#24", src: `import "fmt"; x := 1; fn := func() int { return x }; fmt.Sprintf("%T", fn)`, res: "func() int"},
+		{n: "#25", src: `import "fmt"; fn := func() {}; fmt.Sprintf("%T", fn)`, res: "func()"},
 	})
 }
 

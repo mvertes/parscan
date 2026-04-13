@@ -2757,6 +2757,13 @@ func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
 			in[i] = reflect.Zero(ifc.Typ.Rtype)
 			continue
 		}
+		// Parscan func value going to interface{} param: produce a proper Go func.
+		if ifc.Typ != nil && ifc.Typ.Rtype.Kind() == reflect.Func {
+			if gf := m.wrapForFunc(ifc.Val, ifc.Typ.Rtype); gf.IsValid() {
+				in[i] = gf
+				continue
+			}
+		}
 		in[i] = val
 	}
 }
