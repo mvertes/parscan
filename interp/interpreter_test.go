@@ -354,6 +354,7 @@ func TestVariadic(t *testing.T) {
 		{n: "#05", src: "var r int; func f(a ...int) { for _, v := range a { r = r + v } }; f(1, 2, 3); r", res: "6"},
 		{n: "#06", src: `func sum(a ...int) int { s := 0; for _, v := range a { s += v }; return s }; x := []int{1, 2, 3}; sum(x...)`, res: "6"},
 		{n: "#07", src: `func add(x int, rest ...int) int { s := x; for _, v := range rest { s += v }; return s }; r := []int{1, 2}; add(10, r...)`, res: "13"},
+		{n: "#08", src: `import "fmt"; var a, b string; dest := []interface{}{&a, &b}; fmt.Sscanf("hello world", "%s %s", dest...); a + " " + b`, res: "hello world"},
 	})
 }
 
@@ -399,25 +400,8 @@ func TestFor(t *testing.T) {
 		{n: "#15", src: `s := "a1b"; n := 0; for i, r := range s { if r == '1' { n = i } }; n`, res: "1"},
 		{n: "#16", src: `b := 0; for i := range 4 { b += i }; b`, res: "6"},
 		{n: "#17", src: `func f() int { b := 0; for i := range 4 { b += i }; return b }; f()`, res: "6"},
-		{n: "#21", src: `n := 0; for range []int{1,2,3} { n++ }; n`, res: "3"},
-		{n: "#28", src: `n := 0; for range []int{0,1,2} { n++ }; n`, res: "3"},
-		{n: "#29", src: `n := 0; for range []bool{true,false,true} { n++ }; n`, res: "3"},
-		{n: "#22", src: `for range []struct{}{} {}; true`, res: "true"},
-		{n: "#23", src: `func f() bool { for range []struct{}{} {}; return true }; f()`, res: "true"},
-		{n: "#24", src: `n := 0; for range 4 { n++ }; n`, res: "4"},
-		{n: "#25", src: `n := 0; for range map[string]int{"a": 1, "b": 2} { n++ }; n`, res: "2"},
-		{n: "#26", src: `m := map[string]int{"a": 1, "b": 2}; n := 0; for k := range m { n += len(k) }; n`, res: "2"},
-		{n: "#27", src: `m := map[string]int{"a": 1, "b": 2}; n := 0; for _, v := range m { n += v }; n`, res: "3"},
 		{n: "#18", src: `m := map[string]int{"a": 1}; v, ok := m["a"]; ok && v == 1`, res: "true"},
 		{n: "#19", src: `m := map[string]int{"a": 1}; v, ok := m["b"]; !ok && v == 0`, res: "true"},
-		{n: "#30", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; close(ch); n := 0; for v := range ch { n += v }; n`, res: "6"},
-		{n: "#31", src: `ch := make(chan string, 2); ch <- "a"; ch <- "bb"; close(ch); n := 0; for v := range ch { n += len(v) }; n`, res: "3"},
-		{n: "#32", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; close(ch); n := 0; for range ch { n++ }; n`, res: "3"},
-		{n: "#33", src: `func f() int { ch := make(chan int, 3); ch <- 10; ch <- 20; ch <- 30; close(ch); s := 0; for v := range ch { s += v }; return s }; f()`, res: "60"},
-		{n: "range_call_ret", src: `import "fmt"; func f() string { ch := make(chan string, 1); ch <- "ok"; close(ch); s := ""; for v := range ch { fmt.Println(v); s = v }; return s }; f()`, res: "ok"},
-		{n: "range_index_assign", src: `a := []int{1, 2, 3}; for i, v := range a { a[i] = v * 2 }; a[0] + a[1] + a[2]`, res: "12"},
-		{n: "range_map_assign", src: `m := map[string]int{"a": 1, "b": 2}; for k := range m { m[k] = 0 }; m["a"] + m["b"]`, res: "0"},
-		{n: "map_func_key", src: `func f() string { return "a" }; m := map[string]int{f(): 1}; m["a"]`, res: "1"},
 		{n: "#20", src: `
 func f() string {
 	s := make([]map[string]string, 0)
@@ -432,6 +416,23 @@ func f() string {
 	return tmpStr
 }
 f()`, res: "start"},
+		{n: "#21", src: `n := 0; for range []int{1,2,3} { n++ }; n`, res: "3"},
+		{n: "#22", src: `for range []struct{}{} {}; true`, res: "true"},
+		{n: "#23", src: `func f() bool { for range []struct{}{} {}; return true }; f()`, res: "true"},
+		{n: "#24", src: `n := 0; for range 4 { n++ }; n`, res: "4"},
+		{n: "#25", src: `n := 0; for range map[string]int{"a": 1, "b": 2} { n++ }; n`, res: "2"},
+		{n: "#26", src: `m := map[string]int{"a": 1, "b": 2}; n := 0; for k := range m { n += len(k) }; n`, res: "2"},
+		{n: "#27", src: `m := map[string]int{"a": 1, "b": 2}; n := 0; for _, v := range m { n += v }; n`, res: "3"},
+		{n: "#28", src: `n := 0; for range []int{0,1,2} { n++ }; n`, res: "3"},
+		{n: "#29", src: `n := 0; for range []bool{true,false,true} { n++ }; n`, res: "3"},
+		{n: "#30", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; close(ch); n := 0; for v := range ch { n += v }; n`, res: "6"},
+		{n: "#31", src: `ch := make(chan string, 2); ch <- "a"; ch <- "bb"; close(ch); n := 0; for v := range ch { n += len(v) }; n`, res: "3"},
+		{n: "#32", src: `ch := make(chan int, 3); ch <- 1; ch <- 2; ch <- 3; close(ch); n := 0; for range ch { n++ }; n`, res: "3"},
+		{n: "#33", src: `func f() int { ch := make(chan int, 3); ch <- 10; ch <- 20; ch <- 30; close(ch); s := 0; for v := range ch { s += v }; return s }; f()`, res: "60"},
+		{n: "#34", src: `import "fmt"; func f() string { ch := make(chan string, 1); ch <- "ok"; close(ch); s := ""; for v := range ch { fmt.Println(v); s = v }; return s }; f()`, res: "ok"},
+		{n: "#35", src: `a := []int{1, 2, 3}; for i, v := range a { a[i] = v * 2 }; a[0] + a[1] + a[2]`, res: "12"},
+		{n: "#36", src: `m := map[string]int{"a": 1, "b": 2}; for k := range m { m[k] = 0 }; m["a"] + m["b"]`, res: "0"},
+		{n: "#37", src: `func f() string { return "a" }; m := map[string]int{f(): 1}; m["a"]`, res: "1"},
 	})
 }
 

@@ -697,8 +697,6 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				break
 			}
 			if s.MethodExpr {
-				// Method expression call: Type.Method(receiver, args...)
-				// VM stack: [receiver, arg1, ..., argN-1] (no func slot — Fnew was removed).
 				if narg < 1 {
 					return errorf("method expression call requires at least a receiver argument")
 				}
@@ -864,7 +862,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					push(&symbol.Symbol{Kind: symbol.Value, Type: retType})
 				}
 			}
-			c.emit(t, vm.Call, narg, nret)
+			callNret := nret
+			if spread && rtyp != nil && rtyp.IsVariadic() {
+				callNret |= int(vm.CallSpreadFlag)
+			}
+			c.emit(t, vm.Call, narg, callNret)
 
 		case lang.Colon:
 			vs := pop() // value

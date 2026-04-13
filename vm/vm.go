@@ -48,7 +48,7 @@ const (
 	Addr                   // a -- &a ;
 	Append                 // slice [v0..vn-1] -- slice' ; append $0 values to slice
 	AppendSlice            // slice [v0..vn-1] -- slice' ; pack $0 values into []T, reflect.AppendSlice; elem type at mem[$1]; $0=0 means spread mode: append(a, b...)
-	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...)
+	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...); B bit 15 = spread flag
 	CallImm                // [a1 .. ai] -- [r1 .. rj] ; $1=dataIdx of func, $2=narg<<16|nret
 	Cap                    // -- x ; x = cap(mem[sp-$0])
 	Convert                // v -- v' ; v' = convert(v, type at mem[$1]); optional $2 = stack depth offset
@@ -401,6 +401,11 @@ func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
 
 const heapSavedFlag = uint64(1) << 63
 
+// CallSpreadFlag is set in the B operand of Call to indicate a spread call
+// (f(s...)), so the VM uses reflect.CallSlice instead of reflect.Call for
+// native variadic functions.
+const CallSpreadFlag int32 = 1 << 15
+
 func packRetIP(retIP, nret, frameBase int) uint64 {
 	return uint64(uint32(retIP)) | uint64(nret)<<32 | uint64(frameBase)<<48 //nolint:gosec
 }
@@ -487,7 +492,28 @@ func (m *Machine) Run() (err error) {
 					coerceInterfaceArgs(in, funcType)
 					m.wrapFuncArgs(in, mem[sp-narg+1:sp+1], funcType)
 					sp -= narg + 1
-					for _, v := range rv.Call(in) {
+					// For spread calls (f(s...)), unwrap Iface values inside
+					// the variadic slice and use CallSlice.
+					var out []reflect.Value
+					if c.B&CallSpreadFlag != 0 {
+						last := in[narg-1]
+						if last.Kind() == reflect.Interface && !last.IsNil() {
+							last = last.Elem()
+						}
+						for i := range last.Len() {
+							elem := last.Index(i)
+							if elem.Kind() == reflect.Interface && !elem.IsNil() {
+								if ifc, ok := elem.Interface().(Iface); ok {
+									elem.Set(ifc.Val.Reflect())
+								}
+							}
+						}
+						in[narg-1] = last
+						out = rv.CallSlice(in)
+					} else {
+						out = rv.Call(in)
+					}
+					for _, v := range out {
 						if sp+1 >= len(mem) {
 							mem = growStack(mem, sp, 1)
 						}
@@ -499,7 +525,7 @@ func (m *Machine) Run() (err error) {
 				nip = int(fval.num) //nolint:gosec
 				m.heap = nil
 			}
-			nret := int(c.B)
+			nret := int(c.B &^ CallSpreadFlag)
 			fpVal := uint64(fp) //nolint:gosec
 			if prevHeap != nil {
 				m.heapFrames = append(m.heapFrames, prevHeap)
