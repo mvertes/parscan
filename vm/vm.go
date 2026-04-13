@@ -1631,7 +1631,11 @@ func (m *Machine) Run() (err error) {
 			result := mem[sp-n].ref
 			elemType := result.Type().Elem()
 			for i := range n {
-				v := m.wrapForFunc(mem[sp-n+1+i], elemType)
+				val := mem[sp-n+1+i]
+				var v reflect.Value
+				if val.ref.IsValid() {
+					v = m.reflectForSend(val, elemType)
+				}
 				if !v.IsValid() {
 					v = reflect.Zero(elemType)
 				}

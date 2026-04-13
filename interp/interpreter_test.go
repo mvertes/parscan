@@ -1226,6 +1226,16 @@ func foo(w io.Writer) string {
 x := T{}
 foo(&x)`, res: "test"},
 
+		// append concrete value to interface-typed slice
+		{n: "append_iface_slice", src: `
+import "io"
+type B []byte
+func (b B) Write(p []byte) (int, error) { return len(p), nil }
+b := B{}
+a := make([]io.Writer, 0)
+a = append(a, b)
+len(a)`, res: "1"},
+
 		// interface embedding a package-qualified interface
 		{n: "embed_pkg_iface", src: `
 import "io"

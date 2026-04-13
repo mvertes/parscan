@@ -2273,6 +2273,8 @@ func (c *Compiler) compileBuiltin(
 			return true, errors.New("missing arguments to append")
 		}
 		nvals := narg - 1 // number of values to append
+		valSyms := make([]*symbol.Symbol, nvals)
+		copy(valSyms, (*stack)[len(*stack)-nvals:])
 		for range nvals {
 			pop()
 		}
@@ -2281,6 +2283,16 @@ func (c *Compiler) compileBuiltin(
 		push(sliceSym)    // result is same slice type
 		elemType := sliceSym.Type.Rtype.Elem()
 		elemIdx := c.typeSym(&vm.Type{Rtype: elemType}).Index
+		// Wrap concrete values in Iface when appending to interface-typed slices.
+		if elemType.Kind() == reflect.Interface {
+			elemTyp := &vm.Type{Rtype: elemType}
+			for i, vs := range valSyms {
+				if vs.Type == nil || vs.Type.IsInterface() {
+					continue
+				}
+				c.emitIfaceWrapAt(t, elemTyp, vs.Type, nvals-1-i)
+			}
+		}
 		if elemType.Kind() == reflect.Func && nvals > 1 {
 			// Pre-wrap func values so AppendSlice can extract ParscanFunc.GF without
 			// calling wrapForFunc at runtime. Not needed for nvals==1; Append handles it.
