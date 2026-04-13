@@ -2884,6 +2884,10 @@ func (m *Machine) wrapIface(ifc Iface, targetType reflect.Type) reflect.Value {
 				continue
 			}
 			bridge := reflect.New(bridgePtrType.Elem())
+			// Skip single-method bridges that don't satisfy the target interface.
+			if targetType.NumMethod() > 0 && !bridge.Type().Implements(targetType) {
+				continue
+			}
 			fnField := bridge.Elem().FieldByName("Fn")
 			fnField.Set(m.makeBridgeClosure(ifc, method, fnField.Type()))
 			return bridge

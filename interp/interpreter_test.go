@@ -1185,6 +1185,18 @@ s := &S{vals: []int{3, 1, 2}}
 sort.Sort(s)
 s.vals[0]*100 + s.vals[1]*10 + s.vals[2]`, res: "123"},
 
+		// flag.Value bridge: interpreted type passed to native flag.Var
+		{n: "flag_value_bridge", src: `
+import "flag"
+type myVal struct{ s string }
+func (v *myVal) String() string     { return v.s }
+func (v *myVal) Set(s string) error { v.s = s; return nil }
+v := &myVal{s: "init"}
+fs := flag.NewFlagSet("test", flag.ContinueOnError)
+fs.Var(v, "myflag", "usage")
+fs.Set("myflag", "updated")
+v.String()`, res: "updated"},
+
 		// sort.Slice with interpreted less function
 		{n: "sort_slice", src: `
 import "sort"

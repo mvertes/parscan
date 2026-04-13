@@ -2,6 +2,7 @@ package stdlib
 
 import (
 	"container/heap"
+	"flag"
 	"reflect"
 	"sort"
 
@@ -85,6 +86,18 @@ func (b *BridgeHeapInterface) Push(x any) { b.FnPush(x) }
 // Pop implements heap.Interface.
 func (b *BridgeHeapInterface) Pop() any { return b.FnPop() }
 
+// BridgeFlagValue bridges flag.Value (String, Set).
+type BridgeFlagValue struct {
+	FnString func() string
+	FnSet    func(string) error
+}
+
+// String implements flag.Value.
+func (b *BridgeFlagValue) String() string { return b.FnString() }
+
+// Set implements flag.Value.
+func (b *BridgeFlagValue) Set(s string) error { return b.FnSet(s) }
+
 func init() {
 	vm.Bridges["Error"] = reflect.TypeOf((*BridgeError)(nil))
 	vm.Bridges["GoString"] = reflect.TypeOf((*BridgeGoString)(nil))
@@ -104,4 +117,5 @@ func init() {
 
 	vm.InterfaceBridges[reflect.TypeOf((*sort.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeSortInterface)(nil))
 	vm.InterfaceBridges[reflect.TypeOf((*heap.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeHeapInterface)(nil))
+	vm.InterfaceBridges[reflect.TypeOf((*flag.Value)(nil)).Elem()] = reflect.TypeOf((*BridgeFlagValue)(nil))
 }
