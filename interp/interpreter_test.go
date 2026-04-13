@@ -236,6 +236,8 @@ func TestFunc(t *testing.T) {
 		{n: "#20", src: "func f() int {var a, b = 2, 3; return 10*a+b}; f()", res: "23"},
 		// nil func return preserves type for %T
 		{n: "#21", src: `import "fmt"; func f() func() { return nil }; g := f(); fmt.Sprintf("%T", g)`, res: "func()"},
+		// func with return type whose body is only a panic
+		{n: "#22", src: `func f() string { panic("boom") }; f()`, err: "panic: boom"},
 	})
 }
 

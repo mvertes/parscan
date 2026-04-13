@@ -1763,7 +1763,8 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				return err
 			}
 			// Wrap concrete return values in Iface when the function return type is an interface.
-			if funcType, ok := t.Arg[1].(*vm.Type); ok {
+			// Skip if the stack doesn't have enough values (unreachable return after panic, etc.).
+			if funcType, ok := t.Arg[1].(*vm.Type); ok && len(stack) >= numOut {
 				for i := 0; i < numOut; i++ {
 					stackSym := stack[len(stack)-numOut+i]
 					c.emitIfaceWrapAt(t, funcType.ReturnType(i), stackSym.Type, numOut-1-i)
