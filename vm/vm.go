@@ -808,26 +808,28 @@ func (m *Machine) Run() (err error) {
 			mem[idx] = Value{ref: reflect.ValueOf(Iface{Typ: typ, Val: mem[idx]})}
 
 		case IfaceCall:
+			methodID := int(c.A)
 			if !mem[sp].IsIface() {
 				// Native interface value: use reflect to get the method.
-				rv := mem[sp].Reflect()
-				if rv.Kind() == reflect.Interface {
-					rv = rv.Elem()
-				}
-				methodName := m.MethodNames[int(c.A)]
-				mv := rv.MethodByName(methodName)
-				if !mv.IsValid() && c.B != 0 {
+				methodName := m.MethodNames[methodID]
+				rv := nativeMethodLookup(mem[sp].Reflect(), methodName)
+				if !rv.IsValid() && c.B != 0 {
 					// Numeric value lost its named type (e.g. time.Duration stored as int64).
 					// Convert to the named type encoded in B-1 and retry the method lookup.
 					namedType := m.globals[int(c.B)-1].ref.Type()
-					rv = rv.Convert(namedType)
-					mv = rv.MethodByName(methodName)
+					rv = mem[sp].Reflect().Convert(namedType).MethodByName(methodName)
 				}
-				mem[sp] = Value{ref: mv}
+				mem[sp] = Value{ref: rv}
 				break
 			}
 			ifc := mem[sp].IfaceVal()
-			method := ifc.Typ.Methods[int(c.A)]
+			// Fall back to reflect-based dispatch when the concrete type
+			// has no compiled method entry (native type in a parscan interface).
+			if methodID >= len(ifc.Typ.Methods) || !ifc.Typ.Methods[methodID].IsResolved() {
+				mem[sp] = Value{ref: nativeMethodLookup(ifc.Val.Reflect(), m.MethodNames[methodID])}
+				break
+			}
+			method := ifc.Typ.Methods[methodID]
 			// The concrete type inside an embedded interface field is only known at runtime.
 			for method.EmbedIface {
 				rv := ifc.Val.Reflect()
@@ -2265,6 +2267,17 @@ func fieldByAB(v reflect.Value, a, b int) reflect.Value {
 		return v.Field(a)
 	}
 	return v.FieldByIndex([]int{a, b})
+}
+
+// nativeMethodLookup resolves a method by name, unwrapping interface/pointer indirection.
+func nativeMethodLookup(rv reflect.Value, name string) reflect.Value {
+	if rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	if mv := rv.MethodByName(name); mv.IsValid() {
+		return mv
+	}
+	return reflect.Indirect(rv).MethodByName(name)
 }
 
 // PushCode adds instructions to the machine code (with zero source positions).

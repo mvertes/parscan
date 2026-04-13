@@ -181,7 +181,7 @@ func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 	iface.EnsureIfaceMethods()
 	for _, im := range iface.IfaceMethods {
 		id := c.methodID(im.Name)
-		if id < len(typ.Methods) && (typ.Methods[id].Index >= 0 || typ.Methods[id].EmbedIface) {
+		if id < len(typ.Methods) && typ.Methods[id].IsResolved() {
 			continue // already registered directly or through embedded interface
 		}
 		s := &symbol.Symbol{Kind: symbol.Var, Name: lookupTyp.Name, Type: lookupTyp}
@@ -1434,13 +1434,23 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					if methodSym == nil {
 						// For interface types, Method.Type does not include the receiver.
-						rm, ok := s.Type.Rtype.MethodByName(methodName)
-						if !ok {
+						var rtype reflect.Type
+						if rm, ok := s.Type.Rtype.MethodByName(methodName); ok {
+							rtype = rm.Type
+						} else {
+							// User-defined interface: Rtype is any, so MethodByName fails.
+							// Fall back to IfaceMethods populated from embedded native interfaces.
+							for _, im := range s.Type.IfaceMethods {
+								if im.Name == methodName && im.Rtype != nil {
+									rtype = im.Rtype
+									break
+								}
+							}
+						}
+						if rtype == nil {
 							return goparser.ErrUndefined{Name: methodName}
 						}
-						// Use Kind=Value so the Call handler emits a regular Call
-						// (not CallImm which would incorrectly remove a GetGlobal).
-						methodSym = &symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rm.Type}}
+						methodSym = &symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rtype}}
 					}
 					push(methodSym)
 					c.emit(t, vm.IfaceCall, c.methodID(methodName))

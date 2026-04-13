@@ -1259,6 +1259,34 @@ func (t *T) Write(p []byte) (int, error) { return len(p), nil }
 var rw RW = &T{}
 n, _ := rw.Write([]byte("hi"))
 n`, res: "2"},
+
+		// user-defined interface embedding native interfaces, concrete type is native
+		{n: "embed_native_iface_native_type", src: `
+import (
+	"io"
+	"os"
+)
+type sink interface {
+	io.Writer
+	io.Closer
+}
+func run() int {
+	file, err := os.CreateTemp("", "parscan-test.*")
+	if err != nil { panic(err) }
+	var s sink = file
+	n, err := s.Write([]byte("Hello\n"))
+	if err != nil { panic(err) }
+	var w io.Writer = s
+	m, err := w.Write([]byte("Hello\n"))
+	if err != nil { panic(err) }
+	var c io.Closer = s
+	err = c.Close()
+	if err != nil { panic(err) }
+	err = os.Remove(s.(*os.File).Name())
+	if err != nil { panic(err) }
+	return m*10 + n
+}
+run()`, res: "66"},
 	})
 }
 

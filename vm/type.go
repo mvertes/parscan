@@ -17,6 +17,10 @@ type Method struct {
 	PtrRecv    bool  // true if the method has a pointer receiver (e.g. *T)
 }
 
+// IsResolved reports whether this method slot has been populated with
+// either a compiled code address or an embedded-interface dispatch entry.
+func (m Method) IsResolved() bool { return m.Index >= 0 || m.EmbedIface }
+
 // EmbeddedField records a parscan embedded field within a struct type.
 type EmbeddedField struct {
 	FieldIdx int   // index of this field in the parent struct
@@ -40,8 +44,9 @@ type Type struct {
 
 // IfaceMethod describes a method required by an interface type.
 type IfaceMethod struct {
-	Name string
-	ID   int // global method ID; -1 = not yet assigned
+	Name  string
+	ID    int          // global method ID; -1 = not yet assigned
+	Rtype reflect.Type // method signature (with receiver as 1st param); nil if unknown
 }
 
 // Iface represents a boxed interface value at runtime.
@@ -78,13 +83,21 @@ func (t *Type) EnsureIfaceMethods() {
 		return
 	}
 	for i := range t.Rtype.NumMethod() {
-		t.IfaceMethods = append(t.IfaceMethods, IfaceMethod{Name: t.Rtype.Method(i).Name, ID: -1})
+		m := t.Rtype.Method(i)
+		t.IfaceMethods = append(t.IfaceMethods, IfaceMethod{Name: m.Name, ID: -1, Rtype: m.Type})
 	}
 }
 
 // SameAs reports whether t and u represent the same concrete type.
 func (t *Type) SameAs(u *Type) bool {
-	return t.Rtype == u.Rtype && t.Name == u.Name
+	if t.Rtype != u.Rtype {
+		return false
+	}
+	// Go has no named pointer types, so Rtype alone identifies them.
+	if t.Rtype.Kind() == reflect.Pointer {
+		return true
+	}
+	return t.Name == u.Name
 }
 
 // Implements reports whether the concrete type t satisfies interface iface.
@@ -94,8 +107,7 @@ func (t *Type) Implements(iface *Type) bool {
 		if im.ID < 0 || im.ID >= len(t.Methods) {
 			return false
 		}
-		m := t.Methods[im.ID]
-		if m.Index < 0 && !m.EmbedIface {
+		if !t.Methods[im.ID].IsResolved() {
 			return false
 		}
 	}
