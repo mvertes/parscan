@@ -550,6 +550,11 @@ len(buf{}.data)`, res: "32"},
 		{n: "pkg_value_expr", src: `import "time"; const period = 300 * time.Millisecond; int(period)`, res: "300000000"},
 		{n: "grouped_pkg_value", src: `import "time"; const (a = 300 * time.Millisecond; b = 30 * time.Millisecond); int(b)`, res: "30000000"},
 		{n: "pkg_value_call", src: `import "time"; const d = 100 * time.Millisecond; time.Sleep(d); "ok"`, res: "ok"},
+
+		{n: "uint64_complement", src: `const a = ^uint64(0); a`, res: "18446744073709551615"},
+		{n: "uint64_maxint", src: `const a = int64(^uint64(0) >> 1); a`, res: "9223372036854775807"},
+		{n: "uint8_complement", src: `import "fmt"; const a = ^uint8(0); fmt.Sprintf("%T %v", a, a)`, res: "uint8 255"},
+		{n: "uint64_nested_conv", src: `const a = int64(int64(^uint64(0) >> 1)); a`, res: "9223372036854775807"},
 	})
 }
 

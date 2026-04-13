@@ -110,7 +110,7 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		if v, err = p.parseExpr(v, ""); err != nil {
 			return out, err
 		}
-		cval, _, err := p.evalConstExpr(v)
+		cval, ctyp, _, err := p.evalConstExpr(v)
 		if err != nil {
 			return out, err
 		}
@@ -119,6 +119,8 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		if i < len(types) {
 			typ = types[i]
 			cval = constConvert(cval, typ)
+		} else if ctyp != nil {
+			typ = ctyp
 		}
 		p.SymSet(name, &symbol.Symbol{
 			Kind:  symbol.Const,
@@ -132,85 +134,106 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 	return out, err
 }
 
-func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err error) {
+func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, length int, err error) {
 	l := len(in) - 1
 	if l < 0 {
-		return nil, 0, errors.New("missing argument")
+		return nil, nil, 0, errors.New("missing argument")
 	}
 	t := in[l]
 	id := t.Tok
 	switch {
 	case id == lang.Period:
 		if l < 1 || in[l-1].Tok != lang.Ident {
-			return nil, 0, errors.New("invalid package selector")
+			return nil, nil, 0, errors.New("invalid package selector")
 		}
 		pkgName := in[l-1].Str
 		s, _, ok := p.Symbols.Get(pkgName, p.scope)
 		if !ok || s.Kind != symbol.Pkg {
-			return nil, 0, ErrUndefined{pkgName}
+			return nil, nil, 0, ErrUndefined{pkgName}
 		}
 		pkg, ok := p.Packages[s.PkgPath]
 		if !ok {
-			return nil, 0, fmt.Errorf("package not found: %s", s.PkgPath)
+			return nil, nil, 0, fmt.Errorf("package not found: %s", s.PkgPath)
 		}
 		v, ok := pkg.Values[t.Str[1:]]
 		if !ok {
-			return nil, 0, fmt.Errorf("symbol not found in package %s: %s", s.PkgPath, t.Str[1:])
+			return nil, nil, 0, fmt.Errorf("symbol not found in package %s: %s", s.PkgPath, t.Str[1:])
 		}
 		cv, err := vmValueToConst(v)
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
-		return cv, 2, nil // consumes Ident (pkg) + Period
+		return cv, nil, 2, nil // consumes Ident (pkg) + Period
 	case id.IsBinaryOp():
-		op2, l2, err := p.evalConstExpr(in[:l])
+		op2, typ2, l2, err := p.evalConstExpr(in[:l])
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
-		op1, l1, err := p.evalConstExpr(in[:l-l2])
+		op1, typ1, l1, err := p.evalConstExpr(in[:l-l2])
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
 		length = 1 + l1 + l2
 		tok := gotok[id]
 		if id.IsBoolOp() {
-			return constant.MakeBool(constant.Compare(op1, tok, op2)), length, err
+			return constant.MakeBool(constant.Compare(op1, tok, op2)), nil, length, err
 		}
 		if id == lang.Shl || id == lang.Shr {
 			s, ok := constant.Uint64Val(op2)
 			if !ok {
-				return nil, 0, errors.New("invalid shift parameter")
+				return nil, nil, 0, errors.New("invalid shift parameter")
 			}
-			return constant.Shift(op1, tok, uint(s)), length, err
+			cv := constant.Shift(op1, tok, uint(s))
+			// go/constant uses arithmetic right-shift, which sign-extends negative
+			// values produced by unary ^ on unsigned constants. Reinterpret as unsigned.
+			if id == lang.Shr && typ1 != nil && isUnsignedKind(typ1.Rtype.Kind()) {
+				v, _ := constant.Int64Val(cv)
+				cv = constant.MakeUint64(uint64(v)) //nolint:gosec // reinterpret signed bits as unsigned
+			}
+			return cv, typ1, length, err
+		}
+		resTyp := typ1
+		if resTyp == nil {
+			resTyp = typ2
 		}
 		if tok == token.QUO && op1.Kind() == constant.Int && op2.Kind() == constant.Int {
 			tok = token.QUO_ASSIGN // Force int result, see https://pkg.go.dev/go/constant#BinaryOp
 		}
-		return constant.BinaryOp(op1, tok, op2), length, err
+		return constant.BinaryOp(op1, tok, op2), resTyp, length, err
 	case id.IsUnaryOp():
-		op1, l1, err := p.evalConstExpr(in[:l])
+		op1, typ1, l1, err := p.evalConstExpr(in[:l])
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
-		return constant.UnaryOp(gotok[id], op1, 0), 1 + l1, err
+		cv := constant.UnaryOp(gotok[id], op1, 0)
+		// go/constant has no unsigned integer kind: ^ on 0 gives -1 (arbitrary
+		// precision), not the width-limited complement Go requires for typed
+		// unsigned constants. Recompute using the correct bit width.
+		if id == lang.BitComp && typ1 != nil && isUnsignedKind(typ1.Rtype.Kind()) {
+			v, _ := constant.Uint64Val(op1)
+			bits := typ1.Rtype.Size() * 8
+			mask := ^uint64(0) >> (64 - bits)
+			cv = constant.MakeUint64(^v & mask)
+		}
+		return cv, typ1, 1 + l1, err
 	case id.IsLiteral():
 		tok := gotok[id]
 		if id == lang.String && len(t.Str) > 0 && t.Str[0] == '\'' {
 			tok = token.CHAR
 		}
-		return constant.MakeFromLiteral(t.Str, tok, 0), 1, err
+		return constant.MakeFromLiteral(t.Str, tok, 0), nil, 1, err
 	case id == lang.Ident:
 		s, _, ok := p.Symbols.Get(t.Str, p.scope)
 		if !ok {
-			return nil, 0, ErrUndefined{t.Str}
+			return nil, nil, 0, ErrUndefined{t.Str}
 		}
 		if s.Kind != symbol.Const {
-			return nil, 0, errors.New("symbol is not a constant")
+			return nil, nil, 0, errors.New("symbol is not a constant")
 		}
 		if s.Cval == nil {
-			return nil, 0, ErrUndefined{t.Str}
+			return nil, nil, 0, ErrUndefined{t.Str}
 		}
-		return s.Cval, 1, err
+		return s.Cval, s.Type, 1, err
 	case id == lang.Call:
 		narg := t.Arg[0].(int)
 		// len/cap of an array or *array variable (bare or field access) is constant per Go spec.
@@ -241,7 +264,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 					rt = rt.Elem()
 				}
 				if rt.Kind() == reflect.Array {
-					return constant.MakeInt64(int64(rt.Len())), n, nil
+					return constant.MakeInt64(int64(rt.Len())), nil, n, nil
 				}
 			}
 		}
@@ -249,39 +272,43 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, length int, err 
 		rest := in[:l]
 		totalLen := 1 // Call token
 		for i := narg - 1; i >= 0; i-- {
-			av, al, err := p.evalConstExpr(rest)
+			av, _, al, err := p.evalConstExpr(rest)
 			if err != nil {
-				return nil, 0, err
+				return nil, nil, 0, err
 			}
 			args[i] = av
 			totalLen += al
 			rest = rest[:len(rest)-al]
 		}
 		if len(rest) == 0 || rest[len(rest)-1].Tok != lang.Ident {
-			return nil, 0, errors.New("unsupported constant call expression")
+			return nil, nil, 0, errors.New("unsupported constant call expression")
 		}
 		fname := rest[len(rest)-1].Str
 		totalLen++
 		// Handle builtins before symbol lookup to avoid scope-walk overhead.
 		if fname == "len" {
 			if narg != 1 {
-				return nil, 0, errors.New("len: wrong number of arguments")
+				return nil, nil, 0, errors.New("len: wrong number of arguments")
 			}
 			if args[0] != nil && args[0].Kind() == constant.String {
-				return constant.MakeInt64(int64(len(constant.StringVal(args[0])))), totalLen, nil
+				return constant.MakeInt64(int64(len(constant.StringVal(args[0])))), nil, totalLen, nil
 			}
-			return nil, 0, errors.New("len: unsupported constant argument type")
+			return nil, nil, 0, errors.New("len: unsupported constant argument type")
 		}
 		if s, _, ok := p.Symbols.Get(fname, p.scope); ok && s.Kind == symbol.Type {
 			if narg != 1 {
-				return nil, 0, errors.New("type conversion requires exactly one argument")
+				return nil, nil, 0, errors.New("type conversion requires exactly one argument")
 			}
-			return constConvert(args[0], s.Type), totalLen, nil
+			return constConvert(args[0], s.Type), s.Type, totalLen, nil
 		}
-		return nil, 0, fmt.Errorf("unsupported constant call: %s", fname)
+		return nil, nil, 0, fmt.Errorf("unsupported constant call: %s", fname)
 	default:
-		return nil, 0, errors.New("invalid constant expression")
+		return nil, nil, 0, errors.New("invalid constant expression")
 	}
+}
+
+func isUnsignedKind(k reflect.Kind) bool {
+	return k >= reflect.Uint && k <= reflect.Uintptr
 }
 
 func constValue(c constant.Value) any {
@@ -320,7 +347,7 @@ func constConvert(cv constant.Value, typ *vm.Type) constant.Value {
 			return constant.MakeInt64(int64(f))
 		}
 		return constant.ToInt(cv)
-	case rt.Kind() >= reflect.Uint && rt.Kind() <= reflect.Uintptr:
+	case isUnsignedKind(rt.Kind()):
 		if cv.Kind() == constant.Float {
 			f, _ := constant.Float64Val(cv)
 			return constant.MakeUint64(uint64(f))
@@ -348,7 +375,7 @@ func vmValueToConst(v vm.Value) (constant.Value, error) {
 		return constant.MakeBool(v.Bool()), nil
 	case k >= reflect.Int && k <= reflect.Int64:
 		return constant.MakeInt64(v.Int()), nil
-	case k >= reflect.Uint && k <= reflect.Uintptr:
+	case isUnsignedKind(k):
 		return constant.MakeUint64(v.Uint()), nil
 	case k == reflect.Float32 || k == reflect.Float64:
 		return constant.MakeFloat64(v.Float()), nil
