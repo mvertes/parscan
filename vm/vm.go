@@ -2305,7 +2305,7 @@ func (m *Machine) bridgeIface(ifc Iface, targetType reflect.Type) reflect.Value 
 				return w
 			}
 		}
-		if w := m.wrapIface(ifc); w.IsValid() {
+		if w := m.wrapIface(ifc, targetType); w.IsValid() {
 			return w
 		}
 	}
@@ -2842,12 +2842,27 @@ func ifaceMethodTypes(typ *Type) (types [2]*Type, n int) {
 }
 
 // wrapIface creates a bridge value that implements a Go interface for the
-// first method with a registered bridge. Returns an invalid Value if no
-// bridges match. Methods are checked on both the type and its element type
-// (methods are registered on base type T, not *T).
-func (m *Machine) wrapIface(ifc Iface) reflect.Value {
+// first method with a registered bridge. When targetType is a non-empty
+// interface, only methods belonging to that interface are considered.
+// When targetType is interface{}/any, only DisplayBridges are used.
+// Returns an invalid Value if no bridges match. Methods are checked on
+// both the type and its element type (methods are registered on base
+// type T, not *T).
+func (m *Machine) wrapIface(ifc Iface, targetType reflect.Type) reflect.Value {
 	if ifc.Typ == nil {
 		return reflect.Value{}
+	}
+
+	// For non-empty interfaces, build a set of required method names.
+	// For interface{}/any, use DisplayBridges as the filter.
+	var required map[string]bool
+	if targetType.Kind() == reflect.Interface && targetType.NumMethod() > 0 {
+		required = make(map[string]bool, targetType.NumMethod())
+		for i := range targetType.NumMethod() {
+			required[targetType.Method(i).Name] = true
+		}
+	} else {
+		required = DisplayBridges
 	}
 
 	methodTypes, n := ifaceMethodTypes(ifc.Typ)
@@ -2856,7 +2871,11 @@ func (m *Machine) wrapIface(ifc Iface) reflect.Value {
 			if method.Index < 0 || id >= len(m.MethodNames) {
 				continue
 			}
-			bridgePtrType, ok := Bridges[m.MethodNames[id]]
+			name := m.MethodNames[id]
+			if !required[name] {
+				continue
+			}
+			bridgePtrType, ok := Bridges[name]
 			if !ok {
 				continue
 			}

@@ -1203,6 +1203,29 @@ y = &T{y}
 n, _ := y.Read([]byte(""))
 n`, res: "0"},
 
+		// io.Writer bridge: interpreted type with Write passed to fmt.Fprint
+		{n: "writer_bridge", src: `
+import "fmt"
+type T []byte
+func (t *T) Write(p []byte) (n int, err error) { *t = append(*t, p...); return len(p), nil }
+x := T{}
+fmt.Fprint(&x, "hello")
+fmt.Sprintf("%s", x)`, res: "hello"},
+
+		// io.Writer bridge after type assertion
+		{n: "writer_assert", src: `
+import "fmt"
+import "io"
+type T []byte
+func (t *T) Write(p []byte) (n int, err error) { *t = append(*t, p...); return len(p), nil }
+func foo(w io.Writer) string {
+	a := w.(*T)
+	fmt.Fprint(a, "test")
+	return fmt.Sprintf("%s", *a)
+}
+x := T{}
+foo(&x)`, res: "test"},
+
 		// interface embedding a package-qualified interface
 		{n: "embed_pkg_iface", src: `
 import "io"

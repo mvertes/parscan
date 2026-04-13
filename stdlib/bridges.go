@@ -42,6 +42,24 @@ type BridgeUnmarshalJSON struct{ Fn func([]byte) error }
 // UnmarshalJSON implements json.Unmarshaler.
 func (b *BridgeUnmarshalJSON) UnmarshalJSON(data []byte) error { return b.Fn(data) }
 
+// BridgeWrite bridges the io.Writer interface method.
+type BridgeWrite struct{ Fn func([]byte) (int, error) }
+
+// Write implements io.Writer.
+func (b *BridgeWrite) Write(p []byte) (int, error) { return b.Fn(p) }
+
+// BridgeRead bridges the io.Reader interface method.
+type BridgeRead struct{ Fn func([]byte) (int, error) }
+
+// Read implements io.Reader.
+func (b *BridgeRead) Read(p []byte) (int, error) { return b.Fn(p) }
+
+// BridgeClose bridges the io.Closer interface method.
+type BridgeClose struct{ Fn func() error }
+
+// Close implements io.Closer.
+func (b *BridgeClose) Close() error { return b.Fn() }
+
 // BridgeSortInterface bridges sort.Interface (Len, Less, Swap).
 type BridgeSortInterface struct {
 	FnLen  func() int
@@ -73,6 +91,16 @@ func init() {
 	vm.Bridges["MarshalJSON"] = reflect.TypeOf((*BridgeMarshalJSON)(nil))
 	vm.Bridges["String"] = reflect.TypeOf((*BridgeString)(nil))
 	vm.Bridges["UnmarshalJSON"] = reflect.TypeOf((*BridgeUnmarshalJSON)(nil))
+	vm.Bridges["Write"] = reflect.TypeOf((*BridgeWrite)(nil))
+	vm.Bridges["Read"] = reflect.TypeOf((*BridgeRead)(nil))
+	vm.Bridges["Close"] = reflect.TypeOf((*BridgeClose)(nil))
+
+	// Display bridges are used when the target is interface{}/any.
+	vm.DisplayBridges["Error"] = true
+	vm.DisplayBridges["GoString"] = true
+	vm.DisplayBridges["MarshalJSON"] = true
+	vm.DisplayBridges["String"] = true
+	vm.DisplayBridges["UnmarshalJSON"] = true
 
 	vm.InterfaceBridges[reflect.TypeOf((*sort.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeSortInterface)(nil))
 	vm.InterfaceBridges[reflect.TypeOf((*heap.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeHeapInterface)(nil))

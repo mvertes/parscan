@@ -9,6 +9,14 @@ import "reflect"
 // interpreted values satisfy Go interfaces at the native call boundary.
 var Bridges = map[string]reflect.Type{}
 
+// DisplayBridges is the subset of Bridges that should be used when the
+// target type is interface{}/any. These are "display" methods (String,
+// Error, GoString, etc.) that change how the value appears in fmt output.
+// Behavioral methods (Write, Read, Close) are NOT in this set because
+// wrapping a value as e.g. BridgeWrite for an interface{} parameter
+// changes its identity without benefit.
+var DisplayBridges = map[string]bool{}
+
 // InterfaceBridges maps Go interface types to bridge pointer types that
 // implement all methods of the interface. Each bridge struct has fields
 // named Fn<MethodName> for each method. Used for multi-method interfaces
