@@ -1489,6 +1489,8 @@ f()`, res: "606"},
 		{n: "#12", src: `func f() int { i := 12; g := func() int { return i }; i = 20; return g() }; f()`, res: "20"},
 		// Two closures share same cell inside a function.
 		{n: "#13", src: `func f() int { n := 0; inc := func() { n = n+1 }; get := func() int { return n }; inc(); inc(); inc(); return get() }; f()`, res: "3"},
+		// Closure captures shadowed loop variable (not the post-increment loop var).
+		{n: "#14", src: `func f() int { foos := []func() int{}; for i := 0; i < 3; i++ { i := i; foos = append(foos, func() int { return i }) }; return foos[0]() + foos[1]()*10 + foos[2]()*100 }; f()`, res: "210"},
 	})
 }
 

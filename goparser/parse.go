@@ -1195,7 +1195,10 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 			out = append(out, newJumpFalse(p.breakLabel, in[0].Pos))
 		}
 	}
-	if body, err = p.Parse(in[len(in)-1].Block()); err != nil {
+	p.pushScope("b")
+	body, err = p.Parse(in[len(in)-1].Block())
+	p.popScope()
+	if err != nil {
 		return nil, err
 	}
 	out = append(out, body...)
