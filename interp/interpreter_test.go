@@ -234,6 +234,8 @@ func TestFunc(t *testing.T) {
 		// var declaration without explicit type inside a function (undefinedType path)
 		{n: "#19", src: "func f() int {var x = 42; return x}; f()", res: "42"},
 		{n: "#20", src: "func f() int {var a, b = 2, 3; return 10*a+b}; f()", res: "23"},
+		// nil func return preserves type for %T
+		{n: "#21", src: `import "fmt"; func f() func() { return nil }; g := f(); fmt.Sprintf("%T", g)`, res: "func()"},
 	})
 }
 

@@ -2724,7 +2724,14 @@ func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
 			}
 		}
 		// No bridges matched (or none registered): unwrap to the concrete value.
-		in[i] = ifc.Val.Reflect()
+		// When the value is nil but carries type info, produce a typed nil so
+		// that native functions like fmt.Printf(%T) see the correct type.
+		val := ifc.Val.Reflect()
+		if ifc.Typ != nil && (!val.IsValid() || (val.Kind() == reflect.Interface && val.IsNil())) {
+			in[i] = reflect.Zero(ifc.Typ.Rtype)
+			continue
+		}
+		in[i] = val
 	}
 }
 
