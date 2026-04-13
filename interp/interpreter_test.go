@@ -1200,7 +1200,7 @@ func (t *T) Read(p []byte) (int, error) { return t.r.Read(p) }
 x := io.LimitedReader{}
 y := io.Reader(&x)
 y = &T{y}
-n, err := y.Read([]byte(""))
+n, _ := y.Read([]byte(""))
 n`, res: "0"},
 
 		// interface embedding a package-qualified interface

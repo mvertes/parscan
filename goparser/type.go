@@ -262,15 +262,8 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				if !ifaceType.IsInterface() {
 					return nil, 0, fmt.Errorf("%w: %s is not an interface", ErrSyntax, lt[0].Str)
 				}
-				if len(ifaceType.IfaceMethods) > 0 {
-					methods = append(methods, ifaceType.IfaceMethods...)
-				} else {
-					// Builtin interface (e.g. error): synthesize from reflect method set.
-					for j := 0; j < ifaceType.Rtype.NumMethod(); j++ {
-						m := ifaceType.Rtype.Method(j)
-						methods = append(methods, vm.IfaceMethod{Name: m.Name, ID: -1})
-					}
-				}
+				ifaceType.EnsureIfaceMethods()
+				methods = append(methods, ifaceType.IfaceMethods...)
 				continue
 			}
 			methods = append(methods, vm.IfaceMethod{Name: lt[0].Str, ID: -1})

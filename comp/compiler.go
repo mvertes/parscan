@@ -178,13 +178,7 @@ func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 			lookupTyp = t
 		}
 	}
-	// For native interface types (e.g. io.Reader), IfaceMethods may not have been
-	// populated at creation time. Derive from the reflect method set if needed.
-	if len(iface.IfaceMethods) == 0 && iface.Rtype.Kind() == reflect.Interface {
-		for i := 0; i < iface.Rtype.NumMethod(); i++ {
-			iface.IfaceMethods = append(iface.IfaceMethods, vm.IfaceMethod{Name: iface.Rtype.Method(i).Name, ID: -1})
-		}
-	}
+	iface.EnsureIfaceMethods()
 	for _, im := range iface.IfaceMethods {
 		id := c.methodID(im.Name)
 		if id < len(typ.Methods) && (typ.Methods[id].Index >= 0 || typ.Methods[id].EmbedIface) {

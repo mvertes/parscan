@@ -70,6 +70,18 @@ func (t *Type) IsInterface() bool {
 	return t != nil && t.Rtype.Kind() == reflect.Interface
 }
 
+// EnsureIfaceMethods populates IfaceMethods from the reflect method set
+// if not already set. This covers native interface types (e.g. io.Reader)
+// whose method sets were not explicitly enumerated at parse time.
+func (t *Type) EnsureIfaceMethods() {
+	if len(t.IfaceMethods) > 0 || t.Rtype.Kind() != reflect.Interface {
+		return
+	}
+	for i := range t.Rtype.NumMethod() {
+		t.IfaceMethods = append(t.IfaceMethods, IfaceMethod{Name: t.Rtype.Method(i).Name, ID: -1})
+	}
+}
+
 // SameAs reports whether t and u represent the same concrete type.
 func (t *Type) SameAs(u *Type) bool {
 	return t.Rtype == u.Rtype && t.Name == u.Name
