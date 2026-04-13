@@ -511,11 +511,18 @@ func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 		// built-in types (e.g. bool, int) the name is lowercase with no PkgPath; we
 		// must not set Anonymous and must set a non-empty PkgPath so reflect treats
 		// the field as unexported. Parscan tracks embedded info via EmbeddedField.
-		if embSet[i] && len(f.Name) > 0 && !unicode.IsUpper(rune(f.Name[0])) {
+		//
+		// reflect.StructOf also panics if an Anonymous field's type has methods and the
+		// struct has more than one field. In that case, skip Anonymous and let parscan's
+		// Embedded tracking handle promoted field/method lookup.
+		switch {
+		case embSet[i] && len(f.Name) > 0 && !unicode.IsUpper(rune(f.Name[0])):
 			if rf[i].PkgPath == "" {
 				rf[i].PkgPath = pkgPath
 			}
-		} else {
+		case embSet[i] && len(rf) > 1 && rf[i].Type.NumMethod() > 0:
+			// Cannot set Anonymous: reflect.StructOf would panic.
+		default:
 			rf[i].Anonymous = embSet[i]
 		}
 	}
@@ -529,7 +536,8 @@ func (t *Type) FieldIndex(name string) []int {
 			return f.Index
 		}
 	}
-	return nil
+	idx, _ := t.embeddedFieldLookup(name)
+	return idx
 }
 
 // FieldType returns the type of struct field name, using parscan-level info when available.
@@ -548,6 +556,30 @@ func (t *Type) FieldLookup(name string) ([]int, *Type) {
 			return f.Index, t.Fields[i]
 		}
 		return f.Index, &Type{Name: f.Name, PkgPath: f.PkgPath, Rtype: f.Type}
+	}
+	return t.embeddedFieldLookup(name)
+}
+
+// embeddedFieldLookup walks parscan Embedded info to find promoted fields that
+// reflect.VisibleFields cannot see (because Anonymous was not set on the reflect struct field).
+func (t *Type) embeddedFieldLookup(name string) ([]int, *Type) {
+	for _, emb := range t.Embedded {
+		rt := t.Rtype.Field(emb.FieldIdx).Type
+		if rt.Kind() == reflect.Pointer {
+			rt = rt.Elem()
+		}
+		if rt.Kind() != reflect.Struct {
+			continue
+		}
+		if sf, ok := rt.FieldByName(name); ok {
+			idx := append([]int{emb.FieldIdx}, sf.Index...)
+			if emb.Type != nil {
+				if _, ft := emb.Type.FieldLookup(name); ft != nil {
+					return idx, ft
+				}
+			}
+			return idx, &Type{Name: sf.Name, PkgPath: sf.PkgPath, Rtype: sf.Type}
+		}
 	}
 	return nil, nil
 }

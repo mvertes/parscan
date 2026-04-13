@@ -653,6 +653,17 @@ func TestStruct(t *testing.T) {
 		{n: "field_name_matches_var", src: `type T struct{x int}; x := 42; t := T{x: x}; t.x`, res: "42"},
 		{n: "iface_field_fmt", src: `import "fmt"; type T struct{V interface{}}; t := T{V: "hello"}; fmt.Sprint(t)`, res: "{hello}"},
 		{n: "iface_field_assign_fmt", src: `import "fmt"; type T struct{V interface{}}; t := T{}; t.V = 42; fmt.Sprint(t)`, res: "{42}"},
+
+		// struct with embedded type that has methods and additional fields
+		// (reflect.StructOf panics if Anonymous=true on a type with methods in a multi-field struct)
+		{n: "embed_with_methods", src: `
+import "bytes"
+type Buf struct {
+	*bytes.Buffer
+	size int
+}
+b := &Buf{Buffer: bytes.NewBufferString("hello"), size: 5}
+b.size`, res: "5"},
 	})
 }
 
@@ -1175,6 +1186,30 @@ import "sort"
 s := []int{3, 1, 4, 1, 5}
 sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
 s[0]*10000 + s[1]*1000 + s[2]*100 + s[3]*10 + s[4]`, res: "11345"},
+
+		// interface embedding a package-qualified interface
+		{n: "embed_pkg_iface", src: `
+import "io"
+type Transport interface { io.Reader }
+type T struct{}
+func (t *T) Read(p []byte) (int, error) { return 0, nil }
+var tr Transport = &T{}
+_, err := tr.Read(nil)
+err == nil`, res: "true"},
+
+		// interface embedding multiple package-qualified interfaces
+		{n: "embed_pkg_iface_multi", src: `
+import "io"
+type RW interface {
+	io.Reader
+	io.Writer
+}
+type T struct{}
+func (t *T) Read(p []byte) (int, error) { return 0, nil }
+func (t *T) Write(p []byte) (int, error) { return len(p), nil }
+var rw RW = &T{}
+n, _ := rw.Write([]byte("hi"))
+n`, res: "2"},
 	})
 }
 
