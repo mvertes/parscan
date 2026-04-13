@@ -789,7 +789,15 @@ func (m *Machine) Run() (err error) {
 					rv = rv.Elem()
 				}
 				methodName := m.MethodNames[int(c.A)]
-				mem[sp] = Value{ref: rv.MethodByName(methodName)}
+				mv := rv.MethodByName(methodName)
+				if !mv.IsValid() && c.B != 0 {
+					// Numeric value lost its named type (e.g. time.Duration stored as int64).
+					// Convert to the named type encoded in B-1 and retry the method lookup.
+					namedType := m.globals[int(c.B)-1].ref.Type()
+					rv = rv.Convert(namedType)
+					mv = rv.MethodByName(methodName)
+				}
+				mem[sp] = Value{ref: mv}
 				break
 			}
 			ifc := mem[sp].IfaceVal()

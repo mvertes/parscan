@@ -545,6 +545,8 @@ len(buf{}.data)`, res: "32"},
 		{n: "sub_add_chain", src: `const (a = 2; b = 10; c = b - a + 1); c`, res: "9"},                                        // right-assoc: 10-(2+1)=7
 		{n: "typed_sub_add", src: `type L int8; const (a L = -1; b L = 5; d = b - a + 1); type A [d]int; len(A{})`, res: "7"}, // right-assoc: b-(a+1)=5
 
+		{n: "typed_iota", src: `import "fmt"; const (a uint8 = 2 * iota; b; c); fmt.Sprintf("%T %v %v %v", c, a, b, c)`, res: "uint8 0 2 4"},
+
 		{n: "pkg_value_expr", src: `import "time"; const period = 300 * time.Millisecond; int(period)`, res: "300000000"},
 		{n: "grouped_pkg_value", src: `import "time"; const (a = 300 * time.Millisecond; b = 30 * time.Millisecond); int(b)`, res: "30000000"},
 		{n: "pkg_value_call", src: `import "time"; const d = 100 * time.Millisecond; time.Sleep(d); "ok"`, res: "ok"},
@@ -1509,6 +1511,10 @@ func TestMethod(t *testing.T) {
 
 		// Method returning a closure that captures the receiver.
 		{n: "#11", src: `type T struct{n int}; func(t T) Adder() func(int) int { return func(a int) int { return t.n + a } }; x := T{3}; add := x.Adder(); add(4)`, res: "7"},
+
+		// Native method on named numeric type from expression or function return.
+		{n: "native_named_expr", src: `import "time"; (10 * time.Hour).String()`, res: "10h0m0s"},
+		{n: "native_named_ret", src: `import "time"; func f() time.Duration { return 10 * time.Hour }; f().String()`, res: "10h0m0s"},
 	})
 }
 

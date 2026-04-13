@@ -1453,7 +1453,14 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					if needAddr {
 						c.emit(t, vm.Addr)
 					}
-					c.emit(t, vm.IfaceCall, c.methodID(methodName))
+					// For named numeric types (e.g. time.Duration), the VM may lose
+					// the named type during arithmetic.  Pass the receiver type index+1
+					// in B so the VM can convert before method lookup (0 means unset).
+					var recvTypeHint int
+					if rtype.Kind() >= reflect.Bool && rtype.Kind() <= reflect.Float64 && rtype.Name() != "" && rtype.Name() != rtype.Kind().String() {
+						recvTypeHint = c.typeSym(s.Type).Index + 1
+					}
+					c.emit(t, vm.IfaceCall, c.methodID(methodName), recvTypeHint)
 					break
 				}
 				return goparser.ErrUndefined{Name: t.Str[1:]}

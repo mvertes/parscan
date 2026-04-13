@@ -90,7 +90,8 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 		decl = decl[:i]
 	}
 	var vars []string
-	if _, vars, _, err = p.parseParamTypes(decl, parseTypeType); err != nil {
+	var types []*vm.Type
+	if types, vars, _, err = p.parseParamTypes(decl, parseTypeType); err != nil {
 		if errors.Is(err, ErrMissingType) {
 			for _, lt := range decl.Split(lang.Comma) {
 				vars = append(vars, lt[0].Str)
@@ -114,14 +115,19 @@ func (p *Parser) parseConstLine(in Tokens) (out Tokens, err error) {
 			return out, err
 		}
 		name := p.scopedName(vars[i])
+		var typ *vm.Type
+		if i < len(types) {
+			typ = types[i]
+			cval = constConvert(cval, typ)
+		}
 		p.SymSet(name, &symbol.Symbol{
 			Kind:  symbol.Const,
 			Index: symbol.UnsetAddr,
+			Type:  typ,
 			Cval:  cval,
-			Value: vm.ValueOf(constValue(cval)),
+			Value: vm.ValueOf(typedConstValue(cval, typ)),
 			Used:  true,
 		})
-		// TODO: type conversion when applicable.
 	}
 	return out, err
 }
@@ -292,6 +298,16 @@ func constValue(c constant.Value) any {
 		return v
 	}
 	return nil
+}
+
+// typedConstValue converts a constant value to a Go value with the given type.
+// If typ is nil, it falls back to constValue (untyped).
+func typedConstValue(c constant.Value, typ *vm.Type) any {
+	v := constValue(c)
+	if typ == nil || v == nil {
+		return v
+	}
+	return reflect.ValueOf(v).Convert(typ.Rtype).Interface()
 }
 
 // constConvert converts a constant value to the target type, as in Go type conversions.
