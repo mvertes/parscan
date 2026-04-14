@@ -2727,6 +2727,11 @@ func (m *Machine) setFuncField(fv reflect.Value, val Value) {
 		// sees raw Go values. Keep Iface for interpreted types that need it for
 		// method dispatch.
 		if len(iv.Typ.Methods) == 0 {
+			if iv.Typ.Rtype.Kind() == reflect.Func {
+				// Wrap interpreted func so native method lookup works.
+				fv.Set(m.wrapForFunc(iv.Val, iv.Typ.Rtype))
+				return
+			}
 			fv.Set(numReflect(iv.Typ.Rtype, iv.Val))
 			return
 		}

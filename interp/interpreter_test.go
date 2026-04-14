@@ -1836,6 +1836,19 @@ func TestMethod(t *testing.T) {
 		{n: "comp_lit", src: `type T struct{n int}; func(t T) N() int { return t.n }; T{5}.N()`, res: "5"},
 		// Method call on composite literal with promoted method.
 		{n: "comp_lit_promoted", src: `type Foo struct{}; func (Foo) Call() string { return "Foo" }; type Bar struct{ Foo }; Bar{}.Call()`, res: "Foo"},
+
+		// Method on named function type.
+		{n: "named_func_method", src: `type F func(); func(f F) Run() string { return "ok" }; f := F(func(){}); f.Run()`, res: "ok"},
+		// Named function type calling self.
+		{n: "named_func_call_self", src: `type F func(); func(f F) Run() { f() }; var s string; F(func(){ s = "hello" }).Run(); s`, res: "hello"},
+
+		// Native interface field holding interpreted func via named func type.
+		{n: "native_iface_func", src: `import "net/http"; import "net/http/httptest"
+			type T struct { next http.Handler }
+			func(t *T) Do() { t.next.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil)) }
+			var s string
+			f := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) { s = "done" })
+			t := &T{f}; t.Do(); s`, res: "done"},
 	})
 }
 

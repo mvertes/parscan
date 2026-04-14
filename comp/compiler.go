@@ -2294,8 +2294,7 @@ func (c *Compiler) removeFnew(index int) {
 	for i := len(c.Code) - 1; i >= 0; i-- {
 		op := c.Code[i].Op
 		if (op == vm.Fnew || op == vm.FnewE) && int(c.Code[i].A) == index {
-			copy(c.Code[i:], c.Code[i+1:])
-			c.Code = c.Code[:len(c.Code)-1]
+			c.Code[i] = vm.Instruction{Op: vm.Nop}
 			return
 		}
 	}
@@ -2305,8 +2304,7 @@ func (c *Compiler) removeGetLocal(index int) {
 	for i := len(c.Code) - 1; i >= 0; i-- {
 		op := c.Code[i].Op
 		if (op == vm.GetLocal || op == vm.CellGet) && int(c.Code[i].A) == index {
-			copy(c.Code[i:], c.Code[i+1:])
-			c.Code = c.Code[:len(c.Code)-1]
+			c.Code[i] = vm.Instruction{Op: vm.Nop}
 			return
 		}
 		if op == vm.GetLocal2 && int(c.Code[i].A) == index {
@@ -2326,8 +2324,7 @@ func (c *Compiler) removeGetGlobal(index int) bool {
 			if i+1 < len(c.Code) && c.Code[i+1].Op == vm.Swap {
 				return false
 			}
-			copy(c.Code[i:], c.Code[i+1:])
-			c.Code = c.Code[:len(c.Code)-1]
+			c.Code[i] = vm.Instruction{Op: vm.Nop}
 			return true
 		}
 	}
