@@ -195,6 +195,7 @@ func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 				if embType == nil || !embType.IsInterface() {
 					continue
 				}
+				embType.EnsureIfaceMethods()
 				for _, embIM := range embType.IfaceMethods {
 					if embIM.Name != im.Name {
 						continue

@@ -831,6 +831,7 @@ func (m *Machine) Run() (err error) {
 			}
 			method := ifc.Typ.Methods[methodID]
 			// The concrete type inside an embedded interface field is only known at runtime.
+			nativeFallback := false
 			for method.EmbedIface {
 				rv := ifc.Val.Reflect()
 				if rv.Kind() == reflect.Pointer {
@@ -839,8 +840,20 @@ func (m *Machine) Run() (err error) {
 				for _, fi := range method.Path {
 					rv = rv.Field(fi)
 				}
-				ifc = FromReflect(rv).IfaceVal()
-				method = ifc.Typ.Methods[int(c.A)]
+				embedded := FromReflect(rv)
+				if !embedded.IsIface() {
+					// The embedded field holds a native interface (e.g. io.Writer
+					// containing *os.File), not a parscan Iface. Fall back to
+					// reflect-based dispatch.
+					mem[sp] = Value{ref: nativeMethodLookup(rv, m.MethodNames[methodID])}
+					nativeFallback = true
+					break
+				}
+				ifc = embedded.IfaceVal()
+				method = ifc.Typ.Methods[methodID]
+			}
+			if nativeFallback {
+				break
 			}
 			codeAddr := int(m.globals[method.Index].num) //nolint:gosec
 			// Build a closure with the concrete receiver as Heap[0], replacing the

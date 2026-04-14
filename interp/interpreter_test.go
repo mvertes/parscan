@@ -1302,6 +1302,22 @@ func run() int {
 }
 run()`, res: "66"},
 
+		{n: "embed_binary_iface_call", src: `
+import (
+	"io"
+	"os"
+)
+type myWriter struct {
+	io.Writer
+}
+func main() int {
+	w := &myWriter{os.Stdout}
+	var iw io.Writer = w
+	n, _ := iw.Write([]byte("hello\n"))
+	return n
+}
+main()`, res: "6"},
+
 		// struct field of interpreted type implementing io.Reader passed to native io.ReadAll
 		{n: "struct_field_iface_native", src: `
 import "io"
