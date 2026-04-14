@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
@@ -40,15 +41,29 @@ type ErrUndefined struct{ Name string }
 func (e ErrUndefined) Error() string { return "undefined: " + e.Name }
 
 // resolveEllipsisArray resolves [...]T by counting elements in the following BraceBlock.
+// For keyed elements (e.g. {9: "hello"}), the size is max(key) + 1.
 func (p *Parser) resolveEllipsisArray(elemTyp *vm.Type, toks Tokens, braceIdx int) (*vm.Type, error) {
 	if braceIdx >= len(toks) || toks[braceIdx].Tok != lang.BraceBlock {
 		return nil, errors.New("[...] requires a composite literal")
 	}
-	size, err := p.numItems(toks[braceIdx].Block(), lang.Comma)
+	tokens, err := p.Scan(toks[braceIdx].Block(), false)
 	if err != nil {
 		return nil, err
 	}
-	return vm.ArrayOf(size, elemTyp), nil
+	idx := 0
+	for _, item := range tokens.Split(lang.Comma) {
+		if len(item) == 0 {
+			continue
+		}
+		if item[0].Tok == lang.Int && item.Index(lang.Colon) > 0 {
+			// Keyed element: use the key as index.
+			if k, err := strconv.ParseInt(item[0].Str, 0, 64); err == nil {
+				idx = int(k)
+			}
+		}
+		idx++
+	}
+	return vm.ArrayOf(idx, elemTyp), nil
 }
 
 // parseTypeExpr returns the expression type from its tokens, the number of consumed tokens

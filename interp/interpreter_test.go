@@ -580,6 +580,8 @@ func TestArray(t *testing.T) {
 		{n: "#03", src: "type T [3]int; var t T; t[1] = 2; t", res: "[0 2 0]"},
 
 		{n: "ellipsis", src: `a := [...]int{10, 20, 30}; len(a)`, res: "3"},
+		{n: "ellipsis_key", src: `a := [...]string{9: "hello"}; len(a)`, res: "10"},
+		{n: "ellipsis_keys", src: `a := [...]int{2: 10, 5: 20}; len(a)`, res: "6"},
 
 		{n: "2d_array", src: `a := [3][2]int{{1, 2}, {3, 4}, {5, 6}}; a[1][0]`, res: "3"},
 		{n: "2d_slice", src: `a := [][]int{{1, 2}, {3, 4}}; a[1][0]`, res: "3"},
@@ -1865,6 +1867,7 @@ func TestArithInt(t *testing.T) {
 		{n: "sub_assign", src: "a := 5; a -= 3; a", res: "2"},
 		{n: "mul_assign", src: "a := 5; a *= 3; a", res: "15"},
 		{n: "div_assign", src: "a := 12; a /= 4; a", res: "3"},
+		{n: "div_assign_uint64", src: "var a uint64 = 64; a /= 64; a", res: "1"},
 		{n: "rem_assign", src: "a := 10; a %= 3; a", res: "1"},
 
 		{n: "rem_float_const", src: "i := 102; i % -1e2", res: "2"},

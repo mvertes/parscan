@@ -1954,6 +1954,7 @@ func (m *Machine) Run() (err error) {
 		case DivUint64:
 			mem[sp-1].num = div[uint64](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
+			sp--
 		case DivFloat32:
 			mem[sp-1].num = divf[float32](mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
