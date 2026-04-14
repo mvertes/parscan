@@ -481,6 +481,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			}
 			okForm := t.Arg[0].(int)
 			typ := t.Arg[1].(*vm.Type)
+			typ.EnsureIfaceMethods()
 			if typ.IsInterface() && len(typ.IfaceMethods) > 0 && typ.IfaceMethods[0].ID < 0 {
 				for i, im := range typ.IfaceMethods {
 					typ.IfaceMethods[i].ID = c.methodID(im.Name)
@@ -501,6 +502,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			pop() // consume iface_sym from compiler stack
 			typeIdx := -1
 			if typ != nil {
+				typ.EnsureIfaceMethods()
 				typeIdx = c.typeIndex(typ)
 			}
 			c.emit(t, vm.TypeBranch, c.resolveLabel(t, &fixList), typeIdx)

@@ -2463,6 +2463,14 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 			// Unwrap Iface return values so MakeFunc callers see the concrete value.
 			ifc := rv.Interface().(Iface)
 			rv = m.bridgeIface(ifc, funcType.Out(i))
+		} else if outType := funcType.Out(i); rv.Type() != outType && outType.Kind() == reflect.Interface {
+			// Interface locals use interface{} internally; convert to the expected
+			// interface type (e.g. interface{} → error) for MakeFunc callers.
+			if rv.Kind() == reflect.Interface && rv.IsNil() {
+				rv = reflect.Zero(outType)
+			} else {
+				rv = rv.Elem().Convert(outType)
+			}
 		}
 		out[i] = rv
 	}
@@ -2705,6 +2713,8 @@ func (m *Machine) assignSlot(dst *Value, src Value) {
 			} else {
 				dst.ref.Set(src.Reflect())
 			}
+		} else {
+			dst.ref = src.ref
 		}
 	} else {
 		if dst.ref.CanSet() {

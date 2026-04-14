@@ -368,6 +368,8 @@ func TestFuncNamedReturn(t *testing.T) {
 		{n: "#01", src: "func f(a int) (r int) { r = a; r = r + 2; return }; f(3)", res: "5"},
 		{n: "#02", src: "func f(a int) (x, y int) { x = a; y = a + 1; return }; a, b := f(3); a+b", res: "7"},
 		{n: "#03", src: "func f(a int) (r int) { return a + 2 }; f(3)", res: "5"},
+		// tuple assignment to named returns
+		{n: "tuple_named_return", src: `func f() (n int, s string) { n, s = 42, "hello"; return n, s }; a, b := f(); a`, res: "42"},
 	})
 }
 
@@ -1314,6 +1316,19 @@ type wrapper struct{ R *myReader }
 w := wrapper{R: &myReader{data: "hello"}}
 b, _ := io.ReadAll(w.R)
 string(b)`, res: "hello"},
+
+		// bridge callback with named returns and interface return type (yaegi-issue-558)
+		{n: "bridge_named_return_iface", src: `
+import "io"
+import "strings"
+type myReader struct{ r io.Reader }
+func (m myReader) Read(b []byte) (n int, err error) {
+	n, err = m.r.Read(b)
+	return n, err
+}
+r := myReader{strings.NewReader("hello")}
+b, _ := io.ReadAll(r)
+string(b)`, res: "hello"},
 	})
 }
 
@@ -1430,13 +1445,20 @@ b := newBaseClient(newConnPool())
 b.connPool.(*connPool).name`, res: "connPool"},
 
 		// type assertion on interface value stored in struct field
-		{n: "iface_struct_field_assert", skip: true, src: `
+		{n: "iface_struct_field_assert", src: `
 import "io"
 import "strings"
 type rac struct { r io.ReadCloser }
 a := rac{io.NopCloser(strings.NewReader("test"))}
 _, ok := a.r.(io.Closer)
 ok`, res: "true"},
+
+		// type assertion must return false when concrete type lacks the method
+		{n: "iface_assert_wrong_iface", src: `
+import "io"
+import "strings"
+func f(r io.Reader) bool { _, ok := r.(io.Closer); return ok }
+f(strings.NewReader("test"))`, res: "false"},
 	})
 }
 
