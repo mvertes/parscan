@@ -717,7 +717,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				break
 			}
-			if ok, err := c.compileIntrinsic(s, narg, t, push, pop); ok {
+			if ok, err := c.compileIntrinsic(s, narg, t, push, pop, stack); ok {
 				if err != nil {
 					return err
 				}
@@ -1117,6 +1117,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						continue
 					}
 					c.emitIfaceWrap(t, lhss[i].Type, rhss[i].Type)
+					c.emitNumConvert(t, lhss[i].Type, rhss[i].Type, 0)
 					switch {
 					case lhss[i].Kind == symbol.LocalVar:
 						if lhss[i].CellSlot {
@@ -1173,6 +1174,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				// Wrap concrete value in Iface when assigning to interface local.
 				c.emitIfaceWrap(t, lhs.Type, rhs.Type)
+				c.emitNumConvert(t, lhs.Type, rhs.Type, 0)
 				switch {
 				case lhs.CellSlot:
 					c.emit(t, vm.CellSet, lhs.Index)
@@ -1186,7 +1188,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Pop, 1) // pop stale lhs value left by Ident's Get
 				break
 			}
-			// TODO check source type against var type
+			c.emitNumConvert(t, lhs.Type, rhs.Type, 0)
 			if lhs.Index != symbol.UnsetAddr {
 				if v := c.Data[lhs.Index]; !v.IsValid() && rhs.Type != nil {
 					c.Data[lhs.Index] = vm.NewValue(rhs.Type.Rtype)
@@ -1947,7 +1949,18 @@ func arithmeticOpType(right, left *symbol.Symbol) *vm.Type {
 	if right.Kind == symbol.Const && left.Kind != symbol.Const {
 		return symbol.Vtype(left)
 	}
-	return symbol.Vtype(right)
+	if left.Kind == symbol.Const && right.Kind != symbol.Const {
+		return symbol.Vtype(right)
+	}
+	// Both constants (or both non-const): pick the wider numeric type (float > int per Go spec).
+	rt, lt := symbol.Vtype(right), symbol.Vtype(left)
+	if rt != nil && lt != nil {
+		rk, lk := rt.Rtype.Kind(), lt.Rtype.Kind()
+		if (lk == reflect.Float32 || lk == reflect.Float64) && rk != reflect.Float32 && rk != reflect.Float64 {
+			return lt
+		}
+	}
+	return rt
 }
 
 func constKind(right, left *symbol.Symbol) symbol.Kind {
@@ -1958,16 +1971,21 @@ func constKind(right, left *symbol.Symbol) symbol.Kind {
 }
 
 func (c *Compiler) emitConstConvert(t goparser.Token, s *symbol.Symbol, typ *vm.Type, depth int) {
-	if s.Kind != symbol.Const || typ == nil {
+	if s.Kind != symbol.Const {
 		return
 	}
-	styp := symbol.Vtype(s)
-	if styp == nil || styp.Rtype == typ.Rtype {
+	c.emitNumConvert(t, typ, symbol.Vtype(s), depth)
+}
+
+// emitNumConvert emits a Convert when lhs and rhs have different numeric types
+// (e.g. assigning int to float64). depth is the stack offset of the value.
+func (c *Compiler) emitNumConvert(t goparser.Token, lhsType, rhsType *vm.Type, depth int) {
+	if lhsType == nil || rhsType == nil || lhsType.Rtype == rhsType.Rtype {
 		return
 	}
-	sk, dk := styp.Rtype.Kind(), typ.Rtype.Kind()
-	if sk >= reflect.Int && sk <= reflect.Float64 && dk >= reflect.Int && dk <= reflect.Float64 {
-		c.emit(t, vm.Convert, c.typeSym(typ).Index, depth)
+	lk, rk := lhsType.Rtype.Kind(), rhsType.Rtype.Kind()
+	if lk >= reflect.Int && lk <= reflect.Float64 && rk >= reflect.Int && rk <= reflect.Float64 {
+		c.emit(t, vm.Convert, c.typeSym(lhsType).Index, depth)
 	}
 }
 
@@ -2561,6 +2579,7 @@ var intrinsicOp = map[string]intrinsicInfo{
 func (c *Compiler) compileIntrinsic(
 	s *symbol.Symbol, narg int, t goparser.Token,
 	push func(*symbol.Symbol), pop func() *symbol.Symbol,
+	stack []*symbol.Symbol,
 ) (bool, error) {
 	if s.Kind != symbol.Value {
 		return false, nil
@@ -2576,13 +2595,26 @@ func (c *Compiler) compileIntrinsic(
 	if !c.removeGetGlobal(s.Index) {
 		return false, nil
 	}
+	// Emit numeric conversions for arguments whose type doesn't match the
+	// native function parameter type (e.g. int arg passed to float64 param).
+	rv := s.Value.Reflect()
+	if rv.IsValid() && rv.Type().Kind() == reflect.Func {
+		funcType := rv.Type()
+		for k := 0; k < narg; k++ {
+			argSym := stack[len(stack)-narg+k]
+			paramType := funcType.In(k)
+			if argSym.Type == nil || argSym.Type.Rtype == paramType {
+				continue
+			}
+			c.emitNumConvert(t, &vm.Type{Rtype: paramType}, argSym.Type, narg-1-k)
+		}
+	}
 	// Pop function symbol and argument symbols, push return type.
 	for i := 0; i < narg; i++ {
 		pop()
 	}
 	pop() // function symbol
 	// Determine the return type from the native function's reflect type.
-	rv := s.Value.Reflect()
 	if rv.IsValid() && rv.Type().Kind() == reflect.Func && rv.Type().NumOut() > 0 {
 		push(&symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: rv.Type().Out(0)}})
 	}

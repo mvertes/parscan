@@ -1988,6 +1988,10 @@ func TestArithFloat(t *testing.T) {
 		{n: "lit_neg", src: "-3.14", res: "-3.14"},
 
 		{n: "int_div_float_const", src: "13/4.0", res: "3.25"},
+		{n: "float_div_int_const", src: "4.0/3", res: "1.3333333333333333"},
+		{n: "float_mul_int_const", src: "2.5*2", res: "5"},
+		{n: "float_add_int_const", src: "1.5+1", res: "2.5"},
+		{n: "float_sub_int_const", src: "4.0-3", res: "1"},
 
 		{n: "f32_add", src: "var a, b float32 = 1.5, 2.5; a + b", res: "4"},
 
@@ -2020,6 +2024,19 @@ func TestConvert(t *testing.T) {
 		{n: "float64_to_float32", src: "var a float64 = 1.5; float32(a)", res: "1.5"},
 
 		{n: "conv_in_expr", src: "var a float64 = 3.14; int(a) + 1", res: "4"},
+
+		// Implicit numeric conversion in typed variable declarations.
+		{n: "var_float64_int", src: "var x float64 = 5; x", res: "5"},
+		{n: "var_float64_neg_int", src: "var x float64 = -5; x", res: "-5"},
+		{n: "var_int32_int", src: "var x int32 = 42; x", res: "42"},
+		{n: "var_uint8_int", src: "var x uint8 = 255; x", res: "255"},
+
+		// Implicit conversion for math intrinsic calls.
+		{n: "math_abs_int", src: `import "math"; math.Abs(-5)`, res: "5"},
+		{n: "math_abs_pos_int", src: `import "math"; math.Abs(5)`, res: "5"},
+		{n: "math_sqrt_int", src: `import "math"; math.Sqrt(4)`, res: "2"},
+		{n: "math_min_int", src: `import "math"; math.Min(3, 5)`, res: "3"},
+		{n: "math_copysign_int", src: `import "math"; math.Copysign(1, -5)`, res: "-1"},
 
 		// Pointer-to-array type conversion: (*[N]T)(ptr).
 		{n: "ptr_array_conv", src: `b := [4]byte{1, 2, 3, 4}; p := (*[4]byte)(&b); p[2]`, res: "3"},
