@@ -445,11 +445,26 @@ func (m *Machine) Run() (err error) {
 		switch c.Op {
 		case Addr:
 			v := mem[sp]
-			if v.ref.CanAddr() {
+			switch {
+			case v.ref.CanAddr():
 				mem[sp] = Value{ref: v.ref.Addr()}
-			} else {
+			case isNum(v.ref.Kind()):
 				// Materialize via Reflect() to get an addressable value, then take its address.
 				mem[sp] = Value{ref: v.Reflect().Addr()}
+			case v.IsIface():
+				// Iface wrapper: allocate *interface{} and store the unwrapped value.
+				r := reflect.New(AnyRtype)
+				r.Elem().Set(v.IfaceVal().Val.Reflect())
+				mem[sp] = Value{ref: r}
+			case !v.ref.IsValid():
+				// Nil interface parameter: allocate *interface{} with zero value.
+				mem[sp] = Value{ref: reflect.New(AnyRtype)}
+			default:
+				// Non-numeric, non-addressable composite (e.g. string parameter):
+				// allocate addressable storage and copy.
+				r := reflect.New(v.ref.Type())
+				r.Elem().Set(v.ref)
+				mem[sp] = Value{ref: r}
 			}
 		case SetLocal:
 			m.assignSlot(&mem[fp-1+int(c.A)], mem[sp])

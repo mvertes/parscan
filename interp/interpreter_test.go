@@ -651,6 +651,10 @@ p := &cs[0][1]
 cs[0][1]`, res: "2"},
 		{n: "var_ptr_native", src: `import "os"; var fd *os.File; fd`, res: "<nil>"},
 		{n: "var_ptr_local", src: `type T struct{X int}; var v *T; v`, res: "<nil>"},
+
+		{n: "addr_param_iface", src: `func f(r interface{}) int { p := &r; return (*p).(int) }; f(42)`, res: "42"},
+		{n: "addr_param_nil", src: `func f(r interface{}) bool { p := &r; return *p == nil }; f(nil)`, res: "true"},
+		{n: "addr_param_string", src: `func f(s string) string { return *(&s) }; f("hello")`, res: "hello"},
 	})
 }
 
