@@ -1371,6 +1371,10 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 		case lang.Goto:
 			c.emitJump(t, &fixList, vm.Jump)
 
+		case lang.Drop:
+			pop()
+			c.emit(t, vm.Pop, 1)
+
 		case lang.PopExpr:
 			if t.Arg[0].(int) == 0 {
 				// Mark: save the compile-time stack depth before the expression.

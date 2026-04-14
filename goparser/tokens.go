@@ -89,6 +89,7 @@ func newJumpFalse(label string, pos int) Token        { return newToken(lang.Jum
 func newNext(label string, pos, n int) Token          { return newToken(lang.Next, label, pos, n) }
 func newGrow(size, pos int) Token                     { return newToken(lang.Grow, "", pos, size) }
 func newSemicolon(pos int) Token                      { return newToken(lang.Semicolon, "", pos) }
+func newDrop(pos int) Token                           { return newToken(lang.Drop, "", pos) }
 func newEqualSet(pos int) Token                       { return newToken(lang.EqualSet, "", pos) }
 func newReturn(pos int) Token                         { return newToken(lang.Return, "", pos) }
 func newJumpSetFalse(label string, pos int) Token     { return newToken(lang.JumpSetFalse, label, pos) }

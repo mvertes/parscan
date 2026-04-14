@@ -35,6 +35,7 @@ func init() {
 		"ErrInsecurePath": reflect.ValueOf(&tar.ErrInsecurePath),
 		"ErrWriteAfterClose": reflect.ValueOf(&tar.ErrWriteAfterClose),
 		"ErrWriteTooLong": reflect.ValueOf(&tar.ErrWriteTooLong),
+		"FileInfoNames": reflect.ValueOf((*tar.FileInfoNames)(nil)),
 		"Format": reflect.ValueOf((*tar.Format)(nil)),
 		"Header": reflect.ValueOf((*tar.Header)(nil)),
 		"Reader": reflect.ValueOf((*tar.Reader)(nil)),

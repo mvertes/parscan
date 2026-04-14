@@ -129,6 +129,7 @@ const (
 	TypeAssert
 	TypeSwitchJump
 	PopExpr // discard unused expression-statement return values
+	Drop    // pop one value from the stack (used to clean up switch/select dispatch)
 
 	// This must be the last token value.
 	MaxTok

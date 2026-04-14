@@ -1702,6 +1702,9 @@ func (p *Parser) parseCaseClause(in Tokens, index, maximum int, condSwitch, prev
 				continue
 			}
 			out = append(out, newJumpFalse(miss, cond[len(cond)-1].Pos))
+		} else if condSwitch && index == maximum {
+			// Default case in a condSwitch: drop the switch expression left on the stack.
+			out = append(out, newDrop(pos))
 		}
 	}
 	if isMulti || prevFallthrough {
@@ -1877,6 +1880,9 @@ func (p *Parser) parseSelect(in Tokens) (out Tokens, err error) {
 			out = append(out, newToken(lang.Int, strconv.Itoa(i), pos))
 			out = append(out, newEqualSet(pos))
 			out = append(out, newJumpFalse(caseLabel(p.scope, i+1, 0), pos))
+		} else {
+			// Last case: drop the chosen index left on the stack by prior EqualSet misses.
+			out = append(out, newDrop(pos))
 		}
 		out = append(out, c.body...)
 		if i < nc {

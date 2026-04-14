@@ -21,6 +21,7 @@ func init() {
 		"CorruptInputError": reflect.ValueOf((*flate.CorruptInputError)(nil)),
 		"InternalError": reflect.ValueOf((*flate.InternalError)(nil)),
 		"ReadError": reflect.ValueOf((*flate.ReadError)(nil)),
+		"Reader": reflect.ValueOf((*flate.Reader)(nil)),
 		"Resetter": reflect.ValueOf((*flate.Resetter)(nil)),
 		"WriteError": reflect.ValueOf((*flate.WriteError)(nil)),
 		"Writer": reflect.ValueOf((*flate.Writer)(nil)),

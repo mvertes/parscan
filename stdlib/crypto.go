@@ -17,6 +17,7 @@ func init() {
 		"MD5": reflect.ValueOf(crypto.MD5),
 		"MD5SHA1": reflect.ValueOf(crypto.MD5SHA1),
 		"RIPEMD160": reflect.ValueOf(crypto.RIPEMD160),
+		"RegisterHash": reflect.ValueOf(crypto.RegisterHash),
 		"SHA1": reflect.ValueOf(crypto.SHA1),
 		"SHA224": reflect.ValueOf(crypto.SHA224),
 		"SHA256": reflect.ValueOf(crypto.SHA256),

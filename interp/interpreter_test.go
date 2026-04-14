@@ -515,6 +515,8 @@ func TestSwitch(t *testing.T) {
 		{n: "#14", src: src3 + "f(4)", res: "0"},
 
 		{n: "empty", src: `switch {}; 1`, res: "1"},
+
+		{n: "default_in_range", src: `r := ""; for _, c := range "abc" { switch c { case 97: r += "A"; default: r += string(c) } }; r`, res: "Abc"},
 	})
 }
 
@@ -2424,6 +2426,18 @@ go func() {
 r := <-ch
 ticker.Stop()
 r`, res: "true"},
+
+		{n: "select_default_in_range", src: `
+ch := make(chan int, 10)
+r := 0
+for _, c := range "abc" {
+	select {
+	case ch <- int(c):
+	default:
+	}
+	r++
+}
+r`, res: "3"},
 	})
 }
 
