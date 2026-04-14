@@ -1687,7 +1687,7 @@ func (m *Machine) Run() (err error) {
 		case IndexSet:
 			idx := int(mem[sp-1].num) //nolint:gosec
 			slot := reflect.Indirect(mem[sp-2].ref).Index(idx)
-			slot.Set(m.wrapForFunc(mem[sp], slot.Type()))
+			m.setFuncField(slot, mem[sp])
 			sp -= 2
 		case MapIndex:
 			mapVal := mem[sp-1].ref
