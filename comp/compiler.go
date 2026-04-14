@@ -1412,9 +1412,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					l = sym.Index
 				} else {
 					l = len(c.Data)
-					if v.Kind() == reflect.Pointer && v.Reflect().IsNil() {
-						// Stdlib wrappers encode exported types as (*T)(nil); extract T.
-						rtype := v.Type().Elem()
+					if rtype, ok := v.UnwrapType(); ok {
 						nv := vm.NewValue(rtype)
 						c.Data = append(c.Data, nv)
 						c.SymAdd(l, name, nv, symbol.Type, &vm.Type{Name: rtype.Name(), Rtype: rtype})

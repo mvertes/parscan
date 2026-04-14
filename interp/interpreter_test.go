@@ -1619,6 +1619,7 @@ func TestImport(t *testing.T) {
 		{n: "#11", src: `import "os"; f, _ := os.CreateTemp("", "test"); n := f.Name(); f.Close(); os.Remove(n); len(n) > 0`, res: "true"},
 		{n: "#12", src: `import "bytes"; b := bytes.NewBuffer(nil); b.WriteString("hello"); b.String()`, res: "hello"},
 		{n: "#13", src: `import "net/url"; v := url.Values{}; v.Set("a", "b"); v.Get("a")`, res: "b"},
+		{n: "#14", src: `import . "net"; v := IP{}; v`, res: "<nil>"},
 	})
 }
 

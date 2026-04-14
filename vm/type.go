@@ -296,6 +296,15 @@ func (v Value) Kind() reflect.Kind { return v.ref.Kind() }
 // Type returns the reflect.Type of the value.
 func (v Value) Type() reflect.Type { return v.ref.Type() }
 
+// UnwrapType checks if v encodes a stdlib type as (*T)(nil).
+// If so, it returns the underlying reflect.Type and true.
+func (v Value) UnwrapType() (reflect.Type, bool) {
+	if v.Kind() == reflect.Pointer && v.Reflect().IsNil() {
+		return v.Type().Elem(), true
+	}
+	return nil, false
+}
+
 // IsValid reports whether v represents a value (ref is set).
 func (v Value) IsValid() bool { return v.ref.IsValid() }
 

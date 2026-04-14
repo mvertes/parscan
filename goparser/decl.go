@@ -495,7 +495,12 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	if n == "." {
 		// Import package symbols in the current scope.
 		for k, v := range pkg.Values {
-			p.SymSet(k, &symbol.Symbol{Index: symbol.UnsetAddr, Name: k, Kind: symbol.Value, PkgPath: pp, Value: v})
+			if rtype, ok := v.UnwrapType(); ok {
+				nv := vm.NewValue(rtype)
+				p.SymSet(k, &symbol.Symbol{Index: symbol.UnsetAddr, Name: k, Kind: symbol.Type, PkgPath: pp, Value: nv, Type: &vm.Type{Name: rtype.Name(), Rtype: rtype}})
+			} else {
+				p.SymSet(k, &symbol.Symbol{Index: symbol.UnsetAddr, Name: k, Kind: symbol.Value, PkgPath: pp, Value: v})
+			}
 		}
 	} else {
 		p.SymSet(n, &symbol.Symbol{Kind: symbol.Pkg, PkgPath: pp, Index: symbol.UnsetAddr, Name: n})
