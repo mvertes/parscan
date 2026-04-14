@@ -1019,7 +1019,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					}
 					lhs[i].Type = typ
 					if !lhs[i].NeedsCell() {
-						c.emit(t, vm.New, lhs[i].Index, c.typeSym(typ).Index)
+						typeIdx := c.typeSym(typ).Index
+						c.fixPtrFnewE(typ, typeIdx)
+						c.emit(t, vm.New, lhs[i].Index, typeIdx)
 					}
 					lhs[i].Used = true
 				}
@@ -1123,7 +1125,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				}
 				if !lhs.Used {
 					if !lhs.NeedsCell() {
-						c.emit(t, vm.New, lhs.Index, c.typeSym(lhs.Type).Index)
+						typeIdx := c.typeSym(lhs.Type).Index
+						c.fixPtrFnewE(lhs.Type, typeIdx)
+						c.emit(t, vm.New, lhs.Index, typeIdx)
 					}
 					lhs.Used = true
 				}
@@ -2188,6 +2192,21 @@ func enclosingFunc(scopedName string, syms symbol.SymMap) string {
 		scope = scope[:i]
 		if s, ok := syms[scope]; ok && s.Kind == symbol.Func {
 			return scope
+		}
+	}
+}
+
+// fixPtrFnewE changes the most recent FnewE for the given data index to Fnew
+// when initializing a pointer-type variable. FnewE creates the element type
+// (T for *T), but variable declarations need the pointer zero value (nil).
+func (c *Compiler) fixPtrFnewE(typ *vm.Type, index int) {
+	if typ == nil || typ.Rtype.Kind() != reflect.Pointer {
+		return
+	}
+	for i := len(c.Code) - 1; i >= 0; i-- {
+		if c.Code[i].Op == vm.FnewE && int(c.Code[i].A) == index {
+			c.Code[i].Op = vm.Fnew
+			return
 		}
 	}
 }

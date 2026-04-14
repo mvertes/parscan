@@ -103,11 +103,15 @@ func (t *Type) SameAs(u *Type) bool {
 // Implements reports whether the concrete type t satisfies interface iface.
 // iface.IfaceMethods must have IDs populated (by the compiler) before calling this.
 func (t *Type) Implements(iface *Type) bool {
+	// Native interface types (e.g. io.Reader) have their method set in Rtype,
+	// so reflect can check implementation. Interpreted interfaces have
+	// Rtype == interface{} with no methods, so reflect can't help.
+	nativeIface := iface.Rtype.NumMethod() > 0
 	for _, im := range iface.IfaceMethods {
-		if im.ID < 0 || im.ID >= len(t.Methods) {
-			return false
-		}
-		if !t.Methods[im.ID].IsResolved() {
+		if im.ID < 0 || im.ID >= len(t.Methods) || !t.Methods[im.ID].IsResolved() {
+			if nativeIface {
+				return t.Rtype.Implements(iface.Rtype)
+			}
 			return false
 		}
 	}

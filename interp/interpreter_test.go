@@ -1535,6 +1535,25 @@ func f(params ...interface{}) int {
 }
 f(99)`, res: "2"},
 
+		// Native interface in type switch: *os.File implements io.Reader.
+		{n: "native_iface", src: `
+import (
+	"io"
+	"os"
+)
+func f(i interface{}) string {
+	switch i.(type) {
+	case int, int8:
+		return "integer"
+	case io.Reader:
+		return "reader"
+	}
+	return "other"
+}
+var fd *os.File
+var r io.Reader = fd
+f(r)`, res: "reader"},
+
 		// Interface slice composite literal: element stored as vm.Iface, callable via IfaceCall.
 		{n: "iface_slice_index", src: `
 type Option interface { val() int }
