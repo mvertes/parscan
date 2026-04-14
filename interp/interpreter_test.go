@@ -1299,6 +1299,21 @@ func run() int {
 	return m*10 + n
 }
 run()`, res: "66"},
+
+		// struct field of interpreted type implementing io.Reader passed to native io.ReadAll
+		{n: "struct_field_iface_native", src: `
+import "io"
+type myReader struct{ data string; done bool }
+func (r *myReader) Read(p []byte) (int, error) {
+	if r.done { return 0, io.EOF }
+	n := copy(p, r.data)
+	r.done = true
+	return n, io.EOF
+}
+type wrapper struct{ R *myReader }
+w := wrapper{R: &myReader{data: "hello"}}
+b, _ := io.ReadAll(w.R)
+string(b)`, res: "hello"},
 	})
 }
 
@@ -1413,6 +1428,15 @@ func newBaseClient(p Pooler) *baseClient { return &baseClient{connPool: p} }
 func newConnPool() *connPool { return &connPool{name: "connPool"} }
 b := newBaseClient(newConnPool())
 b.connPool.(*connPool).name`, res: "connPool"},
+
+		// type assertion on interface value stored in struct field
+		{n: "iface_struct_field_assert", skip: true, src: `
+import "io"
+import "strings"
+type rac struct { r io.ReadCloser }
+a := rac{io.NopCloser(strings.NewReader("test"))}
+_, ok := a.r.(io.Closer)
+ok`, res: "true"},
 	})
 }
 

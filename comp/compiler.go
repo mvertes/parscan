@@ -177,6 +177,8 @@ func (c *Compiler) registerMethods(iface, typ *vm.Type) {
 		if t := c.findTypeSym(typ.Rtype.Elem()); t != nil {
 			lookupTyp = t
 		}
+	} else if t := c.findTypeSym(typ.Rtype); t != nil {
+		lookupTyp = t
 	}
 	iface.EnsureIfaceMethods()
 	for _, im := range iface.IfaceMethods {

@@ -2459,6 +2459,10 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 		if !rv.IsValid() {
 			// A nil/zero value (e.g. nil error) must be typed for MakeFunc callers.
 			rv = reflect.Zero(funcType.Out(i))
+		} else if rv.Type() == ifaceRtype {
+			// Unwrap Iface return values so MakeFunc callers see the concrete value.
+			ifc := rv.Interface().(Iface)
+			rv = m.bridgeIface(ifc, funcType.Out(i))
 		}
 		out[i] = rv
 	}
