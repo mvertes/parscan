@@ -1829,6 +1829,7 @@ func TestMethod(t *testing.T) {
 		{n: "native_named_expr", src: `import "time"; (10 * time.Hour).String()`, res: "10h0m0s"},
 		{n: "native_named_ret", src: `import "time"; func f() time.Duration { return 10 * time.Hour }; f().String()`, res: "10h0m0s"},
 		{n: "const_named_type", src: `import "time"; const d = time.Minute * 30; d.String()`, res: "30m0s"},
+		{n: "ptr_type_conv", src: `import "time"; type durationValue time.Duration; func (d *durationValue) String() string { return (*time.Duration)(d).String() }; var d durationValue; d.String()`, res: "0s"},
 
 		// Method expression: value receiver.
 		{n: "mexpr_val", src: `type T struct{n int}; func(t T) Add(a int) int { return t.n + a }; T.Add(T{3}, 4)`, res: "7"},

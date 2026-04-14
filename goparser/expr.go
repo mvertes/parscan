@@ -104,7 +104,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if isUnaryCtx(i) {
 				if i+1 < lin && in[i+1].Tok == lang.Ident {
 					// Known non-type identifier after * is a dereference.
-					if s, _, ok := p.Symbols.Get(in[i+1].Str, p.scope); ok && s.Kind != symbol.Type {
+					if s, _, ok := p.Symbols.Get(in[i+1].Str, p.scope); ok && s.Kind != symbol.Type && s.Kind != symbol.Pkg {
 						t.Tok = lang.Deref
 						addop(t)
 						break
