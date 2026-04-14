@@ -1617,6 +1617,18 @@ opt := []Option{&T{v: 21}}
 a := f(opt[0])
 b := f(opt...)
 a + b`, res: "42"},
+
+		// Native interface values in type switch (e.g. from json.Unmarshal map).
+		{n: "native_map_typeswitch_str", src: `
+import "encoding/json"
+var m map[string]interface{}
+json.Unmarshal([]byte(` + "`" + `{"a":"hello"}` + "`" + `), &m)
+switch m["a"].(type) { case string: "ok"; default: "fail" }`, res: "ok"},
+		{n: "native_map_typeswitch_nil", src: `
+import "encoding/json"
+var m map[string]interface{}
+json.Unmarshal([]byte(` + "`" + `{"a":null}` + "`" + `), &m)
+switch m["a"].(type) { case nil: "ok"; default: "fail" }`, res: "ok"},
 	})
 }
 

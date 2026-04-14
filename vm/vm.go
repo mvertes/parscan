@@ -973,17 +973,32 @@ func (m *Machine) Run() (err error) {
 		case TypeBranch: // Arg[0]=offset, Arg[1]=typeIdx (-1 for nil case)
 			ifc := mem[sp]
 			sp--
+			var dtyp *Type
+			if int(c.B) != -1 {
+				dtyp = m.globals[int(c.B)].ref.Interface().(*Type)
+			}
 			var matched bool
-			if int(c.B) == -1 {
-				matched = !ifc.IsIface()
-			} else if ifc.IsIface() {
-				ctyp := ifc.IfaceVal().Typ
-				dtyp := m.globals[int(c.B)].ref.Interface().(*Type)
-				if dtyp.IsInterface() {
-					matched = ctyp.Implements(dtyp)
-				} else {
-					matched = ctyp.SameAs(dtyp)
+			if ifc.IsIface() {
+				if dtyp != nil {
+					ctyp := ifc.IfaceVal().Typ
+					if dtyp.IsInterface() {
+						matched = ctyp.Implements(dtyp)
+					} else {
+						matched = ctyp.SameAs(dtyp)
+					}
 				}
+			} else if rv := ifc.Reflect(); rv.IsValid() && rv.Kind() == reflect.Interface && !rv.IsNil() {
+				// Native interface value (e.g. from json.Unmarshal map).
+				if dtyp != nil {
+					if dtyp.IsInterface() {
+						matched = rv.Elem().Type().Implements(dtyp.Rtype)
+					} else {
+						matched = rv.Elem().Type().AssignableTo(dtyp.Rtype)
+					}
+				}
+			} else {
+				// Nil or invalid value: only matches the nil case.
+				matched = dtyp == nil
 			}
 			if !matched {
 				ip += int(c.A)
