@@ -846,7 +846,11 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				if s.Kind == symbol.Func && len(s.FreeVars) == 0 && c.removeGetGlobal(s.Index) {
 					c.emit(t, vm.CallImm, s.Index, callNarg<<16|nret)
 				} else {
-					c.emit(t, vm.Call, callNarg, nret)
+					callNret := nret
+					if typ.Rtype.IsVariadic() && !spread {
+						callNret |= int(vm.CallSpreadFlag)
+					}
+					c.emit(t, vm.Call, callNarg, callNret)
 				}
 				break
 			}

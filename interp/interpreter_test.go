@@ -359,6 +359,7 @@ func TestVariadic(t *testing.T) {
 		{n: "#06", src: `func sum(a ...int) int { s := 0; for _, v := range a { s += v }; return s }; x := []int{1, 2, 3}; sum(x...)`, res: "6"},
 		{n: "#07", src: `func add(x int, rest ...int) int { s := x; for _, v := range rest { s += v }; return s }; r := []int{1, 2}; add(10, r...)`, res: "13"},
 		{n: "#08", src: `import "fmt"; var a, b string; dest := []interface{}{&a, &b}; fmt.Sscanf("hello world", "%s %s", dest...); a + " " + b`, res: "hello world"},
+		{n: "#09", src: `import "fmt"; f := fmt.Sprintf; f("hello %s", "world")`, res: "hello world"},
 	})
 }
 
