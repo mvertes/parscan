@@ -1348,6 +1348,21 @@ func (m myReader) Read(b []byte) (n int, err error) {
 r := myReader{strings.NewReader("hello")}
 b, _ := io.ReadAll(r)
 string(b)`, res: "hello"},
+
+		{n: "bridge_writerto_upgrade", src: `
+import "io"
+import "strings"
+type WR struct{ r io.Reader; used bool }
+func (w *WR) Read(p []byte) (int, error) { return w.r.Read(p) }
+func (w *WR) WriteTo(dst io.Writer) (int64, error) {
+	w.used = true
+	data, _ := io.ReadAll(w)
+	n, err := dst.Write(data)
+	return int64(n), err
+}
+wr := &WR{r: strings.NewReader("hello")}
+io.Copy(io.Discard, wr)
+wr.used`, res: "true"},
 	})
 }
 

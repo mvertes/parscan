@@ -22,3 +22,10 @@ var DisplayBridges = map[string]bool{}
 // named Fn<MethodName> for each method. Used for multi-method interfaces
 // like heap.Interface or sort.Interface.
 var InterfaceBridges = map[reflect.Type]reflect.Type{}
+
+// CompositeBridges maps sorted pairs of method names to composite bridge
+// pointer types that implement both methods. Used to preserve additional
+// interface capabilities when wrapping for a single-method target interface
+// (e.g. wrapping a Reader+WriterTo value for an io.Reader parameter keeps
+// the WriterTo capability so io.Copy's internal type assertion succeeds).
+var CompositeBridges = map[[2]string]reflect.Type{}
