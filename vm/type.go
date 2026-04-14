@@ -112,6 +112,22 @@ func (t *Type) Implements(iface *Type) bool {
 			if nativeIface {
 				return t.Rtype.Implements(iface.Rtype)
 			}
+			// Native concrete type with no parscan Methods: check reflect method set.
+			return iface.NativeImplements(t.Rtype)
+		}
+	}
+	return true
+}
+
+// NativeImplements reports whether native reflect type rt has all the methods
+// required by interface type t. This is used for type assertions when the
+// concrete value is a native Go type (not a parscan-interpreted type).
+func (t *Type) NativeImplements(rt reflect.Type) bool {
+	if len(t.IfaceMethods) == 0 {
+		return false
+	}
+	for _, im := range t.IfaceMethods {
+		if _, ok := rt.MethodByName(im.Name); !ok {
 			return false
 		}
 	}

@@ -288,7 +288,13 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 				methods = append(methods, ifaceType.IfaceMethods...)
 				continue
 			}
-			methods = append(methods, vm.IfaceMethod{Name: lt[0].Str, ID: -1})
+			p.typeOnly = true
+			methodType, _, _, err := p.parseFuncParams(lt[1], lt[2:])
+			p.typeOnly = false
+			if err != nil {
+				return nil, 0, err
+			}
+			methods = append(methods, vm.IfaceMethod{Name: lt[0].Str, ID: -1, Rtype: methodType.Rtype})
 		}
 		// Use any as underlying reflect type; method set is tracked in IfaceMethods.
 		return &vm.Type{

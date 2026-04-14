@@ -895,29 +895,31 @@ func (m *Machine) Run() (err error) {
 			if !ifc.IsIface() {
 				// Native interface value: use reflect for type assertion.
 				rv := ifc.Reflect()
-				if rv.IsValid() && rv.Kind() == reflect.Interface && !rv.IsNil() {
-					rv = rv.Elem()
-					if rv.Type().AssignableTo(dstTyp.Rtype) {
-						mem[sp] = FromReflect(rv)
-						if okForm {
-							if sp+1 >= len(mem) {
-								mem = growStack(mem, sp, 1)
-							}
-							sp++
-							mem[sp] = boolVal(true)
+				isNil := !rv.IsValid()
+				if !isNil && rv.Kind() == reflect.Interface {
+					isNil = rv.IsNil()
+					if !isNil {
+						rv = rv.Elem()
+					}
+				}
+				if !isNil && (rv.Type().AssignableTo(dstTyp.Rtype) || dstTyp.NativeImplements(rv.Type())) {
+					mem[sp] = FromReflect(rv)
+					if okForm {
+						if sp+1 >= len(mem) {
+							mem = growStack(mem, sp, 1)
 						}
-						break
+						sp++
+						mem[sp] = boolVal(true)
 					}
-					if !okForm {
-						m.panicking = true
-						m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface value is %s, not %s", rv.Type(), dstTyp))}
-						sp--
-						ip = panicAddr
-						continue
+					break
+				}
+				if !okForm {
+					msg := fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp)
+					if !isNil {
+						msg = fmt.Sprintf("interface conversion: interface value is %s, not %s", rv.Type(), dstTyp)
 					}
-				} else if !okForm {
 					m.panicking = true
-					m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp))}
+					m.panicVal = Value{ref: reflect.ValueOf(msg)}
 					sp--
 					ip = panicAddr
 					continue
