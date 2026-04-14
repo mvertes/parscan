@@ -582,6 +582,8 @@ func TestArray(t *testing.T) {
 		{n: "ellipsis", src: `a := [...]int{10, 20, 30}; len(a)`, res: "3"},
 		{n: "ellipsis_key", src: `a := [...]string{9: "hello"}; len(a)`, res: "10"},
 		{n: "ellipsis_keys", src: `a := [...]int{2: 10, 5: 20}; len(a)`, res: "6"},
+		{n: "ellipsis_const_key", src: `const (a = iota; b; c); x := [...]int{c: 99}; len(x)`, res: "3"},
+		{n: "ellipsis_const_expr_key", src: `const (a = iota; b; c); x := [...]int{c + 2: 99}; len(x)`, res: "5"},
 
 		{n: "2d_array", src: `a := [3][2]int{{1, 2}, {3, 4}, {5, 6}}; a[1][0]`, res: "3"},
 		{n: "2d_slice", src: `a := [][]int{{1, 2}, {3, 4}}; a[1][0]`, res: "3"},

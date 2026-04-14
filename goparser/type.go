@@ -3,8 +3,8 @@ package goparser
 import (
 	"errors"
 	"fmt"
+	"go/constant"
 	"reflect"
-	"strconv"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
@@ -55,10 +55,17 @@ func (p *Parser) resolveEllipsisArray(elemTyp *vm.Type, toks Tokens, braceIdx in
 		if len(item) == 0 {
 			continue
 		}
-		if item[0].Tok == lang.Int && item.Index(lang.Colon) > 0 {
-			// Keyed element: use the key as index.
-			if k, err := strconv.ParseInt(item[0].Str, 0, 64); err == nil {
-				idx = int(k)
+		if ci := item.Index(lang.Colon); ci > 0 {
+			// Keyed element: evaluate the key as a constant expression.
+			// parseExpr converts infix to postfix, which evalConstExpr requires.
+			// On failure, fall back to sequential index.
+			keyToks, err := p.parseExpr(item[:ci], "")
+			if err == nil {
+				if cval, _, _, err := p.evalConstExpr(keyToks); err == nil {
+					if k, ok := constant.Int64Val(cval); ok {
+						idx = int(k)
+					}
+				}
 			}
 		}
 		idx++
