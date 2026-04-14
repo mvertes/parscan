@@ -57,14 +57,16 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 
 		case lang.Func:
 			// Function as value (i.e closure).
-			bi := in.LastIndex(lang.BraceBlock)
-			if out, err = p.parseFunc(in); err != nil {
+			bi := in[i:].LastIndex(lang.BraceBlock)
+			prevOut := out
+			if out, err = p.parseFunc(in[i:]); err != nil {
 				return out, err
 			}
 			fid := out[1]
 			fid.Tok = lang.Ident
+			out = append(prevOut, out...)
 			out = append(out, fid)
-			i = bi // advance past body; loop will increment to bi+1 (e.g. IIFE call args)
+			i += bi // advance past body; loop will increment to bi+1 (e.g. IIFE call args)
 
 		case lang.Period:
 			if i+1 < lin && in[i+1].Tok == lang.ParenBlock {

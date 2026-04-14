@@ -1722,6 +1722,8 @@ func TestComposite(t *testing.T) {
 		{n: "#18", src: `import "time"; t := time.Time{}; t.IsZero()`, res: `true`},
 		{n: "#19", src: `import "time"; t := &time.Time{}; t.IsZero()`, res: `true`},
 		{n: "iface_slice_display", src: `import "fmt"; type T struct{name string}; fmt.Sprintf("%v", []interface{}{T{"hello"}})`, res: `[{hello}]`},
+		// Inline closure as composite literal field value.
+		{n: "func_field_closure", src: `type T struct{ F func() int }; s := T{F: func() int { return 42 }}; s.F()`, res: `42`},
 	})
 }
 
