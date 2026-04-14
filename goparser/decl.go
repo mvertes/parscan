@@ -185,7 +185,13 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 		if err != nil {
 			return nil, nil, 0, err
 		}
-		return cv, nil, 2, nil // consumes Ident (pkg) + Period
+		// Preserve named types (e.g. time.Duration) so arithmetic
+		// on typed constants keeps the correct result type.
+		var ctyp *vm.Type
+		if rt := v.Type(); rt.PkgPath() != "" {
+			ctyp = &vm.Type{Name: rt.Name(), Rtype: rt}
+		}
+		return cv, ctyp, 2, nil // consumes Ident (pkg) + Period
 	case id.IsBinaryOp():
 		op2, typ2, l2, err := p.evalConstExpr(in[:l])
 		if err != nil {
