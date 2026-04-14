@@ -160,7 +160,7 @@ func (c *Compiler) findConcreteFuncSym(name string) *symbol.Symbol {
 // declares a method with the given name. reflect.StructOf represents embedded
 // interface fields as interface{}, so reflect-based MethodByName cannot find
 // their methods. Returns the field index path to the interface field, or nil.
-func findEmbeddedIfaceMethod(typ *vm.Type, name string) []int {
+func findEmbeddedIfaceMethod(typ *vm.Type, name string) ([]int, reflect.Type) {
 	for _, emb := range typ.Embedded {
 		if emb.Type == nil {
 			continue
@@ -169,15 +169,15 @@ func findEmbeddedIfaceMethod(typ *vm.Type, name string) []int {
 			emb.Type.EnsureIfaceMethods()
 			for _, im := range emb.Type.IfaceMethods {
 				if im.Name == name {
-					return []int{emb.FieldIdx}
+					return []int{emb.FieldIdx}, im.Rtype
 				}
 			}
 		}
-		if p := findEmbeddedIfaceMethod(emb.Type, name); p != nil {
-			return append([]int{emb.FieldIdx}, p...)
+		if p, mt := findEmbeddedIfaceMethod(emb.Type, name); p != nil {
+			return append([]int{emb.FieldIdx}, p...), mt
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // findEmbeddedMethod walks embedded fields looking for a native method that
@@ -896,7 +896,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				pop()
 			}
 			nret := 0
-			if rtyp != nil {
+			if rtyp != nil && rtyp.Kind() == reflect.Func {
 				nret = rtyp.NumOut()
 				for i := 0; i < nret; i++ {
 					var retType *vm.Type
@@ -1604,11 +1604,17 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						lookupTyp = ft
 					}
 					// Check for methods promoted from embedded interfaces.
-					if fieldPath := findEmbeddedIfaceMethod(lookupTyp, methodName); fieldPath != nil {
+					if fieldPath, mt := findEmbeddedIfaceMethod(lookupTyp, methodName); fieldPath != nil {
 						c.emitField(t, fieldPath)
 						methodSym := c.findConcreteFuncSym(methodName)
 						if methodSym == nil {
-							methodSym = &symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: vm.AnyRtype}}
+							symType := &vm.Type{Rtype: vm.AnyRtype}
+							// Use the interface method signature directly as the bound-method type.
+							// For interface methods, reflect already excludes the receiver.
+							if mt != nil && mt.Kind() == reflect.Func {
+								symType = &vm.Type{Rtype: mt}
+							}
+							methodSym = &symbol.Symbol{Kind: symbol.Value, Type: symType}
 						}
 						push(methodSym)
 						c.emit(t, vm.IfaceCall, c.methodID(methodName))

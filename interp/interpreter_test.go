@@ -1344,6 +1344,27 @@ s2 := &S2{t}
 s3 := &S3{s2}
 s2.F() + " " + s3.base.F()`, res: "hello world hello world"},
 
+		// method promoted from embedded native interface with return value assignment
+		{n: "embed_iface_method_assign", src: `
+import "net/http"
+import "net/http/httptest"
+import "fmt"
+import "io"
+type T struct { http.ResponseWriter }
+type mw struct{}
+func (m *mw) ServeHTTP(rw http.ResponseWriter, rq *http.Request) {
+	t := &T{ResponseWriter: rw}
+	x := t.Header()
+	fmt.Fprint(rw, "ok", x)
+}
+mux := http.NewServeMux()
+mux.HandleFunc("/", (&mw{}).ServeHTTP)
+server := httptest.NewServer(mux)
+resp, _ := http.Get(server.URL)
+body, _ := io.ReadAll(resp.Body)
+server.Close()
+string(body)`, res: "okmap[]"},
+
 		// struct field of interpreted type implementing io.Reader passed to native io.ReadAll
 		{n: "struct_field_iface_native", src: `
 import "io"
