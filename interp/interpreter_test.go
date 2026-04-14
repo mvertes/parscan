@@ -662,6 +662,7 @@ func TestStruct(t *testing.T) {
 		{n: "field_name_matches_var", src: `type T struct{x int}; x := 42; t := T{x: x}; t.x`, res: "42"},
 		{n: "iface_field_fmt", src: `import "fmt"; type T struct{V interface{}}; t := T{V: "hello"}; fmt.Sprint(t)`, res: "{hello}"},
 		{n: "iface_field_assign_fmt", src: `import "fmt"; type T struct{V interface{}}; t := T{}; t.V = 42; fmt.Sprint(t)`, res: "{42}"},
+		{n: "nil_assign_struct_field", src: `type node struct { parent *node; child []*node; key string }; root := &node{key: "root"}; root.child = nil; root.parent = nil; root.key`, res: "root"},
 
 		// struct with embedded type that has methods and additional fields
 		// (reflect.StructOf panics if Anonymous=true on a type with methods in a multi-field struct)

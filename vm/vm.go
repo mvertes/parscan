@@ -2662,6 +2662,10 @@ func (m *Machine) setGoFuncField(fv, gf reflect.Value, val Value) {
 }
 
 func (m *Machine) setFuncField(fv reflect.Value, val Value) {
+	if !val.ref.IsValid() {
+		fv.Set(reflect.Zero(fv.Type()))
+		return
+	}
 	if pf, ok := val.ref.Interface().(ParscanFunc); ok && fv.CanAddr() {
 		if m.funcFields == nil {
 			m.funcFields = make(map[uintptr]Value)
