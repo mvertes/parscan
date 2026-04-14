@@ -612,6 +612,11 @@ func (p *Parser) zeroInitLocals(vars []string, types []*vm.Type) (out Tokens) {
 		if typName == "" {
 			typName = typ.Rtype.String()
 		}
+		// For pointer types, use a distinct name so we don't resolve
+		// to the element type symbol (e.g. T instead of *T).
+		if typ.Rtype.Kind() == reflect.Pointer {
+			typName = "*" + typName
+		}
 		// Resolve type symbol key, honouring scope (e.g. "f/T" vs global "T").
 		typKey := typName
 		if sym, sc, ok := p.Symbols.Get(typName, p.scope); ok && sym.Kind == symbol.Type {
@@ -619,7 +624,7 @@ func (p *Parser) zeroInitLocals(vars []string, types []*vm.Type) (out Tokens) {
 				typKey = sc + "/" + typName
 			}
 		} else if !ok {
-			// Anonymous type not yet in the symbol table; register it globally now.
+			// Type not yet in the symbol table; register it now.
 			p.SymAdd(symbol.UnsetAddr, typKey, vm.NewValue(typ.Rtype), symbol.Type, typ)
 		}
 		out = append(out, newIdent(v, 0))

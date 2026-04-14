@@ -2194,7 +2194,7 @@ func enclosingFunc(scopedName string, syms symbol.SymMap) string {
 	}
 }
 
-// fixPtrFnewE changes the most recent FnewE for the given data index to Fnew
+// fixPtrFnewE changes the most recent FnewE for the given pointer type to Fnew
 // when initializing a pointer-type variable. FnewE creates the element type
 // (T for *T), but variable declarations need the pointer zero value (nil).
 func (c *Compiler) fixPtrFnewE(typ *vm.Type, index int) {
@@ -2202,9 +2202,12 @@ func (c *Compiler) fixPtrFnewE(typ *vm.Type, index int) {
 		return
 	}
 	for i := len(c.Code) - 1; i >= 0; i-- {
-		if c.Code[i].Op == vm.FnewE && int(c.Code[i].A) == index {
-			c.Code[i].Op = vm.Fnew
-			return
+		if c.Code[i].Op == vm.FnewE {
+			di := int(c.Code[i].A)
+			if di == index || c.Data[di].Type() == typ.Rtype {
+				c.Code[i].Op = vm.Fnew
+				return
+			}
 		}
 	}
 }

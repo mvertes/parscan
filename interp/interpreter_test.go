@@ -647,6 +647,8 @@ cs := &counters{}
 p := &cs[0][1]
 *p = 2
 cs[0][1]`, res: "2"},
+		{n: "var_ptr_native", src: `import "os"; var fd *os.File; fd`, res: "<nil>"},
+		{n: "var_ptr_local", src: `type T struct{X int}; var v *T; v`, res: "<nil>"},
 	})
 }
 
