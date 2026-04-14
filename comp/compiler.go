@@ -144,6 +144,42 @@ func (c *Compiler) findTypeSym(rtype reflect.Type) *vm.Type {
 	return nil
 }
 
+// findConcreteFuncSym scans the symbol table for a concrete function whose
+// qualified name ends with ".name" (e.g. "T.Method"). Returns nil if not found.
+func (c *Compiler) findConcreteFuncSym(name string) *symbol.Symbol {
+	suffix := "." + name
+	for k, sym := range c.Symbols {
+		if strings.HasSuffix(k, suffix) && sym.Kind == symbol.Func {
+			return sym
+		}
+	}
+	return nil
+}
+
+// findEmbeddedIfaceMethod walks embedded fields looking for an interface that
+// declares a method with the given name. reflect.StructOf represents embedded
+// interface fields as interface{}, so reflect-based MethodByName cannot find
+// their methods. Returns the field index path to the interface field, or nil.
+func findEmbeddedIfaceMethod(typ *vm.Type, name string) []int {
+	for _, emb := range typ.Embedded {
+		if emb.Type == nil {
+			continue
+		}
+		if emb.Type.IsInterface() {
+			emb.Type.EnsureIfaceMethods()
+			for _, im := range emb.Type.IfaceMethods {
+				if im.Name == name {
+					return []int{emb.FieldIdx}
+				}
+			}
+		}
+		if p := findEmbeddedIfaceMethod(emb.Type, name); p != nil {
+			return append([]int{emb.FieldIdx}, p...)
+		}
+	}
+	return nil
+}
+
 // findEmbeddedMethod walks embedded fields looking for a native method that
 // reflect.StructOf failed to promote. Returns the reflect.Method, the field
 // index path to the embedded receiver, and whether an Addr is needed.
@@ -1435,14 +1471,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				if s.Type != nil && s.Type.IsInterface() {
 					methodName := t.Str[1:]
 					// Find the method signature from a concrete implementation.
-					// Look up any "TypeName.methodName" symbol in the table.
-					var methodSym *symbol.Symbol
-					for k, sym := range c.Symbols {
-						if strings.HasSuffix(k, "."+methodName) && sym.Kind == symbol.Func {
-							methodSym = sym
-							break
-						}
-					}
+					methodSym := c.findConcreteFuncSym(methodName)
 					if methodSym == nil {
 						// For interface types, Method.Type does not include the receiver.
 						var rtype reflect.Type
@@ -1561,6 +1590,23 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						if lt := lookupTyp.Elem(); lt != nil {
 							lookupTyp = lt
 						}
+					}
+					// Look up the full parscan type (with Embedded info) from the symbol table.
+					// Without this, types obtained through field access (FieldType) may lack
+					// Embedded metadata, preventing findEmbeddedMethod from finding promoted methods.
+					if ft := c.findTypeSym(lr); ft != nil {
+						lookupTyp = ft
+					}
+					// Check for methods promoted from embedded interfaces.
+					if fieldPath := findEmbeddedIfaceMethod(lookupTyp, methodName); fieldPath != nil {
+						c.emitField(t, fieldPath)
+						methodSym := c.findConcreteFuncSym(methodName)
+						if methodSym == nil {
+							methodSym = &symbol.Symbol{Kind: symbol.Value, Type: &vm.Type{Rtype: vm.AnyRtype}}
+						}
+						push(methodSym)
+						c.emit(t, vm.IfaceCall, c.methodID(methodName))
+						break
 					}
 					if rm, embFieldPath, needAddr = findEmbeddedMethod(lookupTyp, lr, methodName, nil); rm.Type != nil {
 						ok = true

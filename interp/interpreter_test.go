@@ -1323,6 +1323,18 @@ func main() int {
 }
 main()`, res: "6"},
 
+		// method promoted from embedded interface called on struct (direct and through field chain)
+		{n: "embed_iface_method_call", src: `
+type I2 interface { F() string }
+type S2 struct { I2 }
+type S3 struct { base *S2 }
+type T struct{ name string }
+func (t *T) F() string { return "hello " + t.name }
+t := &T{"world"}
+s2 := &S2{t}
+s3 := &S3{s2}
+s2.F() + " " + s3.base.F()`, res: "hello world hello world"},
+
 		// struct field of interpreted type implementing io.Reader passed to native io.ReadAll
 		{n: "struct_field_iface_native", src: `
 import "io"
