@@ -645,6 +645,8 @@ func TestPointer(t *testing.T) {
 		{n: "deref_inc", src: "a := 2; p := &a; *p++; a", res: "3"},
 		{n: "deref_dec", src: "a := 2; p := &a; *p--; a", res: "1"},
 		{n: "iife_ptr", src: `var a = func() *bool { b := true; return &b }(); *a && true`, res: "true"},
+		{n: "iife_stmt", src: `a := 0; func() { a = 5 }(); a`, res: "5"},
+		{n: "iife_stmt_arg", src: `a := 0; func(x int) { a = x }(7); a`, res: "7"},
 		{n: "addr_slice_elem", src: `a := []int{1, 2, 3}; p := &a[1]; *p = 99; a[1]`, res: "99"},
 		{n: "addr_array_elem", src: `a := [3]int{1, 2, 3}; p := &a[1]; *p = 99; a[1]`, res: "99"},
 

@@ -655,6 +655,12 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 	case lang.For:
 		return p.parseFor(in)
 	case lang.Func:
+		// If a ParenBlock follows the function body, this is an IIFE
+		// (immediately invoked function expression), not a function declaration.
+		bi := in.LastIndex(lang.BraceBlock)
+		if bi >= 0 && bi+1 < len(in) && in[bi+1].Tok == lang.ParenBlock {
+			return p.parseExprStmt(in)
+		}
 		return p.parseFunc(in)
 	case lang.Fallthrough:
 		return out, errors.New("fallthrough statement out of place")
