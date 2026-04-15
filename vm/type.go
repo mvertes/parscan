@@ -123,6 +123,9 @@ func (t *Type) Implements(iface *Type) bool {
 // required by interface type t. This is used for type assertions when the
 // concrete value is a native Go type (not a parscan-interpreted type).
 func (t *Type) NativeImplements(rt reflect.Type) bool {
+	if !t.IsInterface() {
+		return false
+	}
 	return t.MissingMethod(rt) == ""
 }
 

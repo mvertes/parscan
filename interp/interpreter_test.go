@@ -1593,6 +1593,21 @@ import "io"
 import "strings"
 func f(r io.Reader) bool { _, ok := r.(io.Closer); return ok }
 f(strings.NewReader("test"))`, res: "false"},
+
+		// type assertion to unrelated concrete type must not panic
+		{n: "native_iface_to_wrong_struct", src: `
+import "errors"
+type T struct { P1 int }
+var i error = errors.New("boom")
+v, ok := i.(T)
+println(v); ok`, res: "false"},
+
+		{n: "any_iface_to_wrong_struct", src: `
+import "errors"
+type T struct { P1 int }
+var i interface{} = errors.New("boom")
+_, ok := i.(T)
+ok`, res: "false"},
 	})
 }
 
