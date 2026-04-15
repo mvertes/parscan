@@ -2383,6 +2383,9 @@ func (m *Machine) bridgeIface(ifc Iface, targetType reflect.Type) reflect.Value 
 
 func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 	if funcType.Kind() != reflect.Func {
+		if !val.ref.IsValid() {
+			return reflect.Zero(funcType)
+		}
 		// When storing into interface{} (e.g. map[string]interface{}), unwrap
 		// ParscanFunc to the native Go function so native code sees a real func.
 		if pf, ok := val.ref.Interface().(ParscanFunc); ok {

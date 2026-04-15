@@ -1411,6 +1411,30 @@ func (w *WR) WriteTo(dst io.Writer) (int64, error) {
 wr := &WR{r: strings.NewReader("hello")}
 io.Copy(io.Discard, wr)
 wr.used`, res: "true"},
+
+		// Variadic interface spread: both indexed element and spread (yaegi-issue-1205 scenario).
+		{n: "iface_slice_spread_both", src: `
+type Option interface { val() int }
+type T struct{ v int }
+func (t *T) val() int { return t.v }
+func f(opts ...Option) int { return opts[0].val() }
+opt := []Option{&T{v: 21}}
+a := f(opt[0])
+b := f(opt...)
+a + b`, res: "42"},
+
+		// Function values stored in map[string]interface{} must be callable by native code.
+		{n: "map_func_value_native", src: `
+m := map[string]interface{}{
+	"double": func(s string) string { return s + s },
+}
+f := m["double"].(func(string) string)
+f("hello")`, res: "hellohello"},
+
+		{n: "map_nil_interface_value", src: `
+import "fmt"
+var errs = map[int]error{0: nil}
+fmt.Sprint(errs)`, res: "map[0:<nil>]"},
 	})
 }
 
@@ -1637,17 +1661,6 @@ func f(opts ...Option) int { return opts[0].val() }
 opt := []Option{&T{v: 42}}
 f(opt...)`, res: "42"},
 
-		// Variadic interface spread: both indexed element and spread (yaegi-issue-1205 scenario).
-		{n: "iface_slice_spread_both", src: `
-type Option interface { val() int }
-type T struct{ v int }
-func (t *T) val() int { return t.v }
-func f(opts ...Option) int { return opts[0].val() }
-opt := []Option{&T{v: 21}}
-a := f(opt[0])
-b := f(opt...)
-a + b`, res: "42"},
-
 		// Native interface values in type switch (e.g. from json.Unmarshal map).
 		{n: "native_map_typeswitch_str", src: `
 import "encoding/json"
@@ -1659,14 +1672,6 @@ import "encoding/json"
 var m map[string]interface{}
 json.Unmarshal([]byte(` + "`" + `{"a":null}` + "`" + `), &m)
 switch m["a"].(type) { case nil: "ok"; default: "fail" }`, res: "ok"},
-
-		// Function values stored in map[string]interface{} must be callable by native code.
-		{n: "map_func_value_native", src: `
-m := map[string]interface{}{
-	"double": func(s string) string { return s + s },
-}
-f := m["double"].(func(string) string)
-f("hello")`, res: "hellohello"},
 	})
 }
 
