@@ -561,18 +561,16 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 		toks = toks[1:]
 	}
 
-	// For struct types, use a forward-declared placeholder to enable
-	// self-references (*Node) and mutual references between types.
+	// For struct and interface types, use a forward-declared placeholder to
+	// enable self-references and mutual references between types.
 	name := p.scopedName(in[0].Str)
 	var placeholder *vm.Type
-	if !isAlias && len(toks) > 0 && toks[0].Tok == lang.Struct {
-		if s, ok := p.Symbols[name]; ok && s.Kind == symbol.Type {
-			// Reuse placeholder pre-registered by the compiler.
-			placeholder = s.Type
-		} else {
-			placeholder = vm.NewStructType()
-			placeholder.Name = in[0].Str
-			p.SymAdd(symbol.UnsetAddr, name, vm.NewValue(placeholder.Rtype), symbol.Type, placeholder)
+	if !isAlias && len(toks) > 0 {
+		switch toks[0].Tok {
+		case lang.Struct:
+			placeholder = p.registerStructPlaceholder(name, in[0].Str)
+		case lang.Interface:
+			placeholder = p.registerInterfacePlaceholder(name, in[0].Str)
 		}
 	}
 
@@ -582,9 +580,14 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	}
 
 	if placeholder != nil {
-		// Finalize: patches the internal reflect type in place so derived
-		// types (e.g., *Node via PointerTo) see the real struct layout.
-		placeholder.SetFields(typ)
+		if placeholder.Rtype.Kind() == reflect.Interface {
+			// Finalize interface: copy method set onto the placeholder.
+			placeholder.IfaceMethods = typ.IfaceMethods
+		} else {
+			// Finalize struct: patches the internal reflect type in place so
+			// derived types (e.g., *Node via PointerTo) see the real layout.
+			placeholder.SetFields(typ)
+		}
 		if s, ok := p.Symbols[name]; ok {
 			s.Value = vm.NewValue(placeholder.Rtype)
 		}

@@ -105,10 +105,10 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 		}
 	}
 
-	// Pre-register struct type placeholders so that forward and mutual
-	// references (e.g., type F func(*A); type A struct{F}) can resolve.
+	// Pre-register struct and interface type placeholders so that forward,
+	// mutual, and self-references can resolve during parsing.
 	// Placeholders are untracked: they survive the retry loop cleanup.
-	p.preRegisterStructTypes(decls)
+	p.preRegisterTypes(decls)
 
 	// Phase 1: resolve all declarations (no code generation).
 	// Retry until no undefined declaration remains, or no progress is made.
@@ -169,7 +169,7 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 	return remaining, err
 }
 
-func (p *Parser) preRegisterStructTypes(decls []Tokens) {
+func (p *Parser) preRegisterTypes(decls []Tokens) {
 	for _, decl := range decls {
 		if len(decl) < 2 || decl[0].Tok != lang.Type {
 			continue
@@ -181,26 +181,52 @@ func (p *Parser) preRegisterStructTypes(decls []Tokens) {
 				continue
 			}
 			for _, lt := range inner.Split(lang.Semicolon) {
-				if len(lt) >= 2 && lt[0].Tok == lang.Ident && lt[1].Tok == lang.Struct {
-					p.registerStructPlaceholder(lt[0].Str)
+				if len(lt) >= 2 && lt[0].Tok == lang.Ident {
+					n := lt[0].Str
+					switch lt[1].Tok {
+					case lang.Struct:
+						p.registerStructPlaceholder(n, n)
+					case lang.Interface:
+						p.registerInterfacePlaceholder(n, n)
+					}
 				}
 			}
 			continue
 		}
-		// Single: type A struct{...}
-		if len(decl) >= 3 && decl[1].Tok == lang.Ident && decl[2].Tok == lang.Struct {
-			p.registerStructPlaceholder(decl[1].Str)
+		// Single: type A struct{...} or type A interface{...}
+		if len(decl) >= 3 && decl[1].Tok == lang.Ident {
+			n := decl[1].Str
+			switch decl[2].Tok {
+			case lang.Struct:
+				p.registerStructPlaceholder(n, n)
+			case lang.Interface:
+				p.registerInterfacePlaceholder(n, n)
+			}
 		}
 	}
 }
 
-func (p *Parser) registerStructPlaceholder(name string) {
-	if _, ok := p.Symbols[name]; ok {
-		return // Already registered (e.g., from a previous Compile call).
+// registerStructPlaceholder returns an existing or new struct placeholder.
+// key is the symbol table key (possibly scoped); short is the unqualified type name.
+func (p *Parser) registerStructPlaceholder(key, short string) *vm.Type {
+	if s, ok := p.Symbols[key]; ok && s.Kind == symbol.Type {
+		return s.Type
 	}
 	ph := vm.NewStructType()
-	ph.Name = name
-	p.SymAdd(symbol.UnsetAddr, name, vm.NewValue(ph.Rtype), symbol.Type, ph)
+	ph.Name = short
+	p.SymAdd(symbol.UnsetAddr, key, vm.NewValue(ph.Rtype), symbol.Type, ph)
+	return ph
+}
+
+// registerInterfacePlaceholder returns an existing or new interface placeholder.
+// key is the symbol table key (possibly scoped); short is the unqualified type name.
+func (p *Parser) registerInterfacePlaceholder(key, short string) *vm.Type {
+	if s, ok := p.Symbols[key]; ok && s.Kind == symbol.Type {
+		return s.Type
+	}
+	ph := &vm.Type{Rtype: vm.AnyRtype, Name: short}
+	p.SymAdd(symbol.UnsetAddr, key, vm.NewValue(ph.Rtype), symbol.Type, ph)
+	return ph
 }
 
 func (p *Parser) rollbackSymTracker() {
