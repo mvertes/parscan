@@ -3,6 +3,7 @@ package stdlib
 import (
 	"container/heap"
 	"flag"
+	"fmt"
 	"io"
 	"reflect"
 	"sort"
@@ -15,22 +16,61 @@ import (
 // that delegates to Fn. At the native call boundary, the VM allocates a
 // bridge instance with Fn set to a closure that invokes the interpreted method.
 
-// BridgeError bridges the error interface method.
-type BridgeError struct{ Fn func() string }
+// formatBridgeDisplay implements fmt.Formatter for display bridges.
+// For %v/%s it writes the display string (from Error/String/GoString);
+// for other verbs (%d, %x, etc.) it formats the concrete value directly,
+// so named numeric types keep working with non-string format verbs.
+func formatBridgeDisplay(f fmt.State, verb rune, display func() string, val any) {
+	switch verb {
+	case 'v', 's':
+		_, _ = io.WriteString(f, display())
+	default:
+		_, _ = fmt.Fprintf(f, fmt.FormatString(f, verb), val)
+	}
+}
 
+// BridgeError bridges the error interface method.
+// Val holds the concrete value for non-string format verbs (%d, %x, etc.).
+type BridgeError struct {
+	Fn  func() string
+	Val any
+}
+
+// Error implements the error interface.
 func (b *BridgeError) Error() string { return b.Fn() }
 
+// Format implements fmt.Formatter.
+func (b *BridgeError) Format(f fmt.State, verb rune) {
+	formatBridgeDisplay(f, verb, b.Error, b.Val)
+}
+
 // BridgeGoString bridges the fmt.GoStringer interface method.
-type BridgeGoString struct{ Fn func() string }
+type BridgeGoString struct {
+	Fn  func() string
+	Val any
+}
 
 // GoString implements fmt.GoStringer.
 func (b *BridgeGoString) GoString() string { return b.Fn() }
 
+// Format implements fmt.Formatter.
+func (b *BridgeGoString) Format(f fmt.State, verb rune) {
+	formatBridgeDisplay(f, verb, b.GoString, b.Val)
+}
+
 // BridgeString bridges the fmt.Stringer interface method.
-type BridgeString struct{ Fn func() string }
+type BridgeString struct {
+	Fn  func() string
+	Val any
+}
 
 // String implements fmt.Stringer.
 func (b *BridgeString) String() string { return b.Fn() }
+
+// Format implements fmt.Formatter.
+func (b *BridgeString) Format(f fmt.State, verb rune) {
+	formatBridgeDisplay(f, verb, b.String, b.Val)
+}
 
 // BridgeMarshalJSON bridges the json.Marshaler interface method.
 type BridgeMarshalJSON struct{ Fn func() ([]byte, error) }

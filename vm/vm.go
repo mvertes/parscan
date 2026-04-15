@@ -3025,6 +3025,11 @@ func (m *Machine) wrapIface(ifc Iface, targetType reflect.Type) reflect.Value {
 		}
 		fnField := bridge.Elem().FieldByName("Fn")
 		fnField.Set(m.makeBridgeClosure(ifc, bm.method, fnField.Type()))
+		if valField := bridge.Elem().FieldByName("Val"); valField.IsValid() {
+			if rv := ifc.Val.Reflect(); rv.IsValid() {
+				valField.Set(reflect.ValueOf(rv.Interface()))
+			}
+		}
 		return bridge
 	}
 

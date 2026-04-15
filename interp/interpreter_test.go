@@ -1090,6 +1090,13 @@ func (n N) Double() int { return int(n) * 2 }
 var d Doubler = N(5)
 d.Double()`, res: "10"},
 
+		{n: "named_int_error_method", src: `
+import "fmt"
+type T int
+func (t T) Error() string { return fmt.Sprintf("v=%d", t) }
+var a T = 5
+a.Error()`, res: "v=5"},
+
 		{n: "reassign", src: `
 type Doubler interface { Double() int }
 type N int
