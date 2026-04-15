@@ -1100,6 +1100,7 @@ d.Double()`, res: "14"},
 
 		{n: "empty_iface", src: "type I interface {}; var x I; x", res: "<nil>"},
 		{n: "self_ref_iface", src: `type Edge interface { ReverseEdge() Edge }; println("ok")`, res: "ok"},
+		{n: "mutual_ref_iface", src: `type A interface { Foo() B }; type B interface { Bar() A }; println("ok")`, res: "ok"},
 
 		{n: "struct_recv", src: `
 type Getter interface { Get() int }
