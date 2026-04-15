@@ -134,7 +134,9 @@ const (
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
 	// The compiler computes: baseOp + Op(NumKindOffset[kind]).
 
-	AddStr // s1 s2 -- s ; s = s1 + s2 (string concatenation)
+	AddStr     // s1 s2 -- s ; s = s1 + s2 (string concatenation)
+	GreaterStr // s1 s2 -- cond ; cond = s1 > s2
+	LowerStr   // s1 s2 -- cond ; cond = s1 < s2
 
 	AddInt // n1 n2 -- sum
 	AddInt8
@@ -2046,6 +2048,14 @@ func (m *Machine) Run() (err error) {
 			mem[sp].num = negf[float64](mem[sp].num)
 			mem[sp].ref = zfloat64
 
+		// String Greater / Lower.
+		case GreaterStr:
+			mem[sp-1] = boolVal(mem[sp-1].ref.String() > mem[sp].ref.String())
+			sp--
+		case LowerStr:
+			mem[sp-1] = boolVal(mem[sp-1].ref.String() < mem[sp].ref.String())
+			sp--
+
 		// Per-type Greater.
 		case GreaterInt, GreaterInt8, GreaterInt16, GreaterInt32, GreaterInt64:
 			mem[sp-1] = boolVal(int64(mem[sp-1].num) > int64(mem[sp].num)) //nolint:gosec
@@ -2377,13 +2387,17 @@ func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 	}
 	rv := val.Reflect()
 	if !rv.IsValid() {
-		return rv
+		return reflect.Zero(funcType)
 	}
 	if rv.Kind() == reflect.Func {
 		if pf, ok := rv.Interface().(ParscanFunc); ok {
 			return pf.GF
 		}
 		return rv // already a proper Go func
+	}
+	// Already wrapped by WrapFunc — extract the Go func wrapper.
+	if pf, ok := val.ref.Interface().(ParscanFunc); ok {
+		return pf.GF
 	}
 	return m.makeCallFunc(val, funcType)
 }
@@ -2775,6 +2789,11 @@ func (m *Machine) assignSlot(dst *Value, src Value) {
 		if dst.ref.CanSet() {
 			s := src.ref
 			if !s.IsValid() {
+				s = reflect.Zero(dst.ref.Type())
+			} else if dst.ref.Kind() == reflect.Interface && isNilable(s) && s.IsNil() {
+				// Avoid creating a typed nil inside an interface{} slot.
+				// A typed nil (e.g. (func())(nil)) is not equal to untyped nil,
+				// which would break `f == nil` checks for func variables stored in interface{} slots.
 				s = reflect.Zero(dst.ref.Type())
 			}
 			dst.ref.Set(s)

@@ -330,6 +330,15 @@ func (c *Compiler) emitIfaceWrapAt(t goparser.Token, ifaceTyp, concreteTyp *vm.T
 	c.emit(t, vm.IfaceWrap, c.typeIndex(concreteTyp), depth)
 }
 
+// emitMapValueWrap emits WrapFunc for func-typed map values, or IfaceWrap otherwise.
+func (c *Compiler) emitMapValueWrap(t goparser.Token, elemTyp *vm.Type, vs *symbol.Symbol) {
+	if vs.Type != nil && vs.Type.Rtype.Kind() == reflect.Func {
+		c.emit(t, vm.WrapFunc, c.typeIndex(vs.Type))
+	} else {
+		c.emitIfaceWrap(t, elemTyp, vs.Type)
+	}
+}
+
 // emitTypeOrGlobal emits Fnew (or FnewE) for type symbols, or GetGlobal for values.
 func (c *Compiler) emitTypeOrGlobal(t goparser.Token, sym *symbol.Symbol, index int) {
 	if sym.Kind == symbol.Type {
@@ -591,17 +600,17 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			case lang.Greater:
 				c.emitComparisonOp(t, s2, typ, vm.GreaterInt,
 					vm.GreaterIntImm, vm.GreaterUintImm,
-					vm.GetLocalGreaterIntImm, vm.GetLocalGreaterUintImm, false)
+					vm.GetLocalGreaterIntImm, vm.GetLocalGreaterUintImm, vm.GreaterStr, false)
 			case lang.Less:
 				c.emitComparisonOp(t, s2, typ, vm.LowerInt,
 					vm.LowerIntImm, vm.LowerUintImm,
-					vm.GetLocalLowerIntImm, vm.GetLocalLowerUintImm, false)
+					vm.GetLocalLowerIntImm, vm.GetLocalLowerUintImm, vm.LowerStr, false)
 			case lang.GreaterEqual:
 				c.emitComparisonOp(t, s2, typ, vm.LowerInt,
-					vm.LowerIntImm, vm.LowerUintImm, 0, 0, true)
+					vm.LowerIntImm, vm.LowerUintImm, 0, 0, vm.LowerStr, true)
 			case lang.LessEqual:
 				c.emitComparisonOp(t, s2, typ, vm.GreaterInt,
-					vm.GreaterIntImm, vm.GreaterUintImm, 0, 0, true)
+					vm.GreaterIntImm, vm.GreaterUintImm, 0, 0, vm.GreaterStr, true)
 			}
 
 		case lang.NotEqual:
@@ -948,7 +957,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					if elemTyp.IsPtr() && vs.Kind == symbol.Type {
 						c.emit(t, vm.Addr)
 					}
-					c.emitIfaceWrap(t, elemTyp, vs.Type)
+					c.emitMapValueWrap(t, elemTyp, vs)
 					c.emit(t, vm.MapSet)
 				}
 
@@ -1003,7 +1012,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					if elemTyp.IsPtr() && vs.Kind == symbol.Type {
 						c.emit(t, vm.Addr)
 					}
-					c.emitIfaceWrap(t, elemTyp, vs.Type)
+					c.emitMapValueWrap(t, elemTyp, vs)
 					c.emit(t, vm.MapSet)
 				}
 			}
@@ -2105,7 +2114,14 @@ func (c *Compiler) emitArithmeticOp(t goparser.Token, right *symbol.Symbol, typ 
 	c.emit(t, numericOp(baseOp, typ))
 }
 
-func (c *Compiler) emitComparisonOp(t goparser.Token, s2 *symbol.Symbol, typ *vm.Type, baseOp, intImm, uintImm, fuseInt, fuseUint vm.Op, negate bool) {
+func (c *Compiler) emitComparisonOp(t goparser.Token, s2 *symbol.Symbol, typ *vm.Type, baseOp, intImm, uintImm, fuseInt, fuseUint, strOp vm.Op, negate bool) {
+	if strOp != 0 && typ != nil && typ.Rtype.Kind() == reflect.String {
+		c.emit(t, strOp)
+		if negate {
+			c.emit(t, vm.Not)
+		}
+		return
+	}
 	var immOp, fuseOp vm.Op
 	if isInt64Kind(typ) {
 		immOp, fuseOp = intImm, fuseInt

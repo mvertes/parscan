@@ -46,6 +46,7 @@ type Parser struct {
 	typeOnly      bool                 // when true, addSymVar is a no-op (Phase 1 signature-only parse)
 	inForInit     bool                 // true while parsing for-init or range clause (marks LoopVar)
 	funcDepth     int                  // nesting depth of function bodies (>0 means inside a function)
+	loopDepth     int                  // nesting depth of for loops (>0 means inside a loop)
 	buildCtx      *buildContext        // build constraint context for file filtering
 }
 
@@ -740,9 +741,9 @@ func (p *Parser) parseExprStmt(in Tokens) (Tokens, error) {
 	if err != nil {
 		return expr, err
 	}
-	// Only wrap function calls inside function bodies.
-	// At the top level (REPL), the last expression's value is the program result.
-	if len(expr) > 0 && expr[len(expr)-1].Tok == lang.Call && p.funcDepth > 0 {
+	// Discard unused return values from expression-statement calls inside function
+	// bodies or loops. At the top level outside loops, leave values for the REPL.
+	if len(expr) > 0 && expr[len(expr)-1].Tok == lang.Call && (p.funcDepth > 0 || p.loopDepth > 0) {
 		out := make(Tokens, 0, len(expr)+2)
 		out = append(out, newToken(lang.PopExpr, "", in[0].Pos, 0)) // mark start
 		out = append(out, expr...)
@@ -1202,7 +1203,9 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 		}
 	}
 	p.pushScope("b")
+	p.loopDepth++
 	body, err = p.Parse(in[len(in)-1].Block())
+	p.loopDepth--
 	p.popScope()
 	if err != nil {
 		return nil, err

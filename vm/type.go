@@ -462,11 +462,19 @@ func (v Value) IfaceVal() Iface {
 	return v.ref.Interface().(Iface)
 }
 
+// isNilable reports whether rv is of a nilable kind (func, ptr, map, slice, chan, interface).
+func isNilable(rv reflect.Value) bool {
+	switch rv.Kind() {
+	case reflect.Func, reflect.Ptr, reflect.Map, reflect.Slice, reflect.Chan, reflect.Interface:
+		return true
+	}
+	return false
+}
+
 // nilEqual reports whether v equals an untyped nil: true if v is a nil nilable
 // type, or if v is itself invalid (nil == nil).
 func nilEqual(v Value) bool {
-	switch v.ref.Kind() {
-	case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Chan, reflect.Func, reflect.Interface:
+	if isNilable(v.ref) {
 		return v.ref.IsNil()
 	}
 	return !v.ref.IsValid()
