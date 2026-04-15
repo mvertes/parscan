@@ -15,7 +15,7 @@ func TestNewStructTypeSetFields(t *testing.T) {
 			{Name: "V", Rtype: reflect.TypeOf(0)},
 			{Name: "Next", Rtype: ptrType.Rtype, ElemType: placeholder},
 		}
-		placeholder.SetFields(StructOf(fields, nil))
+		placeholder.SetFields(StructOf(fields, nil, nil))
 
 		// Verify Size is non-zero (int + pointer).
 		if placeholder.Rtype.Size() == 0 {
@@ -54,7 +54,7 @@ func TestNewStructTypeSetFields(t *testing.T) {
 			{Name: "X", Rtype: reflect.TypeOf(0)},
 			{Name: "Self", Rtype: ptrRtype, ElemType: placeholder},
 		}
-		placeholder.SetFields(StructOf(fields, nil))
+		placeholder.SetFields(StructOf(fields, nil, nil))
 
 		// The pointer type's Elem should now have the real struct fields.
 		elem := ptrRtype.Elem()
@@ -73,9 +73,9 @@ func TestNewStructTypeSetFields(t *testing.T) {
 			{Name: "A", Rtype: reflect.TypeOf(int64(0))},
 			{Name: "B", Rtype: reflect.TypeOf(true)},
 		}
-		placeholder.SetFields(StructOf(fields, nil))
+		placeholder.SetFields(StructOf(fields, nil, nil))
 
-		direct := StructOf(fields, nil)
+		direct := StructOf(fields, nil, nil)
 		if placeholder.Rtype.Size() != direct.Rtype.Size() {
 			t.Fatalf("size mismatch: %d vs %d", placeholder.Rtype.Size(), direct.Rtype.Size())
 		}
@@ -91,7 +91,7 @@ func TestNewStructTypeSetFields(t *testing.T) {
 			{Name: "Name", Rtype: reflect.TypeOf("")},
 			{Name: "Age", Rtype: reflect.TypeOf(0)},
 		}
-		placeholder.SetFields(StructOf(fields, nil))
+		placeholder.SetFields(StructOf(fields, nil, nil))
 
 		v := reflect.New(placeholder.Rtype).Elem()
 		v.Field(0).SetString("hello")
@@ -112,7 +112,7 @@ func TestNewStructTypeSetFields(t *testing.T) {
 			{Name: "X", Rtype: reflect.TypeOf(0)},
 			{Name: "Y", Rtype: reflect.TypeOf("")},
 		}
-		placeholder.SetFields(StructOf(fields, nil))
+		placeholder.SetFields(StructOf(fields, nil, nil))
 
 		s := placeholder.Rtype.String()
 		if s == "" {
@@ -122,7 +122,7 @@ func TestNewStructTypeSetFields(t *testing.T) {
 		outer := StructOf([]*Type{
 			{Name: "Inner", Rtype: placeholder.Rtype},
 			{Name: "Z", Rtype: reflect.TypeOf(0)},
-		}, nil)
+		}, nil, nil)
 		if outer.Rtype.NumField() != 2 {
 			t.Fatalf("expected 2 fields, got %d", outer.Rtype.NumField())
 		}
@@ -136,7 +136,7 @@ func TestNewStructTypeSetFields(t *testing.T) {
 			{Name: "V", Rtype: reflect.TypeOf(0)},
 			{Name: "Next", Rtype: ptrType.Rtype, ElemType: placeholder},
 		}
-		placeholder.SetFields(StructOf(fields, nil))
+		placeholder.SetFields(StructOf(fields, nil, nil))
 
 		// Create node2 = &Node{V: 2, Next: nil}
 		node2 := reflect.New(placeholder.Rtype)

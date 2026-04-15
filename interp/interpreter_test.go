@@ -677,6 +677,8 @@ func TestStruct(t *testing.T) {
 		{n: "iface_field_assign_fmt", src: `import "fmt"; type T struct{V interface{}}; t := T{}; t.V = 42; fmt.Sprint(t)`, res: "{42}"},
 		{n: "nil_assign_struct_field", src: `type node struct { parent *node; child []*node; key string }; root := &node{key: "root"}; root.child = nil; root.parent = nil; root.key`, res: "root"},
 
+		{n: "field_tag", src: `import "reflect"; type T struct { Name string ` + "`" + `json:"name"` + "`" + `}; f, _ := reflect.TypeOf(T{}).FieldByName("Name"); f.Tag.Get("json")`, res: "name"},
+
 		// struct with embedded type that has methods and additional fields
 		// (reflect.StructOf panics if Anonymous=true on a type with methods in a multi-field struct)
 		{n: "embed_with_methods", src: `

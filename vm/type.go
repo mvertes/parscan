@@ -542,8 +542,9 @@ func FuncOf(arg, ret []*Type, variadic bool) *Type {
 	return &Type{Rtype: reflect.FuncOf(a, r, variadic), Params: arg, Returns: ret}
 }
 
-// StructOf returns the struct type with the given field types and embedded field info.
-func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
+// StructOf returns the struct type with the given field types, embedded field info, and tags.
+// tags may be nil or shorter than fields; missing entries are treated as empty.
+func StructOf(fields []*Type, embedded []EmbeddedField, tags []string) *Type {
 	rf := make([]reflect.StructField, len(fields))
 	embSet := make(map[int]bool, len(embedded))
 	for _, e := range embedded {
@@ -561,6 +562,9 @@ func StructOf(fields []*Type, embedded []EmbeddedField) *Type {
 	for i, f := range fields {
 		rf[i].Name = f.Name
 		rf[i].PkgPath = f.PkgPath
+		if i < len(tags) {
+			rf[i].Tag = reflect.StructTag(tags[i])
+		}
 		// Interface fields use interface{} so vm.Iface values can be stored via reflect.Set.
 		if f.Rtype.Kind() == reflect.Interface {
 			rf[i].Type = AnyRtype

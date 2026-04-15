@@ -555,18 +555,22 @@ func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
 		return nil, err
 	}
 	var fields []*vm.Type
+	var tags []string
 	var embedded []vm.EmbeddedField
 	for _, lt := range fieldToks.Split(lang.Semicolon) {
 		if len(lt) == 0 {
 			continue
 		}
 		// Strip trailing struct tag (a raw string literal), e.g. `json:"name"`.
+		var tag string
 		if len(lt) >= 2 && lt[len(lt)-1].Tok == lang.String {
+			tag = lt[len(lt)-1].Block()
 			lt = lt[:len(lt)-1]
 		}
 		if f, origType := p.parseEmbeddedField(lt); f != nil {
 			embedded = append(embedded, vm.EmbeddedField{FieldIdx: len(fields), Type: origType})
 			fields = append(fields, f)
+			tags = append(tags, tag)
 			continue
 		}
 		types, names, _, err := p.parseParamTypes(lt, parseTypeType)
@@ -602,7 +606,8 @@ func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
 			ft.Name = name
 			ft.PkgPath = pkgPath
 			fields = append(fields, &ft)
+			tags = append(tags, tag)
 		}
 	}
-	return vm.StructOf(fields, embedded), nil
+	return vm.StructOf(fields, embedded, tags), nil
 }
