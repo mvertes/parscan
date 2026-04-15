@@ -834,6 +834,16 @@ func f(e Transformer) string { return e.Reset() }
 e := Encoder{Transformer: nop{}}
 f(e)`, res: "ok"},
 
+		{n: "struct_tag", src: `
+type Users []string
+type Config struct {
+	Users        ` + "`" + `json:"users,omitempty"` + "`" + `
+	UsersFile    string ` + "`" + `json:"usersFile,omitempty"` + "`" + `
+	RemoveHeader bool   ` + "`" + `json:"removeHeader,omitempty"` + "`" + `
+}
+c := &Config{}
+c.RemoveHeader`, res: "false"},
+
 		// Package-qualified embedded field with promoted native method.
 		{n: "pkg_embed", src: `import "time"
 type MyTime struct { time.Time; index int }

@@ -560,6 +560,10 @@ func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
 		if len(lt) == 0 {
 			continue
 		}
+		// Strip trailing struct tag (a raw string literal), e.g. `json:"name"`.
+		if len(lt) >= 2 && lt[len(lt)-1].Tok == lang.String {
+			lt = lt[:len(lt)-1]
+		}
 		if f, origType := p.parseEmbeddedField(lt); f != nil {
 			embedded = append(embedded, vm.EmbeddedField{FieldIdx: len(fields), Type: origType})
 			fields = append(fields, f)
