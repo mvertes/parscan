@@ -40,8 +40,6 @@ type ErrUndefined struct{ Name string }
 
 func (e ErrUndefined) Error() string { return "undefined: " + e.Name }
 
-// resolveEllipsisArray resolves [...]T by counting elements in the following BraceBlock.
-// For keyed elements (e.g. {9: "hello"}), the size is max(key) + 1.
 func (p *Parser) resolveEllipsisArray(elemTyp *vm.Type, toks Tokens, braceIdx int) (*vm.Type, error) {
 	if braceIdx >= len(toks) || toks[braceIdx].Tok != lang.BraceBlock {
 		return nil, errors.New("[...] requires a composite literal")
@@ -73,10 +71,6 @@ func (p *Parser) resolveEllipsisArray(elemTyp *vm.Type, toks Tokens, braceIdx in
 	return vm.ArrayOf(idx, elemTyp), nil
 }
 
-// parseTypeExpr returns the expression type from its tokens, the number of consumed tokens
-// for the type and the parse error.
-// resolvePkgType resolves a type name from a package symbol.
-// It handles binary package stubs and pointer-wrapped type values.
 func (p *Parser) resolvePkgType(s *symbol.Symbol, name string) (*vm.Type, error) {
 	pkg, ok := p.Packages[s.PkgPath]
 	if !ok {
@@ -399,10 +393,6 @@ func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag t
 	}
 }
 
-// parseFuncParams parses function input and output parameter lists.
-// argBlock is the ParenBlock token containing input params; out contains
-// output param tokens (may be empty, a single ParenBlock, or bare tokens).
-// Returns the function type and raw parameter names.
 func (p *Parser) parseFuncParams(argBlock Token, out Tokens) (typ *vm.Type, inNames, outNames []string, err error) {
 	iargs, err := p.ScanBlock(argBlock.Token, false)
 	if err != nil {
@@ -427,9 +417,6 @@ func (p *Parser) parseFuncParams(argBlock Token, out Tokens) (typ *vm.Type, inNa
 	return vm.FuncOf(arg, ret, isVariadic), baseNames(argNames), baseNames(retNames), nil
 }
 
-// parseFuncSig parses a named function signature (receiver must be pre-stripped)
-// and returns its type along with raw parameter names. Suppresses addSymVar
-// so Phase 1 does not register param symbols.
 func (p *Parser) parseFuncSig(in Tokens) (typ *vm.Type, inNames, outNames []string, err error) {
 	if len(in) == 0 || in[0].Tok != lang.Func {
 		return nil, nil, nil, ErrFuncType
@@ -450,8 +437,6 @@ func (p *Parser) parseFuncSig(in Tokens) (typ *vm.Type, inNames, outNames []stri
 	return
 }
 
-// baseNames extracts raw (unscoped) names from scoped parameter names.
-// Returns nil if all names are empty (unnamed parameters).
 func baseNames(scoped []string) []string {
 	var raw []string
 	for i, s := range scoped {
@@ -470,9 +455,6 @@ func baseNames(scoped []string) []string {
 	return raw
 }
 
-// parseEmbeddedField checks if lt matches an embedded (anonymous) struct field pattern
-// (`TypeName`, `*TypeName`, `pkg.TypeName`, or `*pkg.TypeName`).
-// Returns the field type and the symbol-table type, or nil, nil.
 func (p *Parser) parseEmbeddedField(lt Tokens) (fieldType, origType *vm.Type) {
 	isPtr := false
 	toks := lt
@@ -514,7 +496,6 @@ func (p *Parser) parseEmbeddedField(lt Tokens) (fieldType, origType *vm.Type) {
 	return &ft, s.Type
 }
 
-// hasFirstParam returns true if the first token of a list is a parameter name.
 func (p *Parser) hasFirstParam(in Tokens) bool {
 	if in[0].Tok != lang.Ident {
 		return false
@@ -543,8 +524,6 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 	return false
 }
 
-// parseStructType parses a struct type expression: struct { fields... }.
-// in[0] must be lang.Struct and in[1] must be lang.BraceBlock.
 func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
 	if len(in) < 2 || in[1].Tok != lang.BraceBlock {
 		return nil, fmt.Errorf("%w: %v", ErrSyntax, in)

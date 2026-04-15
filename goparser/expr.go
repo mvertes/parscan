@@ -221,10 +221,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 					}
 					return out, ErrUndefined{Name: name}
 				}
-				typ := sym.Type.Elem()
-				ctype = typ.String()
-				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
-				out = append(out, newIdent(ctype, t.Pos))
+				ctype = p.registerType(sym.Type.Elem(), t.Pos, &out)
 			}
 			toks, sliceLen, err := p.parseComposite(t.Block(), ctype)
 			out = append(out, toks...)
@@ -243,9 +240,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				if err != nil {
 					return out, err
 				}
-				ctype = elemTyp.String()
-				p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(elemTyp.Rtype), symbol.Type, elemTyp)
-				out = append(out, newIdent(ctype, t.Pos))
+				ctype = p.registerType(elemTyp, t.Pos, &out)
 				i += n - 1
 				break
 			}
@@ -263,33 +258,24 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			}
 
 		case lang.Interface, lang.Struct:
-			typ, _, err := p.parseTypeExpr(in[i : i+2])
-			if err != nil {
+			var n int
+			if ctype, n, err = p.addTypeExpr(in[i:i+2], &out); err != nil {
 				return out, err
 			}
-			ctype = typ.String()
-			p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
-			out = append(out, newIdent(ctype, t.Pos))
-			i++
+			i += n - 1
 
 		case lang.Map:
-			typ, n, err := p.parseTypeExpr(in[i:])
-			if err != nil {
+			var n int
+			if ctype, n, err = p.addTypeExpr(in[i:], &out); err != nil {
 				return out, err
 			}
-			ctype = typ.String()
-			p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
-			out = append(out, newIdent(ctype, t.Pos))
 			i += n - 1
 
 		case lang.Chan:
-			typ, n, err := p.parseTypeExpr(in[i:])
-			if err != nil {
+			var n int
+			if ctype, n, err = p.addTypeExpr(in[i:], &out); err != nil {
 				return out, err
 			}
-			ctype = typ.String()
-			p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
-			out = append(out, newIdent(ctype, t.Pos))
 			i += n - 1
 
 		case lang.Arrow:
@@ -308,6 +294,25 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 		out = append(out, popop())
 	}
 	return out, err
+}
+
+// registerType registers typ in the symbol table and appends an Ident token to out.
+// It returns the type name for use as composite type context.
+func (p *Parser) registerType(typ *vm.Type, pos int, out *Tokens) string {
+	ctype := typ.String()
+	p.SymAdd(symbol.UnsetAddr, ctype, vm.NewValue(typ.Rtype), symbol.Type, typ)
+	*out = append(*out, newIdent(ctype, pos))
+	return ctype
+}
+
+// addTypeExpr parses a type expression, registers it in the symbol table,
+// and appends the corresponding Ident token to out.
+func (p *Parser) addTypeExpr(in Tokens, out *Tokens) (string, int, error) {
+	typ, n, err := p.parseTypeExpr(in)
+	if err != nil {
+		return "", 0, err
+	}
+	return p.registerType(typ, in[0].Pos, out), n, nil
 }
 
 func (p *Parser) parseComposite(s, typ string) (Tokens, int, error) {

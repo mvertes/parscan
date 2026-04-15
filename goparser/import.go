@@ -210,8 +210,6 @@ func (p *Parser) preRegisterTypes(decls []Tokens) {
 	}
 }
 
-// registerStructPlaceholder returns an existing or new struct placeholder.
-// key is the symbol table key (possibly scoped); short is the unqualified type name.
 func (p *Parser) registerStructPlaceholder(key, short string) *vm.Type {
 	if s, ok := p.Symbols[key]; ok && s.Kind == symbol.Type {
 		return s.Type
@@ -222,8 +220,6 @@ func (p *Parser) registerStructPlaceholder(key, short string) *vm.Type {
 	return ph
 }
 
-// registerInterfacePlaceholder returns an existing or new interface placeholder.
-// key is the symbol table key (possibly scoped); short is the unqualified type name.
 func (p *Parser) registerInterfacePlaceholder(key, short string) *vm.Type {
 	if s, ok := p.Symbols[key]; ok && s.Kind == symbol.Type {
 		return s.Type

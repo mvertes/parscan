@@ -192,6 +192,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			ctyp = &vm.Type{Name: rt.Name(), Rtype: rt}
 		}
 		return cv, ctyp, 2, nil // consumes Ident (pkg) + Period
+
 	case id.IsBinaryOp():
 		op2, typ2, l2, err := p.evalConstExpr(in[:l])
 		if err != nil {
@@ -228,6 +229,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			tok = token.QUO_ASSIGN // Force int result, see https://pkg.go.dev/go/constant#BinaryOp
 		}
 		return constant.BinaryOp(op1, tok, op2), resTyp, length, err
+
 	case id.IsUnaryOp():
 		op1, typ1, l1, err := p.evalConstExpr(in[:l])
 		if err != nil {
@@ -244,12 +246,14 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			cv = constant.MakeUint64(^v & mask)
 		}
 		return cv, typ1, 1 + l1, err
+
 	case id.IsLiteral():
 		tok := gotok[id]
 		if id == lang.String && len(t.Str) > 0 && t.Str[0] == '\'' {
 			tok = token.CHAR
 		}
 		return constant.MakeFromLiteral(t.Str, tok, 0), nil, 1, err
+
 	case id == lang.Ident:
 		s, _, ok := p.Symbols.Get(t.Str, p.scope)
 		if !ok {
@@ -262,6 +266,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			return nil, nil, 0, ErrUndefined{t.Str}
 		}
 		return s.Cval, s.Type, 1, err
+
 	case id == lang.Call:
 		narg := t.Arg[0].(int)
 		// len/cap of an array or *array variable (bare or field access) is constant per Go spec.
@@ -330,6 +335,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			return constConvert(args[0], s.Type), s.Type, totalLen, nil
 		}
 		return nil, nil, 0, fmt.Errorf("unsupported constant call: %s", fname)
+
 	default:
 		return nil, nil, 0, errors.New("invalid constant expression")
 	}
