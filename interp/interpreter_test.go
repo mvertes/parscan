@@ -937,6 +937,15 @@ type S struct { X int }
 func (s S) GetX() int { return s.X }
 a := []S{S{7}, S{9}}
 a[0].GetX()`, res: "7"},
+
+		{n: "field_chain_method", src: `
+type A struct { B string; C D }
+func (a *A) Test() string { return "test" }
+type D struct { E *A }
+a := &A{B: "b"}
+d := D{E: a}
+a.C = d
+a.C.E.Test()`, res: "test"},
 	})
 }
 

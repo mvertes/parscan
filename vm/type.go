@@ -614,9 +614,14 @@ func (t *Type) FieldLookup(name string) ([]int, *Type) {
 			continue
 		}
 		if i < len(t.Fields) {
-			return f.Index, t.Fields[i]
+			// Return a shallow copy with the type name (not the field name that
+			// Fields[i].Name holds for StructOf), so that method lookup works.
+			ft := *t.Fields[i]
+			ft.Name = f.Type.Name()
+			ft.PkgPath = f.PkgPath
+			return f.Index, &ft
 		}
-		return f.Index, &Type{Name: f.Name, PkgPath: f.PkgPath, Rtype: f.Type}
+		return f.Index, &Type{Name: f.Type.Name(), PkgPath: f.PkgPath, Rtype: f.Type}
 	}
 	return t.embeddedFieldLookup(name)
 }
@@ -639,7 +644,7 @@ func (t *Type) embeddedFieldLookup(name string) ([]int, *Type) {
 					return idx, ft
 				}
 			}
-			return idx, &Type{Name: sf.Name, PkgPath: sf.PkgPath, Rtype: sf.Type}
+			return idx, &Type{Name: sf.Type.Name(), PkgPath: sf.PkgPath, Rtype: sf.Type}
 		}
 	}
 	return nil, nil
