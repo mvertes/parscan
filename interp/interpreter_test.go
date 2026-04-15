@@ -2098,6 +2098,9 @@ func TestConvert(t *testing.T) {
 		{n: "math_min_int", src: `import "math"; math.Min(3, 5)`, res: "3"},
 		{n: "math_copysign_int", src: `import "math"; math.Copysign(1, -5)`, res: "-1"},
 
+		// interface{} type conversion.
+		{n: "iface_convert", src: `import "fmt"; v := interface{}(0); fmt.Sprint(v)`, res: "0"},
+
 		// Pointer-to-array type conversion: (*[N]T)(ptr).
 		{n: "ptr_array_conv", src: `b := [4]byte{1, 2, 3, 4}; p := (*[4]byte)(&b); p[2]`, res: "3"},
 		{n: "ptr_array_conv_named", src: `

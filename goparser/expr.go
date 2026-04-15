@@ -263,7 +263,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				ops = append(ops, newIndex(t.Pos))
 			}
 
-		case lang.Struct:
+		case lang.Interface, lang.Struct:
 			typ, _, err := p.parseTypeExpr(in[i : i+2])
 			if err != nil {
 				return out, err
