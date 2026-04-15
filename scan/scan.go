@@ -302,7 +302,6 @@ func (sc *Scanner) getOp(src string) (s string, isOp bool) {
 }
 
 func (sc *Scanner) getNum(src string) (s string, tok lang.Token) {
-	// TODO: handle hexa, binary, octal and eng notations.
 	tok = lang.Int
 	hasDot := false
 	hasExp := false
@@ -327,8 +326,10 @@ func (sc *Scanner) getNum(src string) (s string, tok lang.Token) {
 				continue
 			}
 		case r == '+' || r == '-':
-			// Only valid right after 'e'/'E', handled above via continue.
-			return s, tok
+			// Valid only right after 'e'/'E' exponent prefix.
+			if i < 2 || (src[i-1] != 'e' && src[i-1] != 'E') {
+				return s, tok
+			}
 		case r == 'x' || r == 'X' || r == 'o' || r == 'O':
 			if i != 1 || src[0] != '0' {
 				return src[:i], tok
