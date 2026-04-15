@@ -88,6 +88,10 @@ def"`, err: "1:1: block not terminated"},
 	{n: "#35", src: "1e10", tok: `Float"1e10" Semicolon `},
 	{n: "#36", src: "2.5E-3", tok: `Float"2.5E-3" Semicolon `},
 	{n: "#37", src: "1.0e+7", tok: `Float"1.0e+7" Semicolon `},
+	{n: "#37a", src: ".5", tok: `Float".5" Semicolon `},
+	{n: "#37b", src: ".0312", tok: `Float".0312" Semicolon `},
+	{n: "#37c", src: ".5e2", tok: `Float".5e2" Semicolon `},
+	{n: "#37d", src: ".5 + 1", tok: `Float".5" Add Int"1" Semicolon `},
 
 	// Numbers: hexadecimal.
 	{n: "#38", src: "0xff", tok: `Int"0xff" Semicolon `},

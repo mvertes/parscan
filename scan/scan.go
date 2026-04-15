@@ -212,6 +212,11 @@ func (sc *Scanner) Next(src string) (tok Token, err error) {
 			}
 			return Token{Tok: sc.blockTok[r], Pos: p + i, Str: b, Beg: 1, End: 1}, err
 		case sc.isOp(r):
+			// A dot followed by a digit starts a float literal (e.g. .5, .0312).
+			if r == '.' && i+1 < len(src) && isNum(rune(src[i+1])) {
+				s, tok := sc.getNum(src[i:])
+				return Token{Tok: tok, Pos: p + i, Str: s}, nil
+			}
 			op, isOp := sc.getOp(src[i:])
 			if isOp {
 				var t lang.Token
@@ -305,6 +310,13 @@ func (sc *Scanner) getNum(src string) (s string, tok lang.Token) {
 	tok = lang.Int
 	hasDot := false
 	hasExp := false
+
+	// Handle leading dot (e.g. .5, .0312).
+	if len(src) > 0 && src[0] == '.' {
+		hasDot = true
+		tok = lang.Float
+	}
+
 	for i, r := range src {
 		switch {
 		case isNum(r):
@@ -317,6 +329,8 @@ func (sc *Scanner) getNum(src string) (s string, tok lang.Token) {
 			} else {
 				return src[:i], tok
 			}
+		case r == '.' && i == 0 && hasDot:
+			// Leading dot already accounted for.
 		case (r == 'e' || r == 'E') && !hasExp:
 			hasExp = true
 			tok = lang.Float
