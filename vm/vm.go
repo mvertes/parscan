@@ -918,7 +918,17 @@ func (m *Machine) Run() (err error) {
 						rv = rv.Elem()
 					}
 				}
-				if !isNil && (rv.Type().AssignableTo(dstTyp.Rtype) || dstTyp.NativeImplements(rv.Type())) {
+				matched := !isNil && (rv.Type().AssignableTo(dstTyp.Rtype) || dstTyp.NativeImplements(rv.Type()))
+				// If the value is a bridge wrapper (e.g. *BridgeError wrapping an
+				// interpreted value), try unwrapping to recover the original value.
+				if !matched && !isNil {
+					if orig := unbridgeValue(rv); orig.IsValid() &&
+						(orig.Type().AssignableTo(dstTyp.Rtype) || dstTyp.NativeImplements(orig.Type())) {
+						rv = orig
+						matched = true
+					}
+				}
+				if matched {
 					mem[sp] = FromReflect(rv)
 					if okForm {
 						if sp+1 >= len(mem) {

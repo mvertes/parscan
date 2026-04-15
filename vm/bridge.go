@@ -2,6 +2,24 @@ package vm
 
 import "reflect"
 
+// ValBridgeTypes is the set of bridge pointer types that carry a Val field
+// holding the original concrete value. Populated at init time by stdlib.
+var ValBridgeTypes = map[reflect.Type]bool{}
+
+// unbridgeValue checks whether rv is a known bridge wrapper and returns the
+// original concrete value stored in its Val field. This is used during type
+// assertions to look through bridge wrappers created at the native boundary.
+func unbridgeValue(rv reflect.Value) reflect.Value {
+	if rv.Kind() != reflect.Pointer || rv.IsNil() || !ValBridgeTypes[rv.Type()] {
+		return reflect.Value{}
+	}
+	valField := rv.Elem().FieldByName("Val")
+	if !valField.IsValid() || valField.IsNil() {
+		return reflect.Value{}
+	}
+	return reflect.ValueOf(valField.Interface())
+}
+
 // Bridges maps interface method names to their bridge pointer types.
 // Each bridge type is a struct with a Fn field and a pointer-receiver method
 // that delegates to Fn. Populated at init time by stdlib (or any compiled

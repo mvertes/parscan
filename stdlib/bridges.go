@@ -201,6 +201,10 @@ func init() {
 	vm.DisplayBridges["String"] = true
 	vm.DisplayBridges["UnmarshalJSON"] = true
 
+	vm.ValBridgeTypes[reflect.TypeOf((*BridgeError)(nil))] = true
+	vm.ValBridgeTypes[reflect.TypeOf((*BridgeGoString)(nil))] = true
+	vm.ValBridgeTypes[reflect.TypeOf((*BridgeString)(nil))] = true
+
 	vm.InterfaceBridges[reflect.TypeOf((*sort.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeSortInterface)(nil))
 	vm.InterfaceBridges[reflect.TypeOf((*heap.Interface)(nil)).Elem()] = reflect.TypeOf((*BridgeHeapInterface)(nil))
 	vm.InterfaceBridges[reflect.TypeOf((*flag.Value)(nil)).Elem()] = reflect.TypeOf((*BridgeFlagValue)(nil))
