@@ -72,8 +72,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			if i+1 < lin && in[i+1].Tok == lang.ParenBlock {
 				// Type assertion: x.(T).
 				flushops(p.precedence(t))
-				block := in[i+1].Block()
-				btoks, err := p.Scan(block, false)
+				btoks, err := p.ScanBlock(in[i+1].Token, false)
 				if err != nil {
 					return out, err
 				}
@@ -179,7 +178,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			} else {
 				flushops(p.precedence(newCall(0)))
 				// func call: ensure that the func token in on the top of the stack, after args.
-				bToks, _ := p.Scan(t.Block(), false)
+				bToks, _ := p.ScanBlock(t.Token, false)
 				spread := len(bToks) > 0 && bToks[len(bToks)-1].Tok == lang.Ellipsis
 				narg := 0
 				for _, sub := range bToks.Split(lang.Comma) {
@@ -343,7 +342,7 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, int, error) {
 }
 
 func (p *Parser) parseBlock(t Token, typ string) (result Tokens, err error) {
-	tokens, err := p.Scan(t.Block(), false)
+	tokens, err := p.ScanBlock(t.Token, false)
 	if err != nil {
 		return tokens, err
 	}

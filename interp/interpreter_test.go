@@ -1532,7 +1532,7 @@ ok`, res: "false"},
 
 		{
 			n: "nil_panic", src: `var i any; i.(int)`,
-			err: "panic: interface conversion: interface is nil, not int",
+			err: "interface conversion: interface {} is nil, not int",
 		},
 
 		{n: "nil_recover", src: `
@@ -1547,7 +1547,7 @@ r`, res: "1"},
 
 		{
 			n: "wrong_type_panic", src: `var i any = "hello"; i.(int)`,
-			err: "panic: interface conversion: interface value is string, not int",
+			err: "interface conversion: interface {} is string, not int",
 		},
 
 		{n: "wrong_type_recover", src: `

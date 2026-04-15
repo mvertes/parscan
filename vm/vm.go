@@ -401,6 +401,18 @@ func (m *Machine) SetDebugIO(in io.Reader, out io.Writer) {
 	m.debugOut = out
 }
 
+// posPrefix returns a "file:line:col: " string for the given source position,
+// or "" if debug info is unavailable.
+func (m *Machine) posPrefix(pos Pos) string {
+	if m.debugInfoFn == nil {
+		return ""
+	}
+	if loc := m.debugInfoFn().PosToLine(pos); loc != "" {
+		return loc + ": "
+	}
+	return ""
+}
+
 const heapSavedFlag = uint64(1) << 63
 
 // CallSpreadFlag is set in the B operand of Call to indicate a spread call
@@ -898,7 +910,9 @@ func (m *Machine) Run() (err error) {
 				// Native interface value: use reflect for type assertion.
 				rv := ifc.Reflect()
 				isNil := !rv.IsValid()
+				ifaceTyp := AnyRtype
 				if !isNil && rv.Kind() == reflect.Interface {
+					ifaceTyp = rv.Type()
 					isNil = rv.IsNil()
 					if !isNil {
 						rv = rv.Elem()
@@ -916,12 +930,18 @@ func (m *Machine) Run() (err error) {
 					break
 				}
 				if !okForm {
-					msg := fmt.Sprintf("interface conversion: interface is nil, not %s", dstTyp)
-					if !isNil {
-						msg = fmt.Sprintf("interface conversion: interface value is %s, not %s", rv.Type(), dstTyp)
+					var msg string
+					switch {
+					case isNil:
+						msg = fmt.Sprintf("interface conversion: %s is nil, not %s", ifaceTyp, dstTyp)
+					case dstTyp.IsInterface():
+						missing := dstTyp.MissingMethod(rv.Type())
+						msg = fmt.Sprintf("interface conversion: %s is not %s: missing method %s", rv.Type(), dstTyp, missing)
+					default:
+						msg = fmt.Sprintf("interface conversion: %s is %s, not %s", ifaceTyp, rv.Type(), dstTyp)
 					}
 					m.panicking = true
-					m.panicVal = Value{ref: reflect.ValueOf(msg)}
+					m.panicVal = Value{ref: reflect.ValueOf(m.posPrefix(c.Pos) + msg)}
 					sp--
 					ip = panicAddr
 					continue
@@ -960,8 +980,15 @@ func (m *Machine) Run() (err error) {
 				}
 			} else {
 				if !okForm {
+					var msg string
+					if dstIsIface {
+						missing := dstTyp.MissingMethod(concrete.Typ.Rtype)
+						msg = fmt.Sprintf("interface conversion: %s is not %s: missing method %s", concrete.Typ, dstTyp, missing)
+					} else {
+						msg = fmt.Sprintf("interface conversion: %s is %s, not %s", AnyRtype, concrete.Typ, dstTyp)
+					}
 					m.panicking = true
-					m.panicVal = Value{ref: reflect.ValueOf(fmt.Sprintf("interface conversion: interface value is %s, not %s", concrete.Typ, dstTyp))}
+					m.panicVal = Value{ref: reflect.ValueOf(m.posPrefix(c.Pos) + msg)}
 					sp--
 					ip = panicAddr
 					continue

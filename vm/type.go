@@ -123,21 +123,38 @@ func (t *Type) Implements(iface *Type) bool {
 // required by interface type t. This is used for type assertions when the
 // concrete value is a native Go type (not a parscan-interpreted type).
 func (t *Type) NativeImplements(rt reflect.Type) bool {
-	if len(t.IfaceMethods) == 0 {
-		return false
-	}
+	return t.MissingMethod(rt) == ""
+}
+
+// MissingMethod returns the name of the first method required by interface
+// type t that native reflect type rt does not have. Returns "" if all methods
+// are present or t has no IfaceMethods.
+func (t *Type) MissingMethod(rt reflect.Type) string {
+	t.EnsureIfaceMethods()
 	for _, im := range t.IfaceMethods {
 		if _, ok := rt.MethodByName(im.Name); !ok {
-			return false
+			return im.Name
 		}
 	}
-	return true
+	// Fallback: check methods declared on Rtype (for purely native interfaces).
+	for i := range t.Rtype.NumMethod() {
+		m := t.Rtype.Method(i)
+		if _, ok := rt.MethodByName(m.Name); !ok {
+			return m.Name
+		}
+	}
+	return ""
 }
 
 func (t *Type) String() string {
 	if t.Name != "" {
 		if t.PkgPath != "" {
 			return t.PkgPath + "." + t.Name
+		}
+		// For native types without an explicit PkgPath, use the reflect
+		// representation which includes the package qualifier (e.g. "http.Pusher").
+		if t.Rtype.PkgPath() != "" {
+			return t.Rtype.String()
 		}
 		return t.Name
 	}

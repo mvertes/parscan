@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/mvertes/parscan/lang"
 )
@@ -122,8 +123,9 @@ func isNum(r rune) bool { return '0' <= r && r <= '9' }
 // Scan performs a lexical analysis on src and returns tokens or an error.
 func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 	tokens = make([]Token, 0, len(src)/4+1)
-	offset := 0
-	s := strings.TrimSpace(src)
+	s := strings.TrimLeftFunc(src, unicode.IsSpace)
+	offset := len(src) - len(s)
+	s = strings.TrimRightFunc(s, unicode.IsSpace)
 	for len(s) > 0 {
 		t, err := sc.Next(s)
 		if err != nil {

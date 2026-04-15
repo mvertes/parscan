@@ -99,7 +99,11 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 		}
 	} else {
 		decls, err = p.scanDecls(src)
-		p.PosBase = p.Sources.Add(name, src)
+		srcName := name
+		if len(name) >= 2 && name[1] == ':' && (name[0] == 'f' || name[0] == 'm') {
+			srcName = name[2:]
+		}
+		p.PosBase = p.Sources.Add(srcName, src)
 		if err != nil {
 			return out, err
 		}
@@ -176,7 +180,7 @@ func (p *Parser) preRegisterTypes(decls []Tokens) {
 		}
 		if decl[1].Tok == lang.ParenBlock {
 			// Grouped: type ( A struct{...}; B struct{...} )
-			inner, err := p.Scan(decl[1].Block(), false)
+			inner, err := p.ScanBlock(decl[1].Token, false)
 			if err != nil {
 				continue
 			}

@@ -193,19 +193,42 @@ func NewParser(spec *lang.Spec, noPkg bool) *Parser {
 
 // Scan performs lexical analysis on s and returns Tokens or an error.
 func (p *Parser) Scan(s string, endSemi bool) (out Tokens, err error) {
+	return p.scanAt(0, s, endSemi)
+}
+
+// scanAt is like Scan but adds basePos to every token position, so that
+// block-relative positions become absolute within the source file.
+func (p *Parser) scanAt(basePos int, s string, endSemi bool) (out Tokens, err error) {
 	toks, err := p.Scanner.Scan(s, endSemi)
 	if err != nil {
 		return out, err
 	}
 	for _, t := range toks {
+		t.Pos += basePos
 		out = append(out, Token{Token: t})
 	}
 	return out, err
 }
 
+// ScanBlock scans the inner content of a block token, adjusting positions
+// so they are absolute within the source file rather than block-relative.
+func (p *Parser) ScanBlock(bt scan.Token, endSemi bool) (Tokens, error) {
+	return p.scanAt(bt.Pos+bt.Beg, bt.Block(), endSemi)
+}
+
 // Parse performs syntax analysis on s and returns Tokens or an error.
 func (p *Parser) Parse(src string) (out Tokens, err error) {
-	in, err := p.Scan(src, true)
+	return p.parseAt(0, src)
+}
+
+// ParseBlock parses the inner content of a block token with absolute positions.
+func (p *Parser) ParseBlock(bt scan.Token) (Tokens, error) {
+	return p.parseAt(bt.Pos+bt.Beg, bt.Block())
+}
+
+// parseAt is like Parse but adds basePos to every token position.
+func (p *Parser) parseAt(basePos int, src string) (out Tokens, err error) {
+	in, err := p.scanAt(basePos, src, true)
 	if err != nil {
 		return out, err
 	}
@@ -327,7 +350,7 @@ func (p *Parser) varLines(toks Tokens) ([]Tokens, error) {
 	if toks[1].Tok != lang.ParenBlock {
 		return []Tokens{toks[1:]}, nil
 	}
-	inner, err := p.Scan(toks[1].Block(), false)
+	inner, err := p.ScanBlock(toks[1].Token, false)
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +434,7 @@ func (p *Parser) collectIdents(toks Tokens, nameSet map[string]int, out map[int]
 				out[dep] = true
 			}
 		} else if t.Tok.IsBlock() {
-			if inner, err := p.Scan(t.Block(), false); err == nil {
+			if inner, err := p.ScanBlock(t.Token, false); err == nil {
 				p.collectIdents(inner, nameSet, out)
 			}
 		}
@@ -499,7 +522,7 @@ func (p *Parser) registerFunc(toks Tokens) error {
 			}
 		}
 		// Method: func (recv) Name(params) rettype { ... }
-		recvr, err := p.Scan(toks[1].Block(), false)
+		recvr, err := p.ScanBlock(toks[1].Token, false)
 		if err != nil {
 			return nil
 		}
@@ -692,7 +715,7 @@ func (p *Parser) parseStmt(in Tokens) (out Tokens, err error) {
 		p.labelCount[p.scope]++
 		p.pushScope(label)
 		defer p.popScope()
-		return p.Parse(in[0].Block())
+		return p.ParseBlock(in[0].Token)
 	case lang.Mul, lang.ParenBlock:
 		if i := in.Index(lang.Assign); i > 0 {
 			return p.parseAssign(in, i)
@@ -1204,7 +1227,7 @@ func (p *Parser) parseFor(in Tokens) (out Tokens, err error) {
 	}
 	p.pushScope("b")
 	p.loopDepth++
-	body, err = p.Parse(in[len(in)-1].Block())
+	body, err = p.ParseBlock(in[len(in)-1].Token)
 	p.loopDepth--
 	p.popScope()
 	if err != nil {
@@ -1271,7 +1294,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 				}
 			}
 			// Method: derive fname from receiver type name.
-			recvr, scanErr := p.Scan(in[1].Block(), false)
+			recvr, scanErr := p.ScanBlock(in[1].Token, false)
 			if scanErr != nil {
 				return nil, scanErr
 			}
@@ -1357,7 +1380,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	p.function = s
 
 	p.funcDepth++
-	toks, err := p.Parse(in[bi].Block())
+	toks, err := p.ParseBlock(in[bi].Token)
 	p.funcDepth--
 	if err != nil {
 		return out, err
@@ -1440,7 +1463,7 @@ func (p *Parser) parseIf(in Tokens) (out Tokens, err error) {
 		}
 
 		// Parse body.
-		body, err := p.Parse(in[bodyIdx].Block())
+		body, err := p.ParseBlock(in[bodyIdx].Token)
 		if err != nil {
 			return nil, err
 		}
@@ -1497,7 +1520,7 @@ func (p *Parser) parseSwitch(in Tokens) (out Tokens, err error) {
 		condSwitch = true
 	}
 	// Split switch body into case clauses.
-	clauses, err := p.Scan(in[len(in)-1].Block(), true)
+	clauses, err := p.ScanBlock(in[len(in)-1].Token, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1546,7 +1569,7 @@ func (p *Parser) parseTypeSwitch(in, init, cond Tokens, periodIdx int) (out Toke
 	out = append(out, guardParsed...)
 	out = append(out, newToken(lang.Define, "", pos, 1))
 	// Split switch body into case clauses.
-	clauses, err := p.Scan(in[len(in)-1].Block(), true)
+	clauses, err := p.ScanBlock(in[len(in)-1].Token, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1852,7 +1875,7 @@ func (p *Parser) parseSelect(in Tokens) (out Tokens, err error) {
 	pendingLabel := p.takePendingLabel()
 	defer p.pushBreakScope("select", pendingLabel, false)()
 
-	clauses, err := p.Scan(in[len(in)-1].Block(), true)
+	clauses, err := p.ScanBlock(in[len(in)-1].Token, true)
 	if err != nil {
 		return nil, err
 	}
