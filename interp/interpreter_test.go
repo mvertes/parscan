@@ -1657,6 +1657,14 @@ import "encoding/json"
 var m map[string]interface{}
 json.Unmarshal([]byte(` + "`" + `{"a":null}` + "`" + `), &m)
 switch m["a"].(type) { case nil: "ok"; default: "fail" }`, res: "ok"},
+
+		// Function values stored in map[string]interface{} must be callable by native code.
+		{n: "map_func_value_native", src: `
+m := map[string]interface{}{
+	"double": func(s string) string { return s + s },
+}
+f := m["double"].(func(string) string)
+f("hello")`, res: "hellohello"},
 	})
 }
 
