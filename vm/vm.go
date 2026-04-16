@@ -130,6 +130,9 @@ const (
 	Print   // [v0..vn-1] -- ; print $0 values to m.out
 	Println // [v0..vn-1] -- ; println $0 values to m.out, space-separated, trailing newline
 
+	Min // [v0..vn-1] -- min ; find min of $0 values; $1 = reflect.Kind for dispatch
+	Max // [v0..vn-1] -- max ; find max of $0 values; $1 = reflect.Kind for dispatch
+
 	// Per-type numeric opcodes. Each block of NumTypes (12) opcodes follows the
 	// order: Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64.
 	// The compiler computes: baseOp + Op(NumKindOffset[kind]).
@@ -1324,6 +1327,12 @@ func (m *Machine) Run() (err error) {
 			_, _ = fmt.Fprintln(m.out, args...)
 			sp -= n
 
+		case Min:
+			sp = minMax(mem, sp, int(c.A), reflect.Kind(c.B), false) //nolint:gosec
+
+		case Max:
+			sp = minMax(mem, sp, int(c.A), reflect.Kind(c.B), true) //nolint:gosec
+
 		case WrapFunc:
 			// Wrap the parscan func value on the stack in a reflect.MakeFunc for native Go callbacks.
 			// The original parscan func is preserved in ParscanFunc.Val for fast in-VM dispatch.
@@ -2358,6 +2367,67 @@ func (m *Machine) Push(v ...Value) (l int) {
 	l = len(m.globals)
 	m.globals = append(m.globals, v...)
 	return l
+}
+
+// minMax computes the min (or max if isMax) of n values on the stack.
+// It returns the updated stack pointer.
+func minMax(mem []Value, sp, n int, kind reflect.Kind, isMax bool) int {
+	best := sp - n + 1
+	switch {
+	case kind >= reflect.Int && kind <= reflect.Int64:
+		for i := best + 1; i <= sp; i++ {
+			if isMax {
+				if int64(mem[i].num) > int64(mem[best].num) { //nolint:gosec
+					best = i
+				}
+			} else {
+				if int64(mem[i].num) < int64(mem[best].num) { //nolint:gosec
+					best = i
+				}
+			}
+		}
+	case kind >= reflect.Uint && kind <= reflect.Uint64:
+		for i := best + 1; i <= sp; i++ {
+			if isMax {
+				if mem[i].num > mem[best].num {
+					best = i
+				}
+			} else {
+				if mem[i].num < mem[best].num {
+					best = i
+				}
+			}
+		}
+	case kind == reflect.Float32 || kind == reflect.Float64:
+		for i := best + 1; i <= sp; i++ {
+			fi := math.Float64frombits(mem[i].num)
+			fb := math.Float64frombits(mem[best].num)
+			switch {
+			case math.IsNaN(fi):
+				best = i
+			case isMax && fi > fb:
+				best = i
+			case !isMax && fi < fb:
+				best = i
+			}
+		}
+	case kind == reflect.String:
+		for i := best + 1; i <= sp; i++ {
+			if isMax {
+				if mem[i].ref.String() > mem[best].ref.String() {
+					best = i
+				}
+			} else {
+				if mem[i].ref.String() < mem[best].ref.String() {
+					best = i
+				}
+			}
+		}
+	default:
+		panic(fmt.Sprintf("minMax: unorderable type %v", kind))
+	}
+	mem[sp-n+1] = mem[best]
+	return sp - n + 1
 }
 
 // appendValues appends n values from mem[sp-n+1..sp] to the slice at mem[sp-n].

@@ -2499,6 +2499,18 @@ func TestBuiltin(t *testing.T) {
 		{n: "delete_map", src: `m := map[string]int{"a": 1, "b": 2}; delete(m, "a"); len(m)`, res: "1"},
 		{n: "new_int", src: `p := new(int); *p`, res: "0"},
 		{n: "new_string", src: `p := new(string); *p`, res: ""},
+
+		// min/max builtins.
+		{n: "min_int2", src: `min(3, 1)`, res: "1"},
+		{n: "min_int3", src: `min(5, 2, 8)`, res: "2"},
+		{n: "min_int1", src: `min(42)`, res: "42"},
+		{n: "min_string", src: `min("b", "a", "c")`, res: "a"},
+		{n: "min_float", src: `min(3.0, 1.5)`, res: "1.5"},
+		{n: "max_int2", src: `max(3, 1)`, res: "3"},
+		{n: "max_int3", src: `max(5, 2, 8)`, res: "8"},
+		{n: "max_int1", src: `max(42)`, res: "42"},
+		{n: "max_string", src: `max("b", "a", "c")`, res: "c"},
+		{n: "max_float", src: `max(3.0, 1.5)`, res: "3"},
 	})
 }
 

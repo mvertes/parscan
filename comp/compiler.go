@@ -2534,6 +2534,26 @@ func (c *Compiler) compileBuiltin(
 		}
 		c.emit(t, op, narg)
 		return true, nil
+
+	case "min", "max":
+		if narg < 1 {
+			return true, fmt.Errorf("not enough arguments for %s", s.Name)
+		}
+		argSym := (*stack)[len(*stack)-narg]
+		for range narg {
+			pop()
+		}
+		pop() // min/max symbol
+		push(&symbol.Symbol{Type: argSym.Type})
+		if narg == 1 {
+			return true, nil // single arg: value already on stack
+		}
+		op := vm.Min
+		if s.Name == "max" {
+			op = vm.Max
+		}
+		c.emit(t, op, narg, int(argSym.Type.Rtype.Kind())) //nolint:gosec
+		return true, nil
 	}
 
 	return false, nil
