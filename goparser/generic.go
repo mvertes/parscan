@@ -2,31 +2,26 @@ package goparser
 
 import (
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scan"
 	"github.com/mvertes/parscan/vm"
 )
 
-// typeParam represents a single type parameter in a generic definition (e.g. T any).
+// typeParam represents a single generic type parameter.
 type typeParam struct {
 	name       string // e.g. "T", "K", "V"
 	constraint string // e.g. "any", "comparable", or an interface name
 }
 
-// genericTemplate stores a generic function or type definition for later instantiation.
+// genericTemplate stores a generic function or type definition.
 type genericTemplate struct {
-	name       string          // original name (e.g. "Max", "Set")
-	typeParams []typeParam     // ordered type parameter list
-	rawTokens  Tokens          // entire declaration tokens (func or type)
-	isFunc     bool            // true for generic functions, false for generic types
-	instances  map[string]bool // tracks already-instantiated mangled names
+	name       string      // original name (e.g. "Max", "Set")
+	typeParams []typeParam // ordered type parameter list
+	rawTokens  Tokens      // entire declaration tokens (func or type)
+	isFunc     bool        // true for generic functions, false for generic types
 }
 
-// parseTypeParamList parses the contents of a bracket block as a type parameter list.
-// E.g. "[T any, K comparable]" -> [{name:"T", constraint:"any"}, {name:"K", constraint:"comparable"}].
 func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
 	toks, err := p.ScanBlock(bt, false)
 	if err != nil {
@@ -103,10 +98,9 @@ func (p *Parser) instantiateFunc(tmpl *genericTemplate, typeArgs []*vm.Type) (To
 	}
 
 	mname := mangledName(tmpl.name, typeArgs)
-	if tmpl.instances[mname] {
+	if s, _, ok := p.Symbols.Get(mname, ""); ok && s.Type != nil {
 		return nil, mname, nil // Already instantiated.
 	}
-	tmpl.instances[mname] = true
 
 	// Build substitution map: type param name -> concrete type name string.
 	sub := make(map[string]string, len(tmpl.typeParams))
@@ -126,10 +120,8 @@ func (p *Parser) instantiateFunc(tmpl *genericTemplate, typeArgs []*vm.Type) (To
 
 		switch {
 		case i == 1 && t.Tok == lang.Ident && t.Str == tmpl.name:
-			// Replace function name with mangled name.
 			t2.Str = mname
 		case i == 2 && t.Tok == lang.BracketBlock:
-			// Skip the type parameter bracket entirely.
 			continue
 		case t.Tok == lang.Ident:
 			if repl, ok := sub[t.Str]; ok {
@@ -137,9 +129,8 @@ func (p *Parser) instantiateFunc(tmpl *genericTemplate, typeArgs []*vm.Type) (To
 			}
 		}
 
-		// For block tokens, substitute inside the raw source text.
 		if t.Tok.IsBlock() {
-			t2.Str = substituteBlock(t.Str, sub)
+			t2.Str = p.substituteBlock(t.Str, sub)
 		}
 
 		out = append(out, t2)
@@ -147,69 +138,35 @@ func (p *Parser) instantiateFunc(tmpl *genericTemplate, typeArgs []*vm.Type) (To
 	return out, mname, nil
 }
 
-// substituteBlock replaces type parameter names inside a block token's raw source text
-// using word-boundary-aware matching.
-func substituteBlock(s string, sub map[string]string) string {
-	changed := false
-	for old, repl := range sub {
-		if old == repl {
-			continue
-		}
-		ns := replaceIdent(s, old, repl)
-		if ns != s {
-			s = ns
-			changed = true
-		}
-	}
-	if !changed {
-		return s
-	}
-	return s
-}
-
-// replaceIdent replaces all occurrences of identifier old with repl in s,
-// but only when old is at a word boundary (not part of a larger identifier).
-func replaceIdent(s, old, repl string) string {
-	if len(old) == 0 || !strings.Contains(s, old) {
+func (p *Parser) substituteBlock(s string, sub map[string]string) string {
+	toks, err := p.Scanner.Scan(s, false)
+	if err != nil || len(toks) == 0 {
 		return s
 	}
 	var sb strings.Builder
 	sb.Grow(len(s))
-	i := 0
-	for i < len(s) {
-		j := strings.Index(s[i:], old)
-		if j < 0 {
-			sb.WriteString(s[i:])
-			break
-		}
-		pos := i + j
-		// Check left boundary: pos==0 or previous char is not an ident char.
-		leftOk := pos == 0 || !isIdentChar(lastRune(s[:pos]))
-		// Check right boundary: end==len(s) or next char is not an ident char.
-		end := pos + len(old)
-		rightOk := end == len(s) || !isIdentChar(firstRune(s[end:]))
-		if leftOk && rightOk {
-			sb.WriteString(s[i:pos])
-			sb.WriteString(repl)
-			i = end
-		} else {
-			sb.WriteString(s[i : pos+len(old)])
-			i = pos + len(old)
+	prev := 0
+	for _, t := range toks {
+		switch {
+		case t.Tok == lang.Ident:
+			if repl, ok := sub[t.Str]; ok {
+				sb.WriteString(s[prev:t.Pos])
+				sb.WriteString(repl)
+				prev = t.Pos + len(t.Str)
+			}
+		case t.Tok.IsBlock():
+			inner := t.Block()
+			newInner := p.substituteBlock(inner, sub)
+			if newInner != inner {
+				sb.WriteString(s[prev : t.Pos+t.Beg])
+				sb.WriteString(newInner)
+				prev = t.Pos + len(t.Str) - t.End
+			}
 		}
 	}
+	if prev == 0 {
+		return s
+	}
+	sb.WriteString(s[prev:])
 	return sb.String()
-}
-
-func isIdentChar(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
-}
-
-func firstRune(s string) rune {
-	r, _ := utf8.DecodeRuneInString(s)
-	return r
-}
-
-func lastRune(s string) rune {
-	r, _ := utf8.DecodeLastRuneInString(s)
-	return r
 }

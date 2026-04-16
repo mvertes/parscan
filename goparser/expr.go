@@ -247,7 +247,8 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			// Generic function instantiation: Name[TypeArgs](...).
 			if len(out) > 0 && out[len(out)-1].Tok == lang.Ident {
 				prevName := out[len(out)-1].Str
-				if tmpl, ok := p.generics[prevName]; ok {
+				if gs, _, ok := p.Symbols.Get(prevName, p.scope); ok && gs.Kind == symbol.Generic {
+					tmpl := gs.Data.(*genericTemplate)
 					typeArgs, err := p.resolveTypeArgs(t.Token)
 					if err != nil {
 						return out, err

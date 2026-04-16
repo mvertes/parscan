@@ -35,20 +35,19 @@ type Parser struct {
 	labelCount    map[string]int
 	breakLabel    string
 	continueLabel string
-	pendingLabel  string                      // user label preceding the current for/switch statement
-	labeledJump   map[string][2]string        // maps user label to [continueLabel, breakLabel]
-	clonum        int                         // closure instance number
-	initNum       int                         // init function instance counter
-	InitFuncs     []string                    // ordered list of init function internal names
-	blankSeq      int                         // counter for unique blank identifier names
-	namedOut      []string                    // scoped names of named return vars for current function
-	SymTracker    []string                    // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
-	typeOnly      bool                        // when true, addSymVar is a no-op (Phase 1 signature-only parse)
-	inForInit     bool                        // true while parsing for-init or range clause (marks LoopVar)
-	funcDepth     int                         // nesting depth of function bodies (>0 means inside a function)
-	loopDepth     int                         // nesting depth of for loops (>0 means inside a loop)
-	buildCtx      *buildContext               // build constraint context for file filtering
-	generics      map[string]*genericTemplate // generic function/type templates indexed by name
+	pendingLabel  string               // user label preceding the current for/switch statement
+	labeledJump   map[string][2]string // maps user label to [continueLabel, breakLabel]
+	clonum        int                  // closure instance number
+	initNum       int                  // init function instance counter
+	InitFuncs     []string             // ordered list of init function internal names
+	blankSeq      int                  // counter for unique blank identifier names
+	namedOut      []string             // scoped names of named return vars for current function
+	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
+	typeOnly      bool                 // when true, addSymVar is a no-op (Phase 1 signature-only parse)
+	inForInit     bool                 // true while parsing for-init or range clause (marks LoopVar)
+	funcDepth     int                  // nesting depth of function bodies (>0 means inside a function)
+	loopDepth     int                  // nesting depth of for loops (>0 means inside a loop)
+	buildCtx      *buildContext        // build constraint context for file filtering
 }
 
 // SymSet inserts sym at key in the symbol table, recording the key for potential rollback.
@@ -187,7 +186,6 @@ func NewParser(spec *lang.Spec, noPkg bool) *Parser {
 		labelCount:  map[string]int{},
 		labeledJump: map[string][2]string{},
 		buildCtx:    defaultBuildContext(),
-		generics:    map[string]*genericTemplate{},
 	}
 	p.Symbols.Init()
 	return p
@@ -481,10 +479,8 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 			return false, err
 		}
 		// Generic function templates are fully handled — instantiated on use.
-		if len(toks) > 2 && toks[1].Tok == lang.Ident && toks[2].Tok == lang.BracketBlock {
-			if _, ok := p.generics[toks[1].Str]; ok {
-				return true, nil
-			}
+		if s, _, ok := p.Symbols.Get(toks[1].Str, p.scope); ok && s.Kind == symbol.Generic {
+			return true, nil
 		}
 		if toks.LastIndex(lang.BraceBlock) < 0 {
 			return true, nil // Body-less function (e.g. runtime-linked): signature only.
@@ -520,13 +516,17 @@ func (p *Parser) registerFunc(toks Tokens) error {
 			if err != nil {
 				return err
 			}
-			p.generics[fname] = &genericTemplate{
-				name:       fname,
-				typeParams: params,
-				rawTokens:  toks,
-				isFunc:     true,
-				instances:  map[string]bool{},
-			}
+			p.SymSet(p.scopedName(fname), &symbol.Symbol{
+				Kind: symbol.Generic,
+				Name: fname,
+				Used: true,
+				Data: &genericTemplate{
+					name:       fname,
+					typeParams: params,
+					rawTokens:  toks,
+					isFunc:     true,
+				},
+			})
 			return nil
 		}
 		if bi > 0 {
@@ -1298,10 +1298,8 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	switch in[1].Tok {
 	case lang.Ident:
 		// Skip generic function templates — they are instantiated on use.
-		if len(in) > 2 && in[2].Tok == lang.BracketBlock {
-			if _, ok := p.generics[in[1].Str]; ok {
-				return nil, nil
-			}
+		if s, _, ok := p.Symbols.Get(in[1].Str, p.scope); ok && s.Kind == symbol.Generic {
+			return nil, nil
 		}
 		fname = in[1].Str
 		if fname == "init" {
