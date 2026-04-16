@@ -169,6 +169,28 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			out = append(out, t)
 
 		case lang.ParenBlock:
+			// Implicit generic call: Name(args) where Name is a generic function.
+			if i > 0 && !in[i-1].Tok.IsOperator() && len(out) > 0 && out[len(out)-1].Tok == lang.Ident {
+				prevName := out[len(out)-1].Str
+				if gs, _, ok := p.Symbols.Get(prevName, p.scope); ok && gs.Kind == symbol.Generic {
+					tmpl := gs.Data.(*genericTemplate)
+					if tmpl.isFunc {
+						typeArgs, err := p.inferTypeArgs(tmpl, gs, t.Token)
+						if err != nil {
+							return out, err
+						}
+						instToks, mname, err := p.instantiate(tmpl, typeArgs)
+						if err != nil {
+							return out, err
+						}
+						out = out[:len(out)-1] // remove the generic name ident
+						if err := p.emitGenericFunc(instToks, mname, t.Pos, &out); err != nil {
+							return out, err
+						}
+					}
+				}
+			}
+
 			toks, err := p.parseBlock(t, typeStr)
 			if err != nil {
 				return out, err
@@ -259,24 +281,8 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 						if err != nil {
 							return out, err
 						}
-						if instToks != nil {
-							savedScope := p.scope
-							p.scope = ""
-							if err := p.registerFunc(instToks); err != nil {
-								p.scope = savedScope
-								return out, err
-							}
-							fout, err := p.parseFunc(instToks)
-							p.scope = savedScope
-							if err != nil {
-								return out, err
-							}
-							fid := fout[1]
-							fid.Tok = lang.Ident
-							out = append(out, fout...)
-							out = append(out, fid)
-						} else {
-							out = append(out, newIdent(mname, t.Pos))
+						if err := p.emitGenericFunc(instToks, mname, t.Pos, &out); err != nil {
+							return out, err
 						}
 					} else {
 						mname, err := p.ensureTypeInstantiated(tmpl, t.Token)
@@ -389,6 +395,32 @@ func (p *Parser) parseComposite(s, typ string) (Tokens, int, error) {
 	}
 
 	return result, sliceLen, nil
+}
+
+// emitGenericFunc registers and parses an instantiated generic function,
+// appending the function definition and identifier to out.
+// If instToks is nil (already instantiated), it appends the mangled name.
+func (p *Parser) emitGenericFunc(instToks Tokens, mname string, pos int, out *Tokens) error {
+	if instToks == nil {
+		*out = append(*out, newIdent(mname, pos))
+		return nil
+	}
+	savedScope := p.scope
+	p.scope = ""
+	if err := p.registerFunc(instToks); err != nil {
+		p.scope = savedScope
+		return err
+	}
+	fout, err := p.parseFunc(instToks)
+	p.scope = savedScope
+	if err != nil {
+		return err
+	}
+	fid := fout[1]
+	fid.Tok = lang.Ident
+	*out = append(*out, fout...)
+	*out = append(*out, fid)
+	return nil
 }
 
 func (p *Parser) parseBlock(t Token, typ string) (result Tokens, err error) {

@@ -1,10 +1,13 @@
 package goparser
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/scan"
+	"github.com/mvertes/parscan/symbol"
 	"github.com/mvertes/parscan/vm"
 )
 
@@ -168,6 +171,217 @@ func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (s
 		}
 	}
 	return mname, nil
+}
+
+// inferTypeArgs infers concrete type arguments for a generic function call
+// by examining the call argument expressions and matching them against the
+// template's type parameters through the function signature (stored in genSym.Type).
+func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, callArgs scan.Token) ([]*vm.Type, error) {
+	argToks, err := p.ScanBlock(callArgs, false)
+	if err != nil {
+		return nil, err
+	}
+	args := argToks.Split(lang.Comma)
+
+	// Build set of type parameter names.
+	tpNames := make(map[string]bool, len(tmpl.typeParams))
+	for _, tp := range tmpl.typeParams {
+		tpNames[tp.name] = true
+	}
+
+	// Match each argument to the corresponding parameter type from the parsed signature.
+	// If the parameter type name is a type parameter, infer it from the argument.
+	params := genSym.Type.Params
+	inferred := make(map[string]*vm.Type, len(tmpl.typeParams))
+	for i, argExpr := range args {
+		if len(argExpr) == 0 || i >= len(params) {
+			continue
+		}
+		pName := params[i].Name
+		if !tpNames[pName] {
+			continue
+		}
+		if _, done := inferred[pName]; done {
+			continue
+		}
+		typ := p.inferExprType(argExpr)
+		if typ == nil {
+			return nil, fmt.Errorf("cannot infer type for argument %d", i)
+		}
+		inferred[pName] = typ
+	}
+
+	// Build ordered type args matching tmpl.typeParams.
+	typeArgs := make([]*vm.Type, len(tmpl.typeParams))
+	for i, tp := range tmpl.typeParams {
+		t, ok := inferred[tp.name]
+		if !ok {
+			return nil, fmt.Errorf("cannot infer type parameter %s", tp.name)
+		}
+		typeArgs[i] = t
+	}
+	return typeArgs, nil
+}
+
+// inferExprType determines the type of an infix token expression by first
+// parsing it into postfix form (reusing parseExpr), then walking the postfix
+// tokens right-to-left following the same pattern as evalConstExpr.
+func (p *Parser) inferExprType(toks Tokens) *vm.Type {
+	postfix, err := p.parseExpr(toks, "")
+	if err != nil || len(postfix) == 0 {
+		return nil
+	}
+	typ, _ := p.postfixType(postfix)
+	return typ
+}
+
+// postfixType walks postfix tokens right-to-left (like evalConstExpr) and
+// returns the result type and the number of tokens consumed.
+func (p *Parser) postfixType(in Tokens) (*vm.Type, int) {
+	l := len(in) - 1
+	if l < 0 {
+		return nil, 0
+	}
+	t := in[l]
+	id := t.Tok
+
+	switch {
+	case id == lang.Period:
+		// Field selector: result type is the field type.
+		leftTyp, ln := p.postfixType(in[:l])
+		if leftTyp == nil {
+			return nil, 0
+		}
+		fieldName := t.Str[1:] // Strip leading ".".
+		if ft := leftTyp.FieldType(fieldName); ft != nil {
+			return ft, 1 + ln
+		}
+		// Method: look up in symbol table.
+		if ms, _ := p.Symbols.MethodByName(&symbol.Symbol{Kind: symbol.Type, Name: leftTyp.Name, Type: leftTyp}, fieldName); ms != nil {
+			return ms.Type, 1 + ln
+		}
+		return nil, 0
+
+	case id.IsBinaryOp():
+		typ2, l2 := p.postfixType(in[:l])
+		typ1, l1 := p.postfixType(in[:l-l2])
+		if id.IsBoolOp() {
+			return p.Symbols["bool"].Type, 1 + l1 + l2
+		}
+		// Arithmetic / bitwise: result type follows from operands.
+		if typ1 != nil {
+			return typ1, 1 + l1 + l2
+		}
+		return typ2, 1 + l1 + l2
+
+	case id.IsUnaryOp():
+		inner, ln := p.postfixType(in[:l])
+		if inner == nil {
+			return nil, 0
+		}
+		switch id {
+		case lang.Not:
+			return p.Symbols["bool"].Type, 1 + ln
+		case lang.Addr:
+			return vm.PointerTo(inner), 1 + ln
+		case lang.Deref:
+			if inner.Rtype.Kind() == reflect.Pointer {
+				return inner.Elem(), 1 + ln
+			}
+		case lang.Arrow:
+			if inner.Rtype.Kind() == reflect.Chan {
+				return inner.Elem(), 1 + ln
+			}
+		}
+		return inner, 1 + ln
+
+	case id.IsLiteral():
+		switch id {
+		case lang.Int:
+			return p.Symbols["int"].Type, 1
+		case lang.Float:
+			return p.Symbols["float64"].Type, 1
+		case lang.String:
+			return p.Symbols["string"].Type, 1
+		case lang.Char:
+			return p.Symbols["int32"].Type, 1
+		}
+		return nil, 1
+
+	case id == lang.Ident:
+		s, _, ok := p.Symbols.Get(t.Str, p.scope)
+		if !ok {
+			return nil, 1
+		}
+		return symbol.Vtype(s), 1
+
+	case id == lang.Call:
+		narg := t.Arg[0].(int)
+		rest := in[:l]
+		totalLen := 1
+		for range narg {
+			_, al := p.postfixType(rest)
+			if al == 0 {
+				return nil, 0
+			}
+			totalLen += al
+			rest = rest[:len(rest)-al]
+		}
+		// The function/type token precedes the arguments.
+		if len(rest) == 0 {
+			return nil, 0
+		}
+		fnTok := rest[len(rest)-1]
+		totalLen++
+		if fnTok.Tok == lang.Ident {
+			s, _, ok := p.Symbols.Get(fnTok.Str, p.scope)
+			if !ok {
+				return nil, 0
+			}
+			if s.Kind == symbol.Type {
+				return s.Type, totalLen
+			}
+			if s.Type != nil {
+				return funcReturnType(s.Type), totalLen
+			}
+		}
+		return nil, totalLen
+
+	case id == lang.Index:
+		_, il := p.postfixType(in[:l]) // index expression
+		containerTyp, cl := p.postfixType(in[:l-il])
+		if containerTyp == nil {
+			return nil, 0
+		}
+		switch containerTyp.Rtype.Kind() {
+		case reflect.Slice, reflect.Array, reflect.Map:
+			return containerTyp.Elem(), 1 + il + cl
+		case reflect.String:
+			return p.Symbols["uint8"].Type, 1 + il + cl
+		}
+		return nil, 0
+
+	case id == lang.Composite:
+		// Composite literal: type is encoded in the token.
+		typeName := t.Str
+		if s, _, ok := p.Symbols.Get(typeName, p.scope); ok && s.Type != nil {
+			return s.Type, 1
+		}
+		return nil, 1
+	}
+	return nil, 0
+}
+
+// funcReturnType returns the first return type of a function type.
+func funcReturnType(typ *vm.Type) *vm.Type {
+	if len(typ.Returns) > 0 {
+		return typ.Returns[0]
+	}
+	if typ.Rtype.Kind() == reflect.Func && typ.Rtype.NumOut() > 0 {
+		out := typ.Rtype.Out(0)
+		return &vm.Type{Name: out.Name(), Rtype: out}
+	}
+	return nil
 }
 
 func (p *Parser) substituteBlock(s string, sub map[string]string) string {

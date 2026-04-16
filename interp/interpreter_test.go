@@ -392,6 +392,17 @@ func TestGenericType(t *testing.T) {
 	})
 }
 
+func TestGenericImplicit(t *testing.T) {
+	run(t, []etest{
+		{n: "#00", src: `func Max[T any](a, b T) T { if a > b { return a }; return b }; Max(3, 5)`, res: "5"},
+		{n: "#01", src: `func Max[T any](a, b T) T { if a > b { return a }; return b }; Max("alpha", "beta")`, res: "beta"},
+		{n: "#02", src: `func Max[T any](a, b T) T { if a > b { return a }; return b }; Max(1.5, 2.5)`, res: "2.5"},
+		{n: "#03", src: `func Id[T any](x T) T { return x }; Id(42)`, res: "42"},
+		{n: "#04", src: `import "fmt"; func Pair[K any, V any](k K, v V) string { return fmt.Sprintf("%v:%v", k, v) }; Pair(42, "hello")`, res: "42:hello"},
+		{n: "#05", src: `func Id[T any](x T) T { return x }; f := Id(42); f`, res: "42"},
+	})
+}
+
 func TestFuncNamedReturn(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "func f(a int) (r int) { r = a + 2; return }; f(3)", res: "5"},

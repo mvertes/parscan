@@ -516,10 +516,28 @@ func (p *Parser) registerFunc(toks Tokens) error {
 			if err != nil {
 				return err
 			}
+			// Parse the function signature so type params are resolved.
+			// Register temporary placeholder types for the type parameters,
+			// build sig tokens without the bracket block, and parse.
+			for _, tp := range params {
+				p.Symbols[tp.name] = &symbol.Symbol{Kind: symbol.Type, Name: tp.name, Type: &vm.Type{Name: tp.name, Rtype: vm.AnyRtype}}
+			}
+			sigEnd := bi
+			if sigEnd <= 0 {
+				sigEnd = len(toks)
+			}
+			sigToks := make(Tokens, 0, sigEnd-1)
+			sigToks = append(sigToks, toks[:2]...)       // func Name
+			sigToks = append(sigToks, toks[3:sigEnd]...) // (params) rettype (skip BracketBlock)
+			genType, _, _, _ := p.parseFuncSig(sigToks)
+			for _, tp := range params {
+				delete(p.Symbols, tp.name)
+			}
 			p.SymSet(p.scopedName(fname), &symbol.Symbol{
 				Kind: symbol.Generic,
 				Name: fname,
 				Used: true,
+				Type: genType,
 				Data: &genericTemplate{
 					name:       fname,
 					typeParams: params,
