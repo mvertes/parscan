@@ -317,6 +317,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 						if err != nil {
 							return out, err
 						}
+						p.drainPendingMethods(&out)
 						ctype = mname
 						out = append(out, newIdent(mname, t.Pos))
 					}
@@ -351,6 +352,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 								if err != nil {
 									return out, err
 								}
+								p.drainPendingMethods(&out)
 								ctype = mname
 								out = append(out, newIdent(mname, t.Pos))
 							}
@@ -471,7 +473,7 @@ func (p *Parser) emitGenericFunc(instToks Tokens, mname string, pos int, out *To
 	}
 	savedScope := p.scope
 	p.scope = ""
-	if err := p.registerFunc(instToks); err != nil {
+	if _, err := p.registerFunc(instToks); err != nil {
 		p.scope = savedScope
 		return err
 	}

@@ -30,24 +30,25 @@ type Parser struct {
 	pkgfs           fs.FS          // filesystem to read imported sources from
 	importRemaining []Tokens       // code-gen declarations from imported source packages
 
-	funcScope     string
-	framelen      map[string]int // length of function frames indexed by funcScope
-	labelCount    map[string]int
-	breakLabel    string
-	continueLabel string
-	pendingLabel  string               // user label preceding the current for/switch statement
-	labeledJump   map[string][2]string // maps user label to [continueLabel, breakLabel]
-	clonum        int                  // closure instance number
-	initNum       int                  // init function instance counter
-	InitFuncs     []string             // ordered list of init function internal names
-	blankSeq      int                  // counter for unique blank identifier names
-	namedOut      []string             // scoped names of named return vars for current function
-	SymTracker    []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
-	typeOnly      bool                 // when true, addSymVar is a no-op (Phase 1 signature-only parse)
-	inForInit     bool                 // true while parsing for-init or range clause (marks LoopVar)
-	funcDepth     int                  // nesting depth of function bodies (>0 means inside a function)
-	loopDepth     int                  // nesting depth of for loops (>0 means inside a loop)
-	buildCtx      *buildContext        // build constraint context for file filtering
+	funcScope         string
+	framelen          map[string]int // length of function frames indexed by funcScope
+	labelCount        map[string]int
+	breakLabel        string
+	continueLabel     string
+	pendingLabel      string               // user label preceding the current for/switch statement
+	labeledJump       map[string][2]string // maps user label to [continueLabel, breakLabel]
+	clonum            int                  // closure instance number
+	initNum           int                  // init function instance counter
+	InitFuncs         []string             // ordered list of init function internal names
+	blankSeq          int                  // counter for unique blank identifier names
+	namedOut          []string             // scoped names of named return vars for current function
+	SymTracker        []string             // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
+	pendingMethodDefs Tokens               // method defs from generic type instantiation, drained into output
+	typeOnly          bool                 // when true, addSymVar is a no-op (Phase 1 signature-only parse)
+	inForInit         bool                 // true while parsing for-init or range clause (marks LoopVar)
+	funcDepth         int                  // nesting depth of function bodies (>0 means inside a function)
+	loopDepth         int                  // nesting depth of for loops (>0 means inside a loop)
+	buildCtx          *buildContext        // build constraint context for file filtering
 }
 
 // SymSet inserts sym at key in the symbol table, recording the key for potential rollback.
@@ -290,6 +291,7 @@ func (p *Parser) parseStmts(in Tokens) (out Tokens, err error) {
 			return out, err
 		}
 		out = append(out, o...)
+		p.drainPendingMethods(&out)
 		in = in[end+1:]
 	}
 	return out, err
@@ -455,7 +457,18 @@ func (p *Parser) collectIdents(toks Tokens, nameSet map[string]int, out map[int]
 
 // ParseOneStmt parses a single pre-scanned statement token slice.
 func (p *Parser) ParseOneStmt(toks Tokens) (Tokens, error) {
-	return p.parseStmt(toks)
+	out, err := p.parseStmt(toks)
+	p.drainPendingMethods(&out)
+	return out, err
+}
+
+// drainPendingMethods appends any accumulated generic method definitions
+// to the output and clears the pending buffer.
+func (p *Parser) drainPendingMethods(out *Tokens) {
+	if len(p.pendingMethodDefs) > 0 {
+		*out = append(*out, p.pendingMethodDefs...)
+		p.pendingMethodDefs = p.pendingMethodDefs[:0]
+	}
 }
 
 // ParseDecl resolves a declaration's symbols (Phase 1) without emitting code.
@@ -487,12 +500,12 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 		_, err = p.parseType(toks)
 		return true, err
 	case lang.Func:
-		if err := p.registerFunc(toks); err != nil {
+		isTemplate, err := p.registerFunc(toks)
+		if err != nil {
 			return false, err
 		}
-		// Generic function templates are fully handled — instantiated on use.
-		if s, _, ok := p.Symbols.Get(toks[1].Str, p.scope); ok && s.Kind == symbol.Generic {
-			return true, nil
+		if isTemplate {
+			return true, nil // Generic template — instantiated on use.
 		}
 		if toks.LastIndex(lang.BraceBlock) < 0 {
 			return true, nil // Body-less function (e.g. runtime-linked): signature only.
@@ -504,9 +517,11 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 	return false, nil
 }
 
-func (p *Parser) registerFunc(toks Tokens) error {
+// registerFunc registers a function or method declaration (Phase 1).
+// Returns (true, nil) if the declaration is a generic template (fully handled).
+func (p *Parser) registerFunc(toks Tokens) (bool, error) {
 	if len(toks) < 3 || toks[0].Tok != lang.Func {
-		return nil
+		return false, nil
 	}
 
 	var fname string
@@ -520,13 +535,13 @@ func (p *Parser) registerFunc(toks Tokens) error {
 		// Plain function: func Name(params) rettype { ... }
 		fname = toks[1].Str
 		if fname == "init" {
-			return nil // init functions are handled in Phase 2 only.
+			return false, nil // init functions are handled in Phase 2 only.
 		}
 		// Generic function: func Name[T any](params) rettype { ... }
 		if len(toks) > 2 && toks[2].Tok == lang.BracketBlock {
 			params, err := p.parseTypeParamList(toks[2].Token)
 			if err != nil {
-				return err
+				return false, err
 			}
 			// Parse the function signature so type params are resolved.
 			// Register temporary placeholder types for the type parameters,
@@ -557,7 +572,7 @@ func (p *Parser) registerFunc(toks Tokens) error {
 					isFunc:     true,
 				},
 			})
-			return nil
+			return true, nil
 		}
 		if bi > 0 {
 			sigToks = toks[:bi]
@@ -571,17 +586,31 @@ func (p *Parser) registerFunc(toks Tokens) error {
 		// func with a named return type (e.g. func(int) T {...}), not a method.
 		if s, _, ok := p.Symbols.Get(toks[2].Str, p.scope); ok && s.IsType() {
 			if len(toks) < 4 || toks[3].Tok != lang.ParenBlock {
-				return nil
+				return false, nil
 			}
 		}
 		// Method: func (recv) Name(params) rettype { ... }
 		recvr, err := p.ScanBlock(toks[1].Token, false)
 		if err != nil {
-			return nil
+			return false, nil
+		}
+		// Generic method: receiver has type params (e.g. Box[T]).
+		// Store as a method template on the generic type.
+		if baseName, ok := recvGenericBaseName(recvr); ok {
+			if gs, _, gok := p.Symbols.Get(baseName, p.scope); gok && gs.Kind == symbol.Generic {
+				tmpl := gs.Data.(*genericTemplate)
+				tmpl.methods = append(tmpl.methods, &genericTemplate{
+					name:       toks[2].Str,
+					typeParams: tmpl.typeParams,
+					rawTokens:  toks,
+					isFunc:     true,
+				})
+				return true, nil
+			}
 		}
 		typeName := recvTypeName(recvr)
 		if typeName == "" {
-			return nil
+			return false, nil
 		}
 		fname = typeName + "." + toks[2].Str
 		if len(recvr) >= 2 && recvr[0].Tok == lang.Ident {
@@ -597,12 +626,12 @@ func (p *Parser) registerFunc(toks Tokens) error {
 		sigToks = append(sigToks, toks[2:end]...)
 
 	default:
-		return nil // Anonymous function.
+		return false, nil // Anonymous function.
 	}
 
 	s, _, ok := p.Symbols.Get(fname, p.scope)
 	if ok && s.Type != nil {
-		return nil
+		return false, nil
 	}
 	if !ok {
 		s = &symbol.Symbol{Name: fname, Used: true, Index: symbol.UnsetAddr}
@@ -614,14 +643,14 @@ func (p *Parser) registerFunc(toks Tokens) error {
 		if !ok {
 			delete(p.Symbols, p.scopedName(fname))
 		}
-		return err
+		return false, err
 	}
 	s.Kind = symbol.Func
 	s.Type = typ
 	s.RecvName = recvVarName
 	s.InNames = inNames
 	s.OutNames = outNames
-	return nil
+	return false, nil
 }
 
 func recvTypeName(recvr Tokens) string {

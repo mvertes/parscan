@@ -19,10 +19,11 @@ type typeParam struct {
 
 // genericTemplate stores a generic function or type definition.
 type genericTemplate struct {
-	name       string      // original name (e.g. "Max", "Set")
-	typeParams []typeParam // ordered type parameter list
-	rawTokens  Tokens      // entire declaration tokens (func or type)
-	isFunc     bool        // true for generic functions, false for generic types
+	name       string             // original name (e.g. "Max", "Set")
+	typeParams []typeParam        // ordered type parameter list
+	rawTokens  Tokens             // entire declaration tokens (func or type)
+	isFunc     bool               // true for generic functions, false for generic types
+	methods    []*genericTemplate // methods defined on this generic type
 }
 
 func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
@@ -169,46 +170,14 @@ func mangledName(base string, typeArgs []*vm.Type) string {
 	return sb.String()
 }
 
-// instantiate creates a concrete (monomorphized) version of a generic template
-// by substituting type parameter names with concrete type names in the token stream.
-// It returns the rewritten tokens and the mangled name.
-func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens, string, error) {
-	if len(typeArgs) != len(tmpl.typeParams) {
-		return nil, "", ErrSyntax
-	}
-
-	mname := mangledName(tmpl.name, typeArgs)
-	if s, _, ok := p.Symbols.Get(mname, ""); ok && s.Type != nil {
-		return nil, mname, nil // Already instantiated.
-	}
-
-	if err := p.checkConstraints(tmpl, typeArgs); err != nil {
-		return nil, "", err
-	}
-
-	// Build substitution map: type param name -> concrete type name string.
-	sub := make(map[string]string, len(tmpl.typeParams))
-	for i, tp := range tmpl.typeParams {
-		sub[tp.name] = typeArgName(typeArgs[i])
-	}
-
-	// Token index offset: func tokens have a leading `func` keyword.
-	offset := 0
-	if tmpl.isFunc {
-		offset = 1
-	}
-
-	raw := tmpl.rawTokens
+// substituteTokens rewrites tokens by replacing type parameter identifiers
+// with concrete type names and substituting inside block strings.
+func (p *Parser) substituteTokens(raw Tokens, sub map[string]string) Tokens {
 	out := make(Tokens, 0, len(raw))
-	for i, t := range raw {
+	for _, t := range raw {
 		t2 := t // shallow copy
 
-		switch {
-		case i == offset && t.Tok == lang.Ident && t.Str == tmpl.name:
-			t2.Str = mname
-		case i == offset+1 && t.Tok == lang.BracketBlock:
-			continue
-		case t.Tok == lang.Ident:
+		if t.Tok == lang.Ident {
 			if repl, ok := sub[t.Str]; ok {
 				// Compound types (e.g. "*int", "[]byte", "map[K]V")
 				// must be re-scanned into proper tokens.
@@ -232,11 +201,57 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens
 
 		out = append(out, t2)
 	}
+	return out
+}
+
+// instantiate creates a concrete (monomorphized) version of a generic template
+// by substituting type parameter names with concrete type names in the token stream.
+// It returns the rewritten tokens and the mangled name.
+func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens, string, error) {
+	if len(typeArgs) != len(tmpl.typeParams) {
+		return nil, "", ErrSyntax
+	}
+
+	mname := mangledName(tmpl.name, typeArgs)
+	if s, _, ok := p.Symbols.Get(mname, ""); ok && s.Type != nil {
+		return nil, mname, nil // Already instantiated.
+	}
+
+	if err := p.checkConstraints(tmpl, typeArgs); err != nil {
+		return nil, "", err
+	}
+
+	// Build substitution map: type param name -> concrete type name string.
+	sub := make(map[string]string, len(tmpl.typeParams))
+	for i, tp := range tmpl.typeParams {
+		sub[tp.name] = typeArgName(typeArgs[i])
+	}
+
+	out := p.substituteTokens(tmpl.rawTokens, sub)
+
+	// Rename the declaration and remove the type parameter bracket block.
+	// Token index offset: func tokens have a leading `func` keyword.
+	offset := 0
+	if tmpl.isFunc {
+		offset = 1
+	}
+	for i := range out {
+		if i == offset && out[i].Tok == lang.Ident && out[i].Str == tmpl.name {
+			out[i].Str = mname
+		}
+	}
+	// Remove the BracketBlock at offset+1.
+	if offset+1 < len(out) && out[offset+1].Tok == lang.BracketBlock {
+		out = append(out[:offset+1], out[offset+2:]...)
+	}
+
 	return out, mname, nil
 }
 
 // ensureTypeInstantiated resolves type arguments from a bracket block and
 // instantiates the generic type template, registering the concrete type.
+// Methods on the generic type are also instantiated; their compiled tokens
+// are stored in p.pendingMethodDefs for later emission.
 func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (string, error) {
 	typeArgs, err := p.resolveTypeArgs(bt)
 	if err != nil {
@@ -250,12 +265,115 @@ func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (s
 		savedScope := p.scope
 		p.scope = ""
 		_, err = p.parseTypeLine(instToks)
-		p.scope = savedScope
 		if err != nil {
+			p.scope = savedScope
 			return "", err
 		}
+		// Instantiate methods on this generic type.
+		for _, methTmpl := range tmpl.methods {
+			methToks, err := p.instantiateMethod(tmpl, methTmpl, typeArgs)
+			if err != nil {
+				p.scope = savedScope
+				return "", err
+			}
+			if methToks == nil {
+				continue // Already instantiated.
+			}
+			if _, err := p.registerFunc(methToks); err != nil {
+				p.scope = savedScope
+				return "", err
+			}
+			fout, err := p.parseFunc(methToks)
+			if err != nil {
+				p.scope = savedScope
+				return "", err
+			}
+			p.pendingMethodDefs = append(p.pendingMethodDefs, fout...)
+		}
+		p.scope = savedScope
 	}
 	return mname, nil
+}
+
+// recvGenericBaseName checks whether the receiver tokens contain type
+// parameters (a BracketBlock). If so, it returns the base type name
+// (the Ident immediately preceding the BracketBlock).
+func recvGenericBaseName(recvr Tokens) (string, bool) {
+	for i, t := range recvr {
+		if t.Tok == lang.BracketBlock && i > 0 && recvr[i-1].Tok == lang.Ident {
+			return recvr[i-1].Str, true
+		}
+	}
+	return "", false
+}
+
+// instantiateMethod creates a concrete version of a generic method template
+// by substituting type parameter names with concrete types in the token stream.
+// The receiver block is rewritten from e.g. (b Box[T]) to (b Box#int).
+// Returns nil if the method is already instantiated.
+func (p *Parser) instantiateMethod(typeTmpl, methTmpl *genericTemplate, typeArgs []*vm.Type) (Tokens, error) {
+	mTypeName := mangledName(typeTmpl.name, typeArgs)
+	methFullName := mTypeName + "." + methTmpl.name
+
+	// Guard: already instantiated.
+	if _, _, ok := p.Symbols.Get(methFullName, ""); ok {
+		return nil, nil
+	}
+
+	sub := make(map[string]string, len(typeTmpl.typeParams))
+	for i, tp := range typeTmpl.typeParams {
+		sub[tp.name] = typeArgName(typeArgs[i])
+	}
+
+	out := p.substituteTokens(methTmpl.rawTokens, sub)
+
+	// Collapse TypeName[Args] into the mangled name in the receiver ParenBlock
+	// (the first ParenBlock, at index 1 after the func keyword).
+	if len(out) > 1 && out[1].Tok == lang.ParenBlock {
+		out[1].Str = p.stripRecvTypeParams(out[1].Str, typeTmpl.name, mTypeName)
+	}
+
+	return out, nil
+}
+
+// stripRecvTypeParams rewrites a receiver block string by replacing
+// TypeName[...] with the mangled name. For example:
+//
+//	"(b Box[int])"   -> "(b Box#int)"
+//	"(b *Box[int])"  -> "(b *Box#int)"
+func (p *Parser) stripRecvTypeParams(blockStr, origName, mangledName string) string {
+	// Scan the full block string — expect a single ParenBlock.
+	outerToks, err := p.Scanner.Scan(blockStr, false)
+	if err != nil || len(outerToks) != 1 || outerToks[0].Tok != lang.ParenBlock {
+		return blockStr
+	}
+
+	paren := outerToks[0]
+	inner := paren.Block()
+
+	innerToks, err := p.Scanner.Scan(inner, false)
+	if err != nil {
+		return blockStr
+	}
+
+	// Find origName Ident followed by BracketBlock and replace.
+	var sb strings.Builder
+	prev := 0
+	for i, t := range innerToks {
+		if t.Tok == lang.Ident && t.Str == origName && i+1 < len(innerToks) && innerToks[i+1].Tok == lang.BracketBlock {
+			sb.WriteString(inner[prev:t.Pos])
+			sb.WriteString(mangledName)
+			bracketTok := innerToks[i+1]
+			prev = bracketTok.Pos + len(bracketTok.Str)
+		}
+	}
+	if prev == 0 {
+		return blockStr // No change needed.
+	}
+	sb.WriteString(inner[prev:])
+
+	// Reconstruct with outer parens.
+	return blockStr[:paren.Beg] + sb.String() + blockStr[len(blockStr)-paren.End:]
 }
 
 // inferTypeArgs infers concrete type arguments for a generic function call

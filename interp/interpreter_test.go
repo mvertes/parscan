@@ -383,8 +383,12 @@ func TestGenericType(t *testing.T) {
 		{n: "#04", src: `type Box[T any] struct { Value T }; var b Box[int]; b.Value`, res: "0"},
 		{n: "#05", src: `type Box[T any] struct { Value T }; b := &Box[int]{Value: 42}; b.Value`, res: "42"},
 		{n: "#06", src: `type Box[T any] struct { Value T }; a := Box[int]{Value: 1}; b := Box[int]{Value: 2}; a.Value + b.Value`, res: "3"},
+		{n: "generic_method", src: `type Box[T any] struct { V T }; func (b Box[T]) Get() T { return b.V }; Box[int]{V: 42}.Get()`, res: "42"},
+		{n: "generic_method_var", src: `type Box[T any] struct { V T }; func (b Box[T]) Get() T { return b.V }; b := Box[int]{V: 7}; b.Get()`, res: "7"},
+		{n: "generic_method_ptr", src: `type Box[T any] struct { V T }; func (b *Box[T]) Set(v T) { b.V = v }; b := &Box[int]{V: 0}; b.Set(99); b.V`, res: "99"},
+		{n: "generic_method_multi", src: `type Box[T any] struct { V T }; func (b Box[T]) Get() T { return b.V }; func (b *Box[T]) Set(v T) { b.V = v }; b := &Box[int]{V: 1}; b.Set(2); b.Get()`, res: "2"},
+		{n: "generic_method_multi_tparam", skip: true, src: `type Pair[K comparable, V any] struct { K K; V V }; func (p Pair[K, V]) Key() K { return p.K }; Pair[string, int]{K: "x", V: 1}.Key()`, res: "x"},
 		// Out of scope: skipped tests for known unsupported features.
-		{n: "generic_method", skip: true, src: `type Box[T any] struct { V T }; func (b Box[T]) Get() T { return b.V }; Box[int]{V: 42}.Get()`, res: "42"},
 		{n: "constraint_check", src: `func Less[T comparable](a, b T) bool { return a < b }; Less[func()](nil, nil)`, err: "does not satisfy constraint"},
 		{n: "comparable_ok", src: `func Id[T comparable](x T) T { return x }; Id[int](42)`, res: "42"},
 		{n: "comparable_slice", src: `func Id[T comparable](x T) T { return x }; Id[[]int](nil)`, err: "does not satisfy constraint"},
