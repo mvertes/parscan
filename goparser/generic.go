@@ -46,7 +46,7 @@ func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
 			continue
 		}
 		// Disambiguate from array size expressions like [N + 1].
-		if seg[1].Tok != lang.Ident && seg[1].Tok != lang.Interface {
+		if seg[1].Tok != lang.Ident && seg[1].Tok != lang.Interface && seg[1].Tok != lang.Tilde {
 			return nil, ErrSyntax
 		}
 		var parts []string
@@ -81,27 +81,66 @@ func (p *Parser) checkConstraints(tmpl *genericTemplate, typeArgs []*vm.Type) er
 	return nil
 }
 
+func constraintError(arg *vm.Type, constraint string) error {
+	return fmt.Errorf("type %s does not satisfy constraint %s", arg.Rtype, constraint)
+}
+
 // checkOneConstraint checks whether arg satisfies constraint.
-// Unknown constraint forms (union types, ~T) silently pass.
 func (p *Parser) checkOneConstraint(constraint string, arg *vm.Type) error {
 	switch constraint {
 	case "any", "interface{}":
 		return nil
 	case "comparable":
 		if !arg.Rtype.Comparable() {
-			return fmt.Errorf("type %s does not satisfy constraint comparable", arg.Rtype)
+			return constraintError(arg, constraint)
 		}
 		return nil
 	}
 
-	ifaceType := p.resolveConstraintType(constraint)
-	if ifaceType == nil || !ifaceType.IsInterface() {
+	// Union constraints: "int|float64", "~int|~string".
+	if strings.Contains(constraint, "|") {
+		for _, member := range strings.Split(constraint, "|") {
+			if p.checkOneConstraint(member, arg) == nil {
+				return nil
+			}
+		}
+		return constraintError(arg, constraint)
+	}
+
+	// Approximate constraints: "~int" means any type whose underlying type is int.
+	// Kind comparison is correct for basic types; composite ~T silently passes.
+	if strings.HasPrefix(constraint, "~") {
+		baseType := p.resolveConstraintType(constraint[1:])
+		if baseType == nil {
+			return nil // Unknown base type, silently pass.
+		}
+		k := baseType.Rtype.Kind()
+		if k > reflect.Complex128 && k != reflect.String {
+			return nil // Composite ~T: can't reliably check underlying type.
+		}
+		if arg.Rtype.Kind() == k {
+			return nil
+		}
+		return constraintError(arg, constraint)
+	}
+
+	// Interface constraints (e.g. "fmt.Stringer").
+	resolved := p.resolveConstraintType(constraint)
+	if resolved == nil {
+		return nil // Unknown, silently pass.
+	}
+	if resolved.IsInterface() {
+		if !arg.Rtype.Implements(resolved.Rtype) {
+			return constraintError(arg, constraint)
+		}
 		return nil
 	}
-	if !arg.Rtype.Implements(ifaceType.Rtype) {
-		return fmt.Errorf("type %s does not satisfy constraint %s", arg.Rtype, constraint)
+
+	// Type element (exact type match, used in unions like "int|float64").
+	if arg.Rtype == resolved.Rtype {
+		return nil
 	}
-	return nil
+	return constraintError(arg, constraint)
 }
 
 // resolveConstraintType resolves a constraint name to a type.

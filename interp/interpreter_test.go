@@ -397,7 +397,7 @@ func TestGenericType(t *testing.T) {
 		{n: "union_reject", src: `func Add[T int | float64](a, b T) T { return a + b }; Add[string]("a", "b")`, err: "does not satisfy constraint"},
 		{n: "approx_constraint", src: `type MyInt int; func Id[T ~int](x T) T { return x }; Id[MyInt](MyInt(1))`, res: "1"},
 		{n: "approx_reject", src: `func Id[T ~int](x T) T { return x }; Id[string]("a")`, err: "does not satisfy constraint"},
-		{n: "generic_interface", src: `type Stringer[T any] interface { String(T) string }`, res: ""},
+		{n: "generic_interface", src: `type Stringer[T any] interface { String(T) string }; ""`, res: ""},
 		{n: "nested_generic", src: `type Box[T any] struct { V T }; type Wrap[U any] struct { Inner Box[U] }; w := Wrap[int]{Inner: Box[int]{V: 1}}; w.Inner.V`, res: "1"},
 		{n: "generic_type_alias", src: `type Box[T any] struct { V T }; type IntBox = Box[int]; b := IntBox{V: 1}; b.V`, res: "1"},
 	})
