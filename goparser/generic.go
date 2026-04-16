@@ -59,6 +59,59 @@ func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
 	return params, nil
 }
 
+func (p *Parser) checkConstraints(tmpl *genericTemplate, typeArgs []*vm.Type) error {
+	for i, tp := range tmpl.typeParams {
+		if err := p.checkOneConstraint(tp.constraint, typeArgs[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkOneConstraint checks whether arg satisfies constraint.
+// Unknown constraint forms (union types, ~T) silently pass.
+func (p *Parser) checkOneConstraint(constraint string, arg *vm.Type) error {
+	switch constraint {
+	case "any", "interface{}":
+		return nil
+	case "comparable":
+		if !arg.Rtype.Comparable() {
+			return fmt.Errorf("type %s does not satisfy constraint comparable", arg.Rtype)
+		}
+		return nil
+	}
+
+	ifaceType := p.resolveConstraintType(constraint)
+	if ifaceType == nil || !ifaceType.IsInterface() {
+		return nil
+	}
+	if !arg.Rtype.Implements(ifaceType.Rtype) {
+		return fmt.Errorf("type %s does not satisfy constraint %s", arg.Rtype, constraint)
+	}
+	return nil
+}
+
+// resolveConstraintType resolves a constraint name to a type.
+// Handles both unqualified ("error") and package-qualified ("fmt.Stringer") names.
+func (p *Parser) resolveConstraintType(name string) *vm.Type {
+	if s, _, ok := p.Symbols.Get(name, p.scope); ok && s.Kind == symbol.Type && s.Type != nil {
+		return s.Type
+	}
+	idx := strings.Index(name, ".")
+	if idx <= 0 {
+		return nil
+	}
+	ps, _, ok := p.Symbols.Get(name[:idx], p.scope)
+	if !ok || ps.Kind != symbol.Pkg {
+		return nil
+	}
+	typ, err := p.resolvePkgType(ps, name[idx+1:])
+	if err != nil {
+		return nil
+	}
+	return typ
+}
+
 // resolveTypeArgs parses the contents of a bracket block as concrete type arguments.
 // E.g. "[int, string]" -> []*vm.Type{intType, stringType}.
 func (p *Parser) resolveTypeArgs(bt scan.Token) ([]*vm.Type, error) {
@@ -107,6 +160,10 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens
 	mname := mangledName(tmpl.name, typeArgs)
 	if s, _, ok := p.Symbols.Get(mname, ""); ok && s.Type != nil {
 		return nil, mname, nil // Already instantiated.
+	}
+
+	if err := p.checkConstraints(tmpl, typeArgs); err != nil {
+		return nil, "", err
 	}
 
 	// Build substitution map: type param name -> concrete type name string.
