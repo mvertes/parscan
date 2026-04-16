@@ -50,6 +50,8 @@ most complex stage in the pipeline.
   parameter names in the `Type` and receiver variable name in
   `Symbol.RecvName` so `parseFunc` can skip re-parsing the signature.
   Parses in `typeOnly` mode to suppress parameter symbol registration.
+  Generic functions (`func Name[T any](...)`) are detected here and
+  stored as `symbol.Generic` templates instead of being parsed immediately.
 - **`SplitAndSortVarDecls(decls []Tokens) []Tokens`** -- expands
   `var(...)` blocks into individual declarations and topologically sorts
   them by dependency (references between var initializers). Non-var
@@ -187,6 +189,55 @@ for the imported package path.
 - `vm/` -- `Type`, `Value` (for symbol metadata).
 - `io/fs` -- virtual filesystem for imported sources.
 
+### Generics (monomorphization)
+
+Generic functions and types are supported via compile-time monomorphization.
+A generic declaration is stored as a token-level template; each use with
+concrete type arguments produces a specialized copy by textual substitution.
+No new VM opcodes are needed -- the instantiated code is indistinguishable
+from hand-written non-generic code.
+
+```mermaid
+flowchart LR
+    decl["func Max[T any](a,b T) T"] -->|Phase 1| tmpl["genericTemplate\n{name, typeParams, rawTokens}"]
+    tmpl -->|"Max[int](...)"| sub["token substitution\nT -> int"]
+    sub --> inst["func Max#int(a,b int) int"]
+    inst -->|"registerFunc + parseFunc"| code["normal compilation"]
+```
+
+**Registration.** During Phase 1, `registerFunc` and `parseTypeLine` detect
+a `BracketBlock` after the name, call `parseTypeParamList` to extract the
+parameter names and constraints, and register the symbol with
+`Kind: symbol.Generic`. The raw token slice is stored in `Symbol.Data` as a
+`*genericTemplate`. No compilation happens at this point.
+
+`parseTypeParamList` requires the constraint to start with an identifier
+(`any`, `comparable`, an interface name). This disambiguates generic types
+from array declarations like `type T [3]int` where the bracket contains a
+numeric expression.
+
+**Instantiation.** When the parser encounters `Name[TypeArgs]` in an
+expression (`parseExpr`) or type context (`parseTypeExpr`), it resolves the
+concrete types, calls `instantiate` to produce a rewritten token stream
+(substituting type param names, removing the bracket block, renaming to a
+mangled name like `Max#int`), and parses the result through the normal
+function or type path. Already-instantiated combinations are detected by
+symbol table lookup and skipped.
+
+`ensureTypeInstantiated` is a convenience wrapper for type templates: it
+resolves type arguments, instantiates, and registers the concrete type in
+the symbol table at package scope.
+
+**Mangled names.** `mangledName` produces `Base#Type1#Type2` strings. These
+are internal symbol table keys; user code always references the generic name
+with explicit type arguments.
+
+**Limitations.** Constraints are stored but not enforced at instantiation
+time. Generic methods on generic receiver types are not yet supported.
+See [ADR-011](../decisions/ADR-011-generics-monomorphization.md).
+
 ## Open questions / TODOs
 
-- Generic type parameters are not parsed.
+- Constraint enforcement at instantiation time.
+- Generic methods: `func (b Box[T]) Get() T`.
+- Nested generics: a generic type used as a field of another generic type.

@@ -135,6 +135,12 @@ See [vm](modules/vm.md#call-frame) for details.
    This avoids heap-allocating an `[]int` arg slice per instruction and
    improves cache locality in the dispatch loop.
 
+9. **Generics via monomorphization** -- generic functions and types are
+   stored as token-level templates. Each instantiation (`Max[int]`,
+   `Box[string]`) produces a specialized copy by textual substitution,
+   then parses it through the normal path. No runtime type parameters,
+   no new opcodes. See [ADR-011](decisions/ADR-011-generics-monomorphization.md).
+
 ## Closure and interface dispatch
 
 Closures capture variables via heap cells (`Closure{Code, Heap}`). Opcodes

@@ -35,6 +35,10 @@ func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
 		if len(seg) < 2 || seg[0].Tok != lang.Ident {
 			return nil, ErrSyntax
 		}
+		// Disambiguate from array size expressions like [N + 1].
+		if seg[1].Tok != lang.Ident && seg[1].Tok != lang.Interface {
+			return nil, ErrSyntax
+		}
 		// Constraint is everything after the param name. For simple constraints
 		// like "any" or "comparable", this is a single ident. Collect as string.
 		var parts []string
@@ -89,10 +93,10 @@ func mangledName(base string, typeArgs []*vm.Type) string {
 	return sb.String()
 }
 
-// instantiateFunc creates a concrete (monomorphized) version of a generic function template
+// instantiate creates a concrete (monomorphized) version of a generic template
 // by substituting type parameter names with concrete type names in the token stream.
 // It returns the rewritten tokens and the mangled name.
-func (p *Parser) instantiateFunc(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens, string, error) {
+func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens, string, error) {
 	if len(typeArgs) != len(tmpl.typeParams) {
 		return nil, "", ErrSyntax
 	}
@@ -112,16 +116,21 @@ func (p *Parser) instantiateFunc(tmpl *genericTemplate, typeArgs []*vm.Type) (To
 		sub[tp.name] = name
 	}
 
-	// Deep-copy and rewrite tokens.
+	// Token index offset: func tokens have a leading `func` keyword.
+	offset := 0
+	if tmpl.isFunc {
+		offset = 1
+	}
+
 	raw := tmpl.rawTokens
 	out := make(Tokens, 0, len(raw))
 	for i, t := range raw {
 		t2 := t // shallow copy
 
 		switch {
-		case i == 1 && t.Tok == lang.Ident && t.Str == tmpl.name:
+		case i == offset && t.Tok == lang.Ident && t.Str == tmpl.name:
 			t2.Str = mname
-		case i == 2 && t.Tok == lang.BracketBlock:
+		case i == offset+1 && t.Tok == lang.BracketBlock:
 			continue
 		case t.Tok == lang.Ident:
 			if repl, ok := sub[t.Str]; ok {
@@ -136,6 +145,29 @@ func (p *Parser) instantiateFunc(tmpl *genericTemplate, typeArgs []*vm.Type) (To
 		out = append(out, t2)
 	}
 	return out, mname, nil
+}
+
+// ensureTypeInstantiated resolves type arguments from a bracket block and
+// instantiates the generic type template, registering the concrete type.
+func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (string, error) {
+	typeArgs, err := p.resolveTypeArgs(bt)
+	if err != nil {
+		return "", err
+	}
+	instToks, mname, err := p.instantiate(tmpl, typeArgs)
+	if err != nil {
+		return "", err
+	}
+	if instToks != nil {
+		savedScope := p.scope
+		p.scope = ""
+		_, err = p.parseTypeLine(instToks)
+		p.scope = savedScope
+		if err != nil {
+			return "", err
+		}
+	}
+	return mname, nil
 }
 
 func (p *Parser) substituteBlock(s string, sub map[string]string) string {

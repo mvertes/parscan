@@ -567,6 +567,26 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 		toks = toks[1:]
 	}
 
+	// Generic type declaration: type Name[T any] struct { ... }
+	// Disambiguated from array types (type T [3]int) by parseTypeParamList
+	// which requires each segment to have an identifier constraint.
+	if !isAlias && len(toks) > 0 && toks[0].Tok == lang.BracketBlock {
+		if params, err := p.parseTypeParamList(toks[0].Token); err == nil {
+			p.SymSet(p.scopedName(in[0].Str), &symbol.Symbol{
+				Kind: symbol.Generic,
+				Name: in[0].Str,
+				Used: true,
+				Data: &genericTemplate{
+					name:       in[0].Str,
+					typeParams: params,
+					rawTokens:  in,
+					isFunc:     false,
+				},
+			})
+			return out, nil
+		}
+	}
+
 	// For struct and interface types, use a forward-declared placeholder to
 	// enable self-references and mutual references between types.
 	name := p.scopedName(in[0].Str)

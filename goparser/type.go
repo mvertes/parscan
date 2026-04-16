@@ -193,6 +193,18 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			}
 			return typ, 3, nil
 		}
+		if s.Kind == symbol.Generic && len(in) >= 2 && in[1].Tok == lang.BracketBlock {
+			tmpl := s.Data.(*genericTemplate)
+			mname, err := p.ensureTypeInstantiated(tmpl, in[1].Token)
+			if err != nil {
+				return nil, 0, err
+			}
+			s2, _, ok := p.Symbols.Get(mname, "")
+			if !ok || s2.Type == nil {
+				return nil, 0, ErrUndefined{mname}
+			}
+			return s2.Type, 2, nil
+		}
 		if s.Kind != symbol.Type {
 			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}

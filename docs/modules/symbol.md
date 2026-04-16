@@ -15,8 +15,9 @@ to resolve addresses and types.
   scoped names like `main/foo/x` or `0/int` (scope `0` for builtins).
 - **`Symbol`** -- a table entry:
   - `Kind` -- one of `Value`, `Type`, `Label`, `Const`, `Var`,
-    `LocalVar`, `Func`, `Pkg`, `Builtin`. `Var` is for global data;
-    `LocalVar` is for frame-relative locals.
+    `LocalVar`, `Func`, `Pkg`, `Builtin`, `Generic`. `Var` is for
+    global data; `LocalVar` is for frame-relative locals; `Generic`
+    marks a generic function or type template.
   - `Index` -- address in the VM data segment or frame.
   - `Type` -- `*vm.Type` for the symbol's runtime type.
   - `Captured` / `FreeVars` -- closure capture metadata.
@@ -25,6 +26,9 @@ to resolve addresses and types.
   - `InNames` / `OutNames` -- raw input/output parameter names for func
     symbols, cached during Phase 1 signature parsing so Phase 2 does not
     re-parse the signature.
+  - `Data any` -- opaque payload. Used by `Generic` symbols to store a
+    `*genericTemplate` (type params, raw token stream, func-or-type flag).
+    Nil for all other kinds.
 - **`Kind`** (int enum) -- symbol classification.
 - **`Get(name, scope string) (*Symbol, string, bool)`** -- lookup by
   walking from the innermost scope outward.

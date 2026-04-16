@@ -374,6 +374,24 @@ func TestGenericFunc(t *testing.T) {
 	})
 }
 
+func TestGenericType(t *testing.T) {
+	run(t, []etest{
+		{n: "#00", src: `type Box[T any] struct { Value T }; b := Box[int]{Value: 42}; b.Value`, res: "42"},
+		{n: "#01", src: `type Box[T any] struct { Value T }; b := Box[string]{Value: "hello"}; b.Value`, res: "hello"},
+		{n: "#02", src: `type Box[T any] struct { Value T }; a := Box[int]{Value: 1}; b := Box[string]{Value: "x"}; a.Value + len(b.Value)`, res: "2"},
+		{n: "#03", src: `import "fmt"; type Pair[K any, V any] struct { Key K; Val V }; p := Pair[string, int]{Key: "a", Val: 1}; fmt.Sprintf("%s:%d", p.Key, p.Val)`, res: "a:1"},
+		{n: "#04", src: `type Box[T any] struct { Value T }; var b Box[int]; b.Value`, res: "0"},
+		{n: "#05", src: `type Box[T any] struct { Value T }; b := &Box[int]{Value: 42}; b.Value`, res: "42"},
+		{n: "#06", src: `type Box[T any] struct { Value T }; a := Box[int]{Value: 1}; b := Box[int]{Value: 2}; a.Value + b.Value`, res: "3"},
+		// Out of scope: skipped tests for known unsupported features.
+		{n: "generic_method", skip: true, src: `type Box[T any] struct { V T }; func (b Box[T]) Get() T { return b.V }; Box[int]{V: 42}.Get()`, res: "42"},
+		{n: "constraint_check", skip: true, src: `func Less[T comparable](a, b T) bool { return a < b }; Less[func()](nil, nil)`, res: ""},
+		{n: "generic_interface", skip: true, src: `type Stringer[T any] interface { String(T) string }`, res: ""},
+		{n: "nested_generic", skip: true, src: `type Box[T any] struct { V T }; type Wrap[U any] struct { Inner Box[U] }; w := Wrap[int]{Inner: Box[int]{V: 1}}; w.Inner.V`, res: "1"},
+		{n: "generic_type_alias", skip: true, src: `type Box[T any] struct { V T }; type IntBox = Box[int]; b := IntBox{V: 1}; b.V`, res: "1"},
+	})
+}
+
 func TestFuncNamedReturn(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "func f(a int) (r int) { r = a + 2; return }; f(3)", res: "5"},
