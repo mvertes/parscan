@@ -387,19 +387,19 @@ func TestGenericType(t *testing.T) {
 		{n: "generic_method_var", src: `type Box[T any] struct { V T }; func (b Box[T]) Get() T { return b.V }; b := Box[int]{V: 7}; b.Get()`, res: "7"},
 		{n: "generic_method_ptr", src: `type Box[T any] struct { V T }; func (b *Box[T]) Set(v T) { b.V = v }; b := &Box[int]{V: 0}; b.Set(99); b.V`, res: "99"},
 		{n: "generic_method_multi", src: `type Box[T any] struct { V T }; func (b Box[T]) Get() T { return b.V }; func (b *Box[T]) Set(v T) { b.V = v }; b := &Box[int]{V: 1}; b.Set(2); b.Get()`, res: "2"},
-		{n: "generic_method_multi_tparam", skip: true, src: `type Pair[K comparable, V any] struct { K K; V V }; func (p Pair[K, V]) Key() K { return p.K }; Pair[string, int]{K: "x", V: 1}.Key()`, res: "x"},
+		{n: "generic_method_multi_tparam", src: `type Pair[K comparable, V any] struct { K K; V V }; func (p Pair[K, V]) Key() K { return p.K }; Pair[string, int]{K: "x", V: 1}.Key()`, res: "x"},
 		// Out of scope: skipped tests for known unsupported features.
 		{n: "constraint_check", src: `func Less[T comparable](a, b T) bool { return a < b }; Less[func()](nil, nil)`, err: "does not satisfy constraint"},
 		{n: "comparable_ok", src: `func Id[T comparable](x T) T { return x }; Id[int](42)`, res: "42"},
 		{n: "comparable_slice", src: `func Id[T comparable](x T) T { return x }; Id[[]int](nil)`, err: "does not satisfy constraint"},
-		{n: "constraint_iface", skip: true, src: `import "fmt"; func Str[T fmt.Stringer](x T) string { return x.String() }; Str[int](42)`, err: "does not satisfy constraint"},
-		{n: "union_constraint", skip: true, src: `func Add[T int | float64](a, b T) T { return a + b }; Add[int](1, 2)`, res: "3"},
-		{n: "union_reject", skip: true, src: `func Add[T int | float64](a, b T) T { return a + b }; Add[string]("a", "b")`, err: "does not satisfy constraint"},
-		{n: "approx_constraint", skip: true, src: `type MyInt int; func Id[T ~int](x T) T { return x }; Id[MyInt](MyInt(1))`, res: "1"},
-		{n: "approx_reject", skip: true, src: `func Id[T ~int](x T) T { return x }; Id[string]("a")`, err: "does not satisfy constraint"},
-		{n: "generic_interface", skip: true, src: `type Stringer[T any] interface { String(T) string }`, res: ""},
-		{n: "nested_generic", skip: true, src: `type Box[T any] struct { V T }; type Wrap[U any] struct { Inner Box[U] }; w := Wrap[int]{Inner: Box[int]{V: 1}}; w.Inner.V`, res: "1"},
-		{n: "generic_type_alias", skip: true, src: `type Box[T any] struct { V T }; type IntBox = Box[int]; b := IntBox{V: 1}; b.V`, res: "1"},
+		{n: "constraint_iface", src: `import "fmt"; func Str[T fmt.Stringer](x T) string { return x.String() }; Str[int](42)`, err: "does not satisfy constraint"},
+		{n: "union_constraint", src: `func Add[T int | float64](a, b T) T { return a + b }; Add[int](1, 2)`, res: "3"},
+		{n: "union_reject", src: `func Add[T int | float64](a, b T) T { return a + b }; Add[string]("a", "b")`, err: "does not satisfy constraint"},
+		{n: "approx_constraint", src: `type MyInt int; func Id[T ~int](x T) T { return x }; Id[MyInt](MyInt(1))`, res: "1"},
+		{n: "approx_reject", src: `func Id[T ~int](x T) T { return x }; Id[string]("a")`, err: "does not satisfy constraint"},
+		{n: "generic_interface", src: `type Stringer[T any] interface { String(T) string }`, res: ""},
+		{n: "nested_generic", src: `type Box[T any] struct { V T }; type Wrap[U any] struct { Inner Box[U] }; w := Wrap[int]{Inner: Box[int]{V: 1}}; w.Inner.V`, res: "1"},
+		{n: "generic_type_alias", src: `type Box[T any] struct { V T }; type IntBox = Box[int]; b := IntBox{V: 1}; b.V`, res: "1"},
 	})
 }
 

@@ -36,26 +36,38 @@ func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
 		if len(seg) == 0 {
 			continue
 		}
-		if len(seg) < 2 || seg[0].Tok != lang.Ident {
+		if seg[0].Tok != lang.Ident {
 			return nil, ErrSyntax
+		}
+		if len(seg) == 1 {
+			// Bare ident shares the constraint with the next segment.
+			// Go syntax: [K, V any] means K any, V any.
+			params = append(params, typeParam{name: seg[0].Str})
+			continue
 		}
 		// Disambiguate from array size expressions like [N + 1].
 		if seg[1].Tok != lang.Ident && seg[1].Tok != lang.Interface {
 			return nil, ErrSyntax
 		}
-		// Constraint is everything after the param name. For simple constraints
-		// like "any" or "comparable", this is a single ident. Collect as string.
 		var parts []string
 		for _, t := range seg[1:] {
 			parts = append(parts, t.Str)
 		}
-		params = append(params, typeParam{
-			name:       seg[0].Str,
-			constraint: strings.Join(parts, ""),
-		})
+		params = append(params, typeParam{name: seg[0].Str, constraint: strings.Join(parts, "")})
 	}
 	if len(params) == 0 {
 		return nil, ErrSyntax
+	}
+	// The last param must have an explicit constraint. A bare ident like [d]
+	// is not a valid type parameter list (it's an array size expression).
+	if params[len(params)-1].constraint == "" {
+		return nil, ErrSyntax
+	}
+	// Propagate constraints backwards for shared-constraint syntax: [K, V any].
+	for i := len(params) - 2; i >= 0; i-- {
+		if params[i].constraint == "" {
+			params[i].constraint = params[i+1].constraint
+		}
 	}
 	return params, nil
 }
@@ -172,9 +184,11 @@ func mangledName(base string, typeArgs []*vm.Type) string {
 
 // substituteTokens rewrites tokens by replacing type parameter identifiers
 // with concrete type names and substituting inside block strings.
+// Struct body BraceBlocks get field-name-aware substitution to avoid
+// renaming field names that shadow type parameters.
 func (p *Parser) substituteTokens(raw Tokens, sub map[string]string) Tokens {
 	out := make(Tokens, 0, len(raw))
-	for _, t := range raw {
+	for i, t := range raw {
 		t2 := t // shallow copy
 
 		if t.Tok == lang.Ident {
@@ -196,7 +210,11 @@ func (p *Parser) substituteTokens(raw Tokens, sub map[string]string) Tokens {
 		}
 
 		if t.Tok.IsBlock() {
-			t2.Str = p.substituteBlock(t.Str, sub)
+			if t.Tok == lang.BraceBlock && i > 0 && raw[i-1].Tok == lang.Struct {
+				t2.Str = p.substituteStructBody(t.Str, sub)
+			} else {
+				t2.Str = p.substituteBlock(t.Str, sub)
+			}
 		}
 
 		out = append(out, t2)
@@ -595,6 +613,100 @@ func funcReturnType(typ *vm.Type) *vm.Type {
 	return nil
 }
 
+// substituteStructBody substitutes type parameters in a struct body BraceBlock,
+// preserving field names that shadow type parameters.
+// In Go, struct fields follow the pattern: FieldName Type or EmbeddedType.
+// Only type-position identifiers should be substituted.
+func (p *Parser) substituteStructBody(blockStr string, sub map[string]string) string {
+	outerToks, err := p.Scanner.Scan(blockStr, false)
+	if err != nil || len(outerToks) != 1 || outerToks[0].Tok != lang.BraceBlock {
+		return blockStr
+	}
+	brace := outerToks[0]
+	inner := brace.Block()
+
+	// Process each field declaration (separated by ; or \n).
+	// Only start building the replacement string when a change is found.
+	var sb strings.Builder
+	prev := 0 // tracks position in inner where sb is caught up to
+	start := 0
+	for i := 0; i <= len(inner); i++ {
+		if i < len(inner) && inner[i] != ';' && inner[i] != '\n' {
+			continue
+		}
+		field := inner[start:i]
+		newField := p.substituteStructField(field, sub)
+		if newField != field {
+			sb.WriteString(inner[prev:start])
+			sb.WriteString(newField)
+			prev = i
+		}
+		start = i + 1
+	}
+	if prev == 0 {
+		return blockStr
+	}
+	sb.WriteString(inner[prev:])
+	return blockStr[:brace.Beg] + sb.String() + blockStr[len(blockStr)-brace.End:]
+}
+
+// substituteStructField substitutes type params in a single struct field
+// declaration, protecting field-name idents from substitution.
+// E.g. "K K" with sub {K:string} → "K string" (first K is field name, kept).
+func (p *Parser) substituteStructField(field string, sub map[string]string) string {
+	fieldToks, err := p.Scanner.Scan(field, false)
+	if err != nil || len(fieldToks) == 0 {
+		return field
+	}
+
+	// Count consecutive leading idents. In "K K", nIdent=2 → first is field name.
+	// In "*T" or "[]T", nIdent=0 → embedded type, no field names.
+	// In "K", nIdent=1 → embedded type.
+	nIdent := 0
+	for _, ft := range fieldToks {
+		if ft.Tok != lang.Ident {
+			break
+		}
+		nIdent++
+	}
+
+	// If 2+ leading idents, the first N-1 are field names → protect them.
+	protectCount := 0
+	if nIdent >= 2 {
+		protectCount = nIdent - 1
+	}
+
+	var sb strings.Builder
+	prev := 0
+	identIdx := 0
+	for _, ft := range fieldToks {
+		switch {
+		case ft.Tok == lang.Ident:
+			if identIdx >= protectCount {
+				if repl, ok := sub[ft.Str]; ok {
+					sb.WriteString(field[prev:ft.Pos])
+					sb.WriteString(repl)
+					prev = ft.Pos + len(ft.Str)
+				}
+			}
+			identIdx++
+		case ft.Tok.IsBlock():
+			innerBlock := ft.Block()
+			newInner := p.substituteBlock(innerBlock, sub)
+			if newInner != innerBlock {
+				sb.WriteString(field[prev : ft.Pos+ft.Beg])
+				sb.WriteString(newInner)
+				prev = ft.Pos + len(ft.Str) - ft.End
+			}
+		}
+	}
+	if prev == 0 {
+		return field
+	}
+	sb.WriteString(field[prev:])
+	return sb.String()
+}
+
 func (p *Parser) substituteBlock(s string, sub map[string]string) string {
 	toks, err := p.Scanner.Scan(s, false)
 	if err != nil || len(toks) == 0 {
@@ -603,9 +715,13 @@ func (p *Parser) substituteBlock(s string, sub map[string]string) string {
 	var sb strings.Builder
 	sb.Grow(len(s))
 	prev := 0
-	for _, t := range toks {
+	for i, t := range toks {
 		switch {
 		case t.Tok == lang.Ident:
+			// Skip idents after a Period — they are field/member names, not type params.
+			if i > 0 && toks[i-1].Tok == lang.Period {
+				break
+			}
 			if repl, ok := sub[t.Str]; ok {
 				sb.WriteString(s[prev:t.Pos])
 				sb.WriteString(repl)
