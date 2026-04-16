@@ -244,6 +244,45 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 				i += n - 1
 				break
 			}
+			// Generic function instantiation: Name[TypeArgs](...).
+			if len(out) > 0 && out[len(out)-1].Tok == lang.Ident {
+				prevName := out[len(out)-1].Str
+				if tmpl, ok := p.generics[prevName]; ok {
+					typeArgs, err := p.resolveTypeArgs(t.Token)
+					if err != nil {
+						return out, err
+					}
+					instToks, mname, err := p.instantiateFunc(tmpl, typeArgs)
+					if err != nil {
+						return out, err
+					}
+					out = out[:len(out)-1] // remove the generic name ident
+					if instToks != nil {
+						// Instantiate at package scope so the symbol is accessible
+						// globally, matching how top-level functions are registered.
+						savedScope := p.scope
+						p.scope = ""
+						if err := p.registerFunc(instToks); err != nil {
+							p.scope = savedScope
+							return out, err
+						}
+						fout, err := p.parseFunc(instToks)
+						p.scope = savedScope
+						if err != nil {
+							return out, err
+						}
+						// fout[1] is Label(name) — use it as the ident reference.
+						fid := fout[1]
+						fid.Tok = lang.Ident
+						out = append(out, fout...)
+						out = append(out, fid)
+					} else {
+						// Already instantiated: just reference the mangled name.
+						out = append(out, newIdent(mname, t.Pos))
+					}
+					break
+				}
+			}
 			toks, err := p.parseBlock(t, typeStr)
 			if err != nil {
 				return out, err
