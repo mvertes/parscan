@@ -190,6 +190,34 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 					}
 				}
 			}
+			// Package-qualified implicit generic call: pkg.Generic(args).
+			if len(out) > 0 && len(ops) > 0 && ops[len(ops)-1].Tok == lang.Period {
+				pkgTok := out[len(out)-1]
+				if pkgTok.Tok == lang.Ident {
+					if ps := p.Symbols[pkgTok.Str]; ps != nil && ps.Kind == symbol.Pkg {
+						memberName := ops[len(ops)-1].Str[1:] // Strip leading ".".
+						qualifiedName := ps.PkgPath + "." + memberName
+						if gs, ok := p.Symbols[qualifiedName]; ok && gs.Kind == symbol.Generic {
+							tmpl := gs.Data.(*genericTemplate)
+							if tmpl.isFunc {
+								typeArgs, err := p.inferTypeArgs(tmpl, gs, t.Token)
+								if err != nil {
+									return out, err
+								}
+								instToks, mname, err := p.instantiate(tmpl, typeArgs)
+								if err != nil {
+									return out, err
+								}
+								out = out[:len(out)-1] // remove the pkg ident
+								ops = ops[:len(ops)-1] // remove the Period operator
+								if err := p.emitGenericFunc(instToks, mname, t.Pos, &out); err != nil {
+									return out, err
+								}
+							}
+						}
+					}
+				}
+			}
 
 			toks, err := p.parseBlock(t, typeStr)
 			if err != nil {
@@ -293,6 +321,42 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 						out = append(out, newIdent(mname, t.Pos))
 					}
 					break
+				}
+			}
+			// Package-qualified generic: pkg.Generic[TypeArgs].
+			if len(out) > 0 && len(ops) > 0 && ops[len(ops)-1].Tok == lang.Period {
+				pkgTok := out[len(out)-1]
+				if pkgTok.Tok == lang.Ident {
+					if ps := p.Symbols[pkgTok.Str]; ps != nil && ps.Kind == symbol.Pkg {
+						memberName := ops[len(ops)-1].Str[1:] // Strip leading ".".
+						qualifiedName := ps.PkgPath + "." + memberName
+						if gs, ok := p.Symbols[qualifiedName]; ok && gs.Kind == symbol.Generic {
+							tmpl := gs.Data.(*genericTemplate)
+							out = out[:len(out)-1] // remove the pkg ident
+							ops = ops[:len(ops)-1] // remove the Period operator
+							if tmpl.isFunc {
+								typeArgs, err := p.resolveTypeArgs(t.Token)
+								if err != nil {
+									return out, err
+								}
+								instToks, mname, err := p.instantiate(tmpl, typeArgs)
+								if err != nil {
+									return out, err
+								}
+								if err := p.emitGenericFunc(instToks, mname, t.Pos, &out); err != nil {
+									return out, err
+								}
+							} else {
+								mname, err := p.ensureTypeInstantiated(tmpl, t.Token)
+								if err != nil {
+									return out, err
+								}
+								ctype = mname
+								out = append(out, newIdent(mname, t.Pos))
+							}
+							break
+						}
+					}
 				}
 			}
 			toks, err := p.parseBlock(t, typeStr)

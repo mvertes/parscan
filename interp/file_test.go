@@ -103,6 +103,34 @@ func main() {
 	}
 }
 
+func TestGenericExport(t *testing.T) {
+	src := `package main
+
+import "example.com/pkg6"
+
+func main() {
+	println(pkg6.Max[int](3, 5))
+	println(pkg6.Max[string]("alpha", "beta"))
+	println(pkg6.Id(42))
+	println(pkg6.Id("hello"))
+	b := pkg6.Box[int]{Value: 7}
+	println(b.Value)
+}
+`
+	var stdout bytes.Buffer
+	i := NewInterpreter(golang.GoSpec)
+	i.SetIO(os.Stdin, &stdout, os.Stderr)
+	i.SetPkgfs("../_samples/pkg")
+
+	if _, err := i.Eval("test", src); err != nil {
+		t.Fatal(err)
+	}
+	want := "5\nbeta\n42\nhello\n7\n"
+	if got := stdout.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func commentData(p string, buf []byte) (text string, isErr, skip bool) {
 	fset := token.NewFileSet()
 	f, _ := parser.ParseFile(fset, p, buf, parser.ParseComments)

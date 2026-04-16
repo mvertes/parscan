@@ -417,7 +417,7 @@ func TestGenericImplicit(t *testing.T) {
 		{n: "slice", src: `import "fmt"; func Fmt[T any](x T) string { return fmt.Sprintf("%v", x) }; Fmt([]int{1, 2, 3})`, res: "[1 2 3]"},
 		{n: "map", src: `import "fmt"; func Fmt[T any](x T) string { return fmt.Sprintf("%v", x) }; Fmt(map[string]int{"a": 1})`, res: "map[a:1]"},
 		{n: "chan", src: `func Id[T any](x T) T { return x }; c := make(chan int, 1); c <- 5; Id(<-c)`, res: "5"},
-		{n: "pointer", skip: true, src: `func Id[T any](x T) T { return x }; a := 42; p := Id(&a); *p`, res: "42"},
+		{n: "pointer", src: `func Id[T any](x T) T { return x }; a := 42; p := Id(&a); *p`, res: "42"},
 		{n: "deref", src: `func Id[T any](x T) T { return x }; a := 42; b := &a; Id(*b)`, res: "42"},
 	})
 }

@@ -110,6 +110,18 @@ func (p *Parser) addLocalVar(name string) string {
 	return scoped
 }
 
+// addTempVar adds a temporary variable appropriate for the current scope.
+// At function scope it creates a local variable; at top level it creates a
+// global variable whose slot is allocated later by allocGlobalSlots.
+func (p *Parser) addTempVar(name string) string {
+	if p.funcScope != "" {
+		return p.addLocalVar(name)
+	}
+	scoped := p.scopedName(name)
+	p.SymAdd(symbol.UnsetAddr, scoped, vm.Value{}, symbol.Var, nil)
+	return scoped
+}
+
 func (p *Parser) inferDefineType(rhs Tokens, scopedName string) {
 	sym := p.Symbols[scopedName]
 	if sym == nil || sym.Type != nil {
@@ -939,12 +951,12 @@ func (p *Parser) parseAssignMultiRHS(in Tokens, lhs, rhs []Tokens, aindex int, d
 	// For multi-assignment with non-simple LHS (e.g. s[0], s[1] = s[1], s[0]),
 	// capture all RHS values into temporaries first, then assign to LHS.
 	// This ensures all RHS are evaluated before any LHS is modified.
-	if !define && len(rhs) > 1 && p.funcScope != "" {
+	if !define && len(rhs) > 1 {
 		pos := in[aindex].Pos
-		// Phase 1: evaluate each RHS into a temporary local.
+		// Phase 1: evaluate each RHS into a temporary variable.
 		tmpNames := make([]string, len(rhs))
 		for i, e := range rhs {
-			tmpNames[i] = p.addLocalVar(fmt.Sprintf("_swap_%d_", i))
+			tmpNames[i] = p.addTempVar(fmt.Sprintf("_swap_%d_", i))
 			toks, err := p.parseExpr(e, "")
 			if err != nil {
 				return out, err

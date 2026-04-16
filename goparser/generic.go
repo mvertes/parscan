@@ -133,6 +133,30 @@ func (p *Parser) resolveTypeArgs(bt scan.Token) ([]*vm.Type, error) {
 	return types, nil
 }
 
+// isSimpleIdent reports whether s is a plain Go identifier (letters, digits, underscore).
+func isSimpleIdent(s string) bool {
+	for _, r := range s {
+		if r != '_' && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return len(s) > 0
+}
+
+// typeArgName returns the source-level name for a concrete type argument.
+// For pointer types, PointerTo stores just the element name (e.g. "int"
+// for *int), so we prepend "*" to produce the correct name.
+func typeArgName(t *vm.Type) string {
+	name := t.Name
+	if name == "" {
+		return t.Rtype.String()
+	}
+	if t.IsPtr() {
+		return "*" + name
+	}
+	return name
+}
+
 // mangledName returns the mangled name for a generic instantiation.
 // E.g. mangledName("Max", [int]) -> "Max#int".
 func mangledName(base string, typeArgs []*vm.Type) string {
@@ -140,11 +164,7 @@ func mangledName(base string, typeArgs []*vm.Type) string {
 	sb.WriteString(base)
 	for _, t := range typeArgs {
 		sb.WriteByte('#')
-		name := t.Name
-		if name == "" {
-			name = t.Rtype.String()
-		}
-		sb.WriteString(name)
+		sb.WriteString(typeArgName(t))
 	}
 	return sb.String()
 }
@@ -169,11 +189,7 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens
 	// Build substitution map: type param name -> concrete type name string.
 	sub := make(map[string]string, len(tmpl.typeParams))
 	for i, tp := range tmpl.typeParams {
-		name := typeArgs[i].Name
-		if name == "" {
-			name = typeArgs[i].Rtype.String()
-		}
-		sub[tp.name] = name
+		sub[tp.name] = typeArgName(typeArgs[i])
 	}
 
 	// Token index offset: func tokens have a leading `func` keyword.
@@ -194,6 +210,18 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens
 			continue
 		case t.Tok == lang.Ident:
 			if repl, ok := sub[t.Str]; ok {
+				// Compound types (e.g. "*int", "[]byte", "map[K]V")
+				// must be re-scanned into proper tokens.
+				if !isSimpleIdent(repl) {
+					expanded, err := p.Scanner.Scan(repl, false)
+					if err == nil && len(expanded) > 0 {
+						for _, et := range expanded {
+							et.Pos = t.Pos
+							out = append(out, Token{Token: et})
+						}
+						continue
+					}
+				}
 				t2.Str = repl
 			}
 		}

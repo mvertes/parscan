@@ -187,6 +187,22 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			return nil, 0, ErrUndefined{in[0].Str}
 		}
 		if s.Kind == symbol.Pkg && len(in) >= 3 && in[1].Tok == lang.Period {
+			// Package-qualified generic type: pkg.Type[T].
+			if len(in) >= 4 && in[3].Tok == lang.BracketBlock {
+				qualifiedName := s.PkgPath + "." + in[2].Str
+				if gs, ok := p.Symbols[qualifiedName]; ok && gs.Kind == symbol.Generic {
+					tmpl := gs.Data.(*genericTemplate)
+					mname, err := p.ensureTypeInstantiated(tmpl, in[3].Token)
+					if err != nil {
+						return nil, 0, err
+					}
+					s2, _, ok := p.Symbols.Get(mname, "")
+					if !ok || s2.Type == nil {
+						return nil, 0, ErrUndefined{mname}
+					}
+					return s2.Type, 4, nil
+				}
+			}
 			typ, err := p.resolvePkgType(s, in[2].Str)
 			if err != nil {
 				return nil, 0, err

@@ -41,14 +41,22 @@ func (p *Parser) importSrc(pkgPath string) (err error) {
 		Path:   pkgPath,
 		Values: map[string]vm.Value{},
 	}
+	var genericKeys []string
 	for k, s := range p.Symbols {
 		if existing[k] || !IsExported(k) {
+			continue
+		}
+		if s.Kind == symbol.Generic {
+			genericKeys = append(genericKeys, k)
 			continue
 		}
 		pkg.Values[k] = s.Value
 	}
 	// Create qualified aliases after the loop to avoid mutating p.Symbols during iteration.
 	for k := range pkg.Values {
+		p.Symbols[pkgPath+"."+k] = p.Symbols[k]
+	}
+	for _, k := range genericKeys {
 		p.Symbols[pkgPath+"."+k] = p.Symbols[k]
 	}
 	p.Packages[pkgPath] = pkg
