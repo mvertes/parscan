@@ -361,6 +361,14 @@ func (p *Parser) postfixType(in Tokens) (*vm.Type, int) {
 		}
 		return nil, 0
 
+	case id == lang.TypeAssert:
+		// Type assertion: x.(T). The asserted type is stored in Arg[1].
+		_, el := p.postfixType(in[:l]) // consume the expression being asserted
+		if typ, ok := t.Arg[1].(*vm.Type); ok {
+			return typ, 1 + el
+		}
+		return nil, 0
+
 	case id == lang.Composite:
 		// Composite literal: type is encoded in the token.
 		typeName := t.Str

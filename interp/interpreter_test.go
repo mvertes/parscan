@@ -400,6 +400,18 @@ func TestGenericImplicit(t *testing.T) {
 		{n: "#03", src: `func Id[T any](x T) T { return x }; Id(42)`, res: "42"},
 		{n: "#04", src: `import "fmt"; func Pair[K any, V any](k K, v V) string { return fmt.Sprintf("%v:%v", k, v) }; Pair(42, "hello")`, res: "42:hello"},
 		{n: "#05", src: `func Id[T any](x T) T { return x }; f := Id(42); f`, res: "42"},
+		{n: "#06", src: `func Max[T any](a, b T) T { if a > b { return a }; return b }; func f(x int) int { return x * 2 }; func g(x int) int { return x + 10 }; Max(f(3), g(4))`, res: "14"},
+		{n: "conversion", src: `func Id[T any](x T) T { return x }; Id(int(1.0))`, res: "1"},
+		{n: "conversions", src: `func Max[T any](a, b T) T { if a > b { return a }; return b }; Max(int(3.0), int(5.0))`, res: "5"},
+		{n: "assertion", src: `func Id[T any](x T) T { return x }; var i interface{} = 42; Id(i.(int))`, res: "42"},
+		{n: "assertions", src: `func Max[T any](a, b T) T { if a > b { return a }; return b }; var a, b interface{} = 3, 5; Max(a.(int), b.(int))`, res: "5"},
+		{n: "mixed_expr", src: `func Max[T any](a, b T) T { if a > b { return a }; return b }; Max(2+3, 1+1)`, res: "5"},
+		{n: "index_expr", src: `func Id[T any](x T) T { return x }; a := []int{10, 20, 30}; Id(a[2])`, res: "30"},
+		{n: "slice", src: `import "fmt"; func Fmt[T any](x T) string { return fmt.Sprintf("%v", x) }; Fmt([]int{1, 2, 3})`, res: "[1 2 3]"},
+		{n: "map", src: `import "fmt"; func Fmt[T any](x T) string { return fmt.Sprintf("%v", x) }; Fmt(map[string]int{"a": 1})`, res: "map[a:1]"},
+		{n: "chan", src: `func Id[T any](x T) T { return x }; c := make(chan int, 1); c <- 5; Id(<-c)`, res: "5"},
+		{n: "pointer", skip: true, src: `func Id[T any](x T) T { return x }; a := 42; p := Id(&a); *p`, res: "42"},
+		{n: "deref", src: `func Id[T any](x T) T { return x }; a := 42; b := &a; Id(*b)`, res: "42"},
 	})
 }
 
