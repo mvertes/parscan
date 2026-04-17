@@ -448,6 +448,8 @@ func TestFuncNamedReturn(t *testing.T) {
 		{n: "#03", src: "func f(a int) (r int) { return a + 2 }; f(3)", res: "5"},
 		// tuple assignment to named returns
 		{n: "tuple_named_return", src: `func f() (n int, s string) { n, s = 42, "hello"; return n, s }; a, b := f(); a`, res: "42"},
+		// named return must be zeroed on each call (yaegi-issue-1488)
+		{n: "named_return_reinit", src: `func inc() (out int) { out++; return }; a := inc(); b := inc(); c := inc(); a + b + c`, res: "3"},
 	})
 }
 

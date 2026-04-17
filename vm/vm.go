@@ -1262,10 +1262,17 @@ func (m *Machine) Run() (err error) {
 			mem[sp+2] = ValueOf(stop)
 			sp += 2
 		case Grow:
-			if n := int(c.A) + int(c.B); sp+n >= len(mem) {
+			a := int(c.A)
+			if n := a + int(c.B); sp+n >= len(mem) {
 				mem = growStack(mem, sp, n)
 			}
-			sp += int(c.A)
+			// Zero local-variable slots so named returns and other implicitly
+			// declared locals don't retain values from a previous invocation
+			// that reused this region of the stack.
+			for i := 1; i <= a; i++ {
+				mem[sp+i] = Value{}
+			}
+			sp += a
 		case DeferPush:
 			mem, sp = m.deferPush(c, mem, fp, sp)
 
