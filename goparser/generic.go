@@ -738,8 +738,15 @@ func (p *Parser) postfixType(in Tokens) (*vm.Type, int) {
 			return nil, 0
 		}
 		fieldName := t.Str[1:] // Strip leading ".".
-		if ft := leftTyp.FieldType(fieldName); ft != nil {
-			return ft, 1 + ln
+		// Auto-dereference pointer types for field access (Go: s.F works for *T).
+		structTyp := leftTyp
+		if structTyp.Rtype.Kind() == reflect.Pointer {
+			structTyp = structTyp.Elem()
+		}
+		if structTyp.Rtype.Kind() == reflect.Struct {
+			if ft := structTyp.FieldType(fieldName); ft != nil {
+				return ft, 1 + ln
+			}
 		}
 		// Method: look up in symbol table.
 		if ms, _ := p.Symbols.MethodByName(&symbol.Symbol{Kind: symbol.Type, Name: leftTyp.Name, Type: leftTyp}, fieldName); ms != nil {
