@@ -20,6 +20,8 @@ linters:
   exclusions:
     presets:
       - common-false-positives
+    paths:
+      - stdlib/src
 formatters:
   enable:
     - gofumpt

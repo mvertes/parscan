@@ -607,8 +607,9 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 
 	if placeholder != nil {
 		if placeholder.Rtype.Kind() == reflect.Interface {
-			// Finalize interface: copy method set onto the placeholder.
+			// Finalize interface: copy method set and constraint elements onto the placeholder.
 			placeholder.IfaceMethods = typ.IfaceMethods
+			placeholder.TypeElems = typ.TypeElems
 		} else {
 			// Finalize struct: patches the internal reflect type in place so
 			// derived types (e.g., *Node via PointerTo) see the real layout.

@@ -28,6 +28,7 @@ type Parser struct {
 	pkgName         string         // current package name
 	noPkg           bool           // true if package statement is not mandatory (test, repl).
 	pkgfs           fs.FS          // filesystem to read imported sources from
+	stdlibfs        fs.FS          // fallback filesystem for embedded stdlib sources
 	importRemaining []Tokens       // code-gen declarations from imported source packages
 
 	funcScope         string
@@ -78,6 +79,14 @@ func (p *Parser) ImportPackageValues(m map[string]map[string]reflect.Value) {
 // SetPkgfs sets the parser virtual filesystem for reading sources.
 func (p *Parser) SetPkgfs(pkgPath string) {
 	p.pkgfs = os.DirFS(pkgPath)
+}
+
+// SetStdlibFS installs a fallback filesystem for resolving imported source
+// packages that are not present in the primary pkgfs. This is used to
+// resolve generics-first stdlib packages (cmp, slices, maps, …) whose
+// sources are embedded in the interpreter binary.
+func (p *Parser) SetStdlibFS(fsys fs.FS) {
+	p.stdlibfs = fsys
 }
 
 func (p *Parser) scopedName(name string) string {

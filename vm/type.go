@@ -34,6 +34,7 @@ type Type struct {
 	Rtype        reflect.Type
 	Placeholder  bool            // true for forward-declared struct placeholders until SetFields is called
 	IfaceMethods []IfaceMethod   // non-nil for interface types: required method signatures
+	TypeElems    []TypeElem      // non-nil for constraint interfaces: union members (e.g. cmp.Ordered)
 	Methods      []Method        // concrete types: methods[methodID] = code location + receiver path
 	Embedded     []EmbeddedField // parscan types of anonymous (embedded) fields, for promoted method lookup
 	Params       []*Type         // parscan-level parameter types for func types (nil for non-func or if unknown)
@@ -47,6 +48,15 @@ type IfaceMethod struct {
 	Name  string
 	ID    int          // global method ID; -1 = not yet assigned
 	Rtype reflect.Type // method signature (with receiver as 1st param); nil if unknown
+}
+
+// TypeElem describes one member of a constraint interface's type-element union,
+// e.g. for "type Ordered interface { ~int | ~string }" the type elements are
+// TypeElem{Approx: true, Type: intType}, TypeElem{Approx: true, Type: stringType}.
+// Approx encodes the "~" prefix (any type whose underlying type is Type).
+type TypeElem struct {
+	Approx bool
+	Type   *Type
 }
 
 // Iface represents a boxed interface value at runtime.

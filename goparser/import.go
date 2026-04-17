@@ -69,16 +69,26 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 	var decls []Tokens
 
 	if src == "" {
-		// Get content from file(s).
+		// Get content from file(s). Primary pkgfs first; stdlib fallback resolves
+		// embedded generics-first packages (cmp, slices, …) when the user pkgfs
+		// does not provide them.
 		if p.pkgfs == nil {
 			p.pkgfs = os.DirFS(".")
 		}
-		fi, err := fs.Stat(p.pkgfs, name)
+		fsys := p.pkgfs
+		fi, err := fs.Stat(fsys, name)
+		if err != nil && p.stdlibfs != nil {
+			if fi2, err2 := fs.Stat(p.stdlibfs, name); err2 == nil {
+				fsys = p.stdlibfs
+				fi = fi2
+				err = nil
+			}
+		}
 		if err != nil {
 			return out, err
 		}
 		if fi.IsDir() {
-			files, err := fs.ReadDir(p.pkgfs, name)
+			files, err := fs.ReadDir(fsys, name)
 			if err != nil {
 				return out, err
 			}
@@ -89,7 +99,7 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 				if !MatchFileName(f.Name(), p.buildCtx) {
 					continue
 				}
-				buf, err := fs.ReadFile(p.pkgfs, name+"/"+f.Name())
+				buf, err := fs.ReadFile(fsys, name+"/"+f.Name())
 				if err != nil {
 					return out, err
 				}

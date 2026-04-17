@@ -11,10 +11,38 @@ import (
 	"github.com/mvertes/parscan/vm"
 )
 
+// elemKind classifies a single constraint element.
+type elemKind int
+
+const (
+	elemAny          elemKind = iota // any / interface{}
+	elemComparable                   // built-in comparable
+	elemExact                        // arg.Rtype must equal typ.Rtype
+	elemInterface                    // arg must Implement typ (method-set interface)
+	elemApprox                       // ~T: arg.Rtype.Kind() must match typ.Rtype.Kind()
+	elemTypeParamRef                 // arg must equal typeArgs[paramRef]
+)
+
+// constraintElem is one leaf of a constraint's disjunction.
+type constraintElem struct {
+	kind     elemKind
+	typ      *vm.Type // Exact, Interface, Approx
+	paramRef int      // TypeParamRef
+}
+
+// tpConstraint is a resolved generic type-parameter constraint. An argument
+// satisfies the constraint if it matches any element in elems — a flat
+// disjunction. Nested unions (including those embedded inside constraint
+// interfaces like cmp.Ordered) are flattened at resolution time.
+type tpConstraint struct {
+	elems []constraintElem
+	pos   int // byte offset of the first constraint token; resolved via p.Sources at error time
+}
+
 // typeParam represents a single generic type parameter.
 type typeParam struct {
-	name       string // e.g. "T", "K", "V"
-	constraint string // e.g. "any", "comparable", or an interface name
+	name       string       // e.g. "T", "K", "V"
+	constraint tpConstraint // resolved constraint (kind + payload)
 }
 
 // genericTemplate stores a generic function or type definition.
@@ -31,7 +59,11 @@ func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
 	if err != nil {
 		return nil, err
 	}
-	var params []typeParam
+	type rawPar struct {
+		name  string
+		ctoks Tokens
+	}
+	var raws []rawPar
 	for _, seg := range toks.Split(lang.Comma) {
 		if len(seg) == 0 {
 			continue
@@ -42,126 +74,210 @@ func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
 		if len(seg) == 1 {
 			// Bare ident shares the constraint with the next segment.
 			// Go syntax: [K, V any] means K any, V any.
-			params = append(params, typeParam{name: seg[0].Str})
+			raws = append(raws, rawPar{name: seg[0].Str})
 			continue
 		}
 		// Disambiguate from array size expressions like [N + 1].
 		if seg[1].Tok != lang.Ident && seg[1].Tok != lang.Interface && seg[1].Tok != lang.Tilde {
 			return nil, ErrSyntax
 		}
-		var parts []string
-		for _, t := range seg[1:] {
-			parts = append(parts, t.Str)
-		}
-		params = append(params, typeParam{name: seg[0].Str, constraint: strings.Join(parts, "")})
+		raws = append(raws, rawPar{name: seg[0].Str, ctoks: seg[1:]})
 	}
-	if len(params) == 0 {
+	if len(raws) == 0 {
 		return nil, ErrSyntax
 	}
 	// The last param must have an explicit constraint. A bare ident like [d]
 	// is not a valid type parameter list (it's an array size expression).
-	if params[len(params)-1].constraint == "" {
+	if raws[len(raws)-1].ctoks == nil {
 		return nil, ErrSyntax
 	}
 	// Propagate constraints backwards for shared-constraint syntax: [K, V any].
-	for i := len(params) - 2; i >= 0; i-- {
-		if params[i].constraint == "" {
-			params[i].constraint = params[i+1].constraint
+	for i := len(raws) - 2; i >= 0; i-- {
+		if raws[i].ctoks == nil {
+			raws[i].ctoks = raws[i+1].ctoks
 		}
+	}
+
+	// Build type-param index so constraints referencing other params resolve
+	// to a TypeParamRef rather than attempting to lookup the name as a type.
+	tpIdx := make(map[string]int, len(raws))
+	for i, r := range raws {
+		tpIdx[r.name] = i
+	}
+
+	// Temporarily install placeholders for each type-param name so that
+	// parseTypeExpr can resolve references to them inside composite
+	// constraints like "~[]E". Restore the prior symbol on exit.
+	saved := make(map[string]*symbol.Symbol, len(raws))
+	for _, r := range raws {
+		saved[r.name] = p.Symbols[r.name]
+		p.Symbols[r.name] = &symbol.Symbol{
+			Kind: symbol.Type, Name: r.name,
+			Type: &vm.Type{Name: r.name, Rtype: vm.AnyRtype},
+		}
+	}
+	defer func() {
+		for k, v := range saved {
+			if v == nil {
+				delete(p.Symbols, k)
+			} else {
+				p.Symbols[k] = v
+			}
+		}
+	}()
+
+	params := make([]typeParam, len(raws))
+	for i, r := range raws {
+		c, err := p.resolveConstraint(r.ctoks, tpIdx)
+		if err != nil {
+			return nil, err
+		}
+		params[i] = typeParam{name: r.name, constraint: c}
 	}
 	return params, nil
 }
 
 func (p *Parser) checkConstraints(tmpl *genericTemplate, typeArgs []*vm.Type) error {
 	for i, tp := range tmpl.typeParams {
-		if err := p.checkOneConstraint(tp.constraint, typeArgs[i]); err != nil {
+		if err := p.checkConstraint(tp.constraint, typeArgs[i], typeArgs); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func constraintError(arg *vm.Type, constraint string) error {
-	return fmt.Errorf("type %s does not satisfy constraint %s", arg.Rtype, constraint)
+func (p *Parser) constraintError(c tpConstraint, arg *vm.Type) error {
+	if loc := p.Sources.FormatPos(c.pos); loc != "" {
+		return fmt.Errorf("type %s does not satisfy constraint (%s)", arg.Rtype, loc)
+	}
+	return fmt.Errorf("type %s does not satisfy constraint", arg.Rtype)
 }
 
-// checkOneConstraint checks whether arg satisfies constraint.
-func (p *Parser) checkOneConstraint(constraint string, arg *vm.Type) error {
-	switch constraint {
-	case "any", "interface{}":
-		return nil
-	case "comparable":
-		if !arg.Rtype.Comparable() {
-			return constraintError(arg, constraint)
-		}
-		return nil
-	}
-
-	// Union constraints: "int|float64", "~int|~string".
-	if strings.Contains(constraint, "|") {
-		for _, member := range strings.Split(constraint, "|") {
-			if p.checkOneConstraint(member, arg) == nil {
-				return nil
-			}
-		}
-		return constraintError(arg, constraint)
-	}
-
-	// Approximate constraints: "~int" means any type whose underlying type is int.
-	// Kind comparison is correct for basic types; composite ~T silently passes.
-	if strings.HasPrefix(constraint, "~") {
-		baseType := p.resolveConstraintType(constraint[1:])
-		if baseType == nil {
-			return nil // Unknown base type, silently pass.
-		}
-		k := baseType.Rtype.Kind()
-		if k > reflect.Complex128 && k != reflect.String {
-			return nil // Composite ~T: can't reliably check underlying type.
-		}
-		if arg.Rtype.Kind() == k {
+// checkConstraint passes if any element in c.elems matches arg. typeArgs
+// carries the full set of concrete type arguments for the current
+// instantiation so that a TypeParamRef element can resolve to its target.
+func (p *Parser) checkConstraint(c tpConstraint, arg *vm.Type, typeArgs []*vm.Type) error {
+	for _, e := range c.elems {
+		if checkConstraintElem(e, arg, typeArgs) {
 			return nil
 		}
-		return constraintError(arg, constraint)
 	}
-
-	// Interface constraints (e.g. "fmt.Stringer").
-	resolved := p.resolveConstraintType(constraint)
-	if resolved == nil {
-		return nil // Unknown, silently pass.
-	}
-	if resolved.IsInterface() {
-		if !arg.Rtype.Implements(resolved.Rtype) {
-			return constraintError(arg, constraint)
-		}
-		return nil
-	}
-
-	// Type element (exact type match, used in unions like "int|float64").
-	if arg.Rtype == resolved.Rtype {
-		return nil
-	}
-	return constraintError(arg, constraint)
+	return p.constraintError(c, arg)
 }
 
-// resolveConstraintType resolves a constraint name to a type.
-// Handles both unqualified ("error") and package-qualified ("fmt.Stringer") names.
-func (p *Parser) resolveConstraintType(name string) *vm.Type {
-	if s, _, ok := p.Symbols.Get(name, p.scope); ok && s.Kind == symbol.Type && s.Type != nil {
-		return s.Type
+// checkConstraintElem reports whether arg satisfies a single constraint element.
+// For Approx with composite kinds (slice, map, array, …), only Kind is checked
+// — tightening would require inter-param substitution.
+func checkConstraintElem(e constraintElem, arg *vm.Type, typeArgs []*vm.Type) bool {
+	switch e.kind {
+	case elemAny:
+		return true
+	case elemComparable:
+		return arg.Rtype.Comparable()
+	case elemExact:
+		return e.typ == nil || arg.Rtype == e.typ.Rtype
+	case elemInterface:
+		// Parscan-parsed interfaces have Rtype=any so Implements is trivially
+		// true — acceptable because their type-element form is already flattened
+		// into sibling elems at resolution time.
+		return e.typ == nil || arg.Rtype.Implements(e.typ.Rtype)
+	case elemApprox:
+		return e.typ != nil && arg.Rtype.Kind() == e.typ.Rtype.Kind()
+	case elemTypeParamRef:
+		if e.paramRef < 0 || e.paramRef >= len(typeArgs) {
+			return true
+		}
+		return arg.Rtype == typeArgs[e.paramRef].Rtype
 	}
-	idx := strings.Index(name, ".")
-	if idx <= 0 {
-		return nil
-	}
-	ps, _, ok := p.Symbols.Get(name[:idx], p.scope)
-	if !ok || ps.Kind != symbol.Pkg {
-		return nil
-	}
-	typ, err := p.resolvePkgType(ps, name[idx+1:])
+	return false
+}
+
+// resolveConstraint turns raw constraint tokens into a resolved constraint.
+// tpIdx maps names of type parameters in the enclosing list to their index so
+// that e.g. "~[]E" with "E" another type param resolves correctly.
+func (p *Parser) resolveConstraint(toks Tokens, tpIdx map[string]int) (tpConstraint, error) {
+	elems, err := p.resolveConstraintElems(toks, tpIdx)
 	if err != nil {
-		return nil
+		return tpConstraint{}, err
 	}
-	return typ
+	pos := 0
+	if len(toks) > 0 {
+		pos = toks[0].Pos
+	}
+	return tpConstraint{elems: elems, pos: pos}, nil
+}
+
+// resolveConstraintElems returns the flat disjunction of leaf elements that
+// satisfy the constraint expressed by toks. Nested unions — including those
+// embedded inside constraint interfaces like cmp.Ordered — are flattened.
+func (p *Parser) resolveConstraintElems(toks Tokens, tpIdx map[string]int) ([]constraintElem, error) {
+	if len(toks) == 0 {
+		return nil, fmt.Errorf("%w: empty constraint", ErrSyntax)
+	}
+
+	// Top-level union "A | B | C": concatenate each side's elements.
+	if toks.Index(lang.Or) >= 0 {
+		var out []constraintElem
+		for _, seg := range toks.Split(lang.Or) {
+			es, err := p.resolveConstraintElems(seg, tpIdx)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, es...)
+		}
+		return out, nil
+	}
+
+	// Approximate "~T": T must be a concrete type (single elemExact).
+	if toks[0].Tok == lang.Tilde {
+		inner, err := p.resolveConstraintElems(toks[1:], tpIdx)
+		if err != nil {
+			return nil, err
+		}
+		if len(inner) != 1 || inner[0].kind != elemExact {
+			loc := p.Sources.FormatPos(toks[0].Pos)
+			if loc == "" {
+				return nil, fmt.Errorf("%w: ~ must prefix a type", ErrSyntax)
+			}
+			return nil, fmt.Errorf("%w: ~ must prefix a type (%s)", ErrSyntax, loc)
+		}
+		return []constraintElem{{kind: elemApprox, typ: inner[0].typ}}, nil
+	}
+
+	// Well-known identifier or type-param reference.
+	if len(toks) == 1 && toks[0].Tok == lang.Ident {
+		switch toks[0].Str {
+		case "any":
+			return []constraintElem{{kind: elemAny}}, nil
+		case "comparable":
+			return []constraintElem{{kind: elemComparable}}, nil
+		}
+		if idx, ok := tpIdx[toks[0].Str]; ok {
+			return []constraintElem{{kind: elemTypeParamRef, paramRef: idx}}, nil
+		}
+	}
+
+	// Type expression. A constraint interface with type elements (e.g.
+	// cmp.Ordered) contributes one elem per member.
+	typ, _, err := p.parseTypeExpr(toks)
+	if err != nil {
+		return nil, err
+	}
+	if typ.IsInterface() {
+		if len(typ.TypeElems) > 0 {
+			out := make([]constraintElem, len(typ.TypeElems))
+			for i, e := range typ.TypeElems {
+				kind := elemExact
+				if e.Approx {
+					kind = elemApprox
+				}
+				out[i] = constraintElem{kind: kind, typ: e.Type}
+			}
+			return out, nil
+		}
+		return []constraintElem{{kind: elemInterface, typ: typ}}, nil
+	}
+	return []constraintElem{{kind: elemExact, typ: typ}}, nil
 }
 
 // resolveTypeArgs parses the contents of a bracket block as concrete type arguments.
@@ -452,12 +568,26 @@ func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, cal
 	// Match each argument to the corresponding parameter type from the parsed signature.
 	// If the parameter type name is a type parameter, infer it from the argument.
 	params := genSym.Type.Params
+	isVariadic := genSym.Type.Rtype.IsVariadic() && len(params) > 0
 	inferred := make(map[string]*vm.Type, len(tmpl.typeParams))
 	for i, argExpr := range args {
-		if len(argExpr) == 0 || i >= len(params) {
+		if len(argExpr) == 0 {
 			continue
 		}
-		pName := params[i].Name
+		var pType *vm.Type
+		switch {
+		case i < len(params)-1, !isVariadic && i < len(params):
+			pType = params[i]
+		case isVariadic:
+			pType = params[len(params)-1] // variadic slice: extra args take the element type
+		default:
+			continue
+		}
+		pName := pType.Name
+		// For the variadic slot, params[last] is SliceOf(elemType); use the element name.
+		if isVariadic && i >= len(params)-1 && pType.ElemType != nil {
+			pName = pType.ElemType.Name
+		}
 		if !tpNames[pName] {
 			continue
 		}

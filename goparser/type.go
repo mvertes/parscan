@@ -290,8 +290,18 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			return nil, 0, err
 		}
 		var methods []vm.IfaceMethod
+		var elems []vm.TypeElem
 		for _, lt := range toks.Split(lang.Semicolon) {
 			if len(lt) == 0 || lt[0].Tok == lang.Comment {
+				continue
+			}
+			// Constraint type element(s): leading "~" or a union (contains "|").
+			if lt[0].Tok == lang.Tilde || lt.Index(lang.Or) >= 0 {
+				es, err := p.parseTypeElems(lt)
+				if err != nil {
+					return nil, 0, err
+				}
+				elems = append(elems, es...)
 				continue
 			}
 			if lt[0].Tok != lang.Ident {
@@ -321,11 +331,38 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		return &vm.Type{
 			Rtype:        vm.AnyRtype,
 			IfaceMethods: methods,
+			TypeElems:    elems,
 		}, 2, nil
 
 	default:
 		return nil, 0, fmt.Errorf("%w: %v", ErrNotImplemented, in[0].Name())
 	}
+}
+
+// parseTypeElems parses a line from an interface body consisting of a type-element
+// union (e.g. "~int | ~int8 | ~string"). Each "|"-separated segment may be preceded
+// by "~" to indicate an approximate-type constraint.
+func (p *Parser) parseTypeElems(lt Tokens) ([]vm.TypeElem, error) {
+	var out []vm.TypeElem
+	for _, seg := range lt.Split(lang.Or) {
+		if len(seg) == 0 {
+			continue
+		}
+		approx := false
+		if seg[0].Tok == lang.Tilde {
+			approx = true
+			seg = seg[1:]
+		}
+		if len(seg) == 0 {
+			return nil, fmt.Errorf("%w: empty type element", ErrSyntax)
+		}
+		typ, _, err := p.parseTypeExpr(seg)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vm.TypeElem{Approx: approx, Type: typ})
+	}
+	return out, nil
 }
 
 // parseParamTypes parses a list of comma separated typed parameters and returns a list of

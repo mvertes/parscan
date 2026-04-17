@@ -204,8 +204,11 @@ func (sm SymMap) Init() {
 	sm["uint16"] = &Symbol{Name: "uint16", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uint16)(nil)).Elem()}
 	sm["uint32"] = &Symbol{Name: "uint32", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uint32)(nil)).Elem()}
 	sm["uint64"] = &Symbol{Name: "uint64", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uint64)(nil)).Elem()}
+	sm["uintptr"] = &Symbol{Name: "uintptr", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*uintptr)(nil)).Elem()}
 	sm["float32"] = &Symbol{Name: "float32", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*float32)(nil)).Elem()}
 	sm["float64"] = &Symbol{Name: "float64", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*float64)(nil)).Elem()}
+	sm["complex64"] = &Symbol{Name: "complex64", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*complex64)(nil)).Elem()}
+	sm["complex128"] = &Symbol{Name: "complex128", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*complex128)(nil)).Elem()}
 	sm["byte"] = sm["uint8"]
 	sm["rune"] = sm["int32"]
 	sm["string"] = &Symbol{Name: "string", Kind: Type, Index: UnsetAddr, Type: vm.TypeOf((*string)(nil)).Elem()}

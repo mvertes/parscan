@@ -400,6 +400,13 @@ func TestGenericType(t *testing.T) {
 		{n: "generic_interface", src: `type Stringer[T any] interface { String(T) string }; ""`, res: ""},
 		{n: "nested_generic", src: `type Box[T any] struct { V T }; type Wrap[U any] struct { Inner Box[U] }; w := Wrap[int]{Inner: Box[int]{V: 1}}; w.Inner.V`, res: "1"},
 		{n: "generic_type_alias", src: `type Box[T any] struct { V T }; type IntBox = Box[int]; b := IntBox{V: 1}; b.V`, res: "1"},
+		// Interface-with-union type constraints (cmp.Ordered-style).
+		{n: "union_iface_ok", src: `type Ord interface { ~int | ~string }; func F[T Ord](x T) T { return x }; F[int](42)`, res: "42"},
+		{n: "union_iface_ok_str", src: `type Ord interface { ~int | ~string }; func F[T Ord](x T) T { return x }; F[string]("hi")`, res: "hi"},
+		{n: "union_iface_reject", src: `type Ord interface { ~int | ~string }; func F[T Ord](x T) T { return x }; F[float64](1.0)`, err: "does not satisfy constraint"},
+		{n: "approx_named", src: `type Ord interface { ~int }; type MyInt int; func F[T Ord](x T) T { return x }; F[MyInt](MyInt(1))`, res: "1"},
+		// Inter-param reference in constraints (e.g. slices.Sort-style [S ~[]E, E Ord]).
+		{n: "typeparam_ref", src: `func F[T any, U T](x U) U { return x }; F[int, int](1)`, res: "1"},
 	})
 }
 
