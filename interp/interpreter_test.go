@@ -129,7 +129,7 @@ func TestExpr(t *testing.T) {
 		{n: "#15", src: "5 + -2", res: "3"},
 		{n: "#16", src: "!false", res: "true"},
 		{n: "#17", src: `a := "hello"`, res: "hello"},
-		{n: "non_ascii_ident", skip: true, src: `ж := 42; ж`, res: "42"},
+		{n: "non_ascii_ident", src: `ж := 42; ж`, res: "42"},
 	})
 }
 

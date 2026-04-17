@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/mvertes/parscan/lang"
 )
@@ -278,7 +279,7 @@ func (sc *Scanner) nextToken(src string) (s string) {
 		if !sc.isDir(r) {
 			break
 		}
-		s = src[:i+1]
+		s = src[:i+utf8.RuneLen(r)]
 	}
 	return s
 }

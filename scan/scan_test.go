@@ -109,4 +109,9 @@ def"`, err: "1:1: block not terminated"},
 	// Numbers: in expressions.
 	{n: "#45", src: "0xff + 3.14", tok: `Int"0xff" Add Float"3.14" Semicolon `},
 	{n: "#46", src: "123.String()", tok: `Int"123" Period"." Ident"String" ParenBlock"()" Semicolon `},
+
+	// Non-ASCII identifiers (Go spec allows any Unicode letter).
+	{n: "#47", src: "ж := 42", tok: `Ident"ж" Define Int"42" Semicolon `},
+	{n: "#48", src: "café + 1", tok: `Ident"café" Add Int"1" Semicolon `},
+	{n: "#49", src: "日本語", tok: `Ident"日本語" Semicolon `},
 }
