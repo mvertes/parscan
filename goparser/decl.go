@@ -269,6 +269,34 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 
 	case id == lang.Call:
 		narg := t.Arg[0].(int)
+		// unsafe.Offsetof(T{}.F): constant per Go spec. The argument is a field
+		// selector on a struct literal and is not itself const-evaluable, so we
+		// bypass the generic arg loop and read the type and field from the
+		// token pattern directly.
+		if narg == 1 && l >= 5 &&
+			in[l-5].Tok == lang.Ident && in[l-5].Str == "unsafe" &&
+			in[l-4].Tok == lang.Period && in[l-4].Str == ".Offsetof" &&
+			in[l-2].Tok == lang.Composite &&
+			in[l-1].Tok == lang.Period {
+			typeName := in[l-2].Str
+			fieldName := in[l-1].Str[1:]
+			ts, _, ok := p.Symbols.Get(typeName, p.scope)
+			if !ok || ts.Type == nil || ts.Type.Rtype == nil {
+				return nil, nil, 0, ErrUndefined{Name: typeName}
+			}
+			rt := ts.Type.Rtype
+			if rt.Kind() == reflect.Ptr {
+				rt = rt.Elem()
+			}
+			if rt.Kind() != reflect.Struct {
+				return nil, nil, 0, fmt.Errorf("unsafe.Offsetof: %s is not a struct", typeName)
+			}
+			f, ok := rt.FieldByName(fieldName)
+			if !ok {
+				return nil, nil, 0, fmt.Errorf("unsafe.Offsetof: no field %s in %s", fieldName, typeName)
+			}
+			return constant.MakeUint64(uint64(f.Offset)), p.Symbols["uintptr"].Type, 6, nil
+		}
 		// len/cap of an array or *array variable (bare or field access) is constant per Go spec.
 		if narg == 1 {
 			var fname string
@@ -302,7 +330,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			}
 		}
 		args := make([]constant.Value, narg)
-		argTypes := make([]*vm.Type, narg)
+		var arg0Type *vm.Type // only set when i == 0, used by unsafe.Sizeof/Alignof below
 		rest := in[:l]
 		totalLen := 1 // Call token
 		for i := narg - 1; i >= 0; i-- {
@@ -311,7 +339,9 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 				return nil, nil, 0, err
 			}
 			args[i] = av
-			argTypes[i] = at
+			if i == 0 {
+				arg0Type = at
+			}
 			totalLen += al
 			rest = rest[:len(rest)-al]
 		}
@@ -322,7 +352,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			rest[len(rest)-2].Str == "unsafe" {
 			fname := rest[len(rest)-1].Str[1:]
 			if fname == "Sizeof" || fname == "Alignof" {
-				argTyp := argTypes[0]
+				argTyp := arg0Type
 				if argTyp == nil {
 					argTyp = defaultConstType(args[0], p)
 				}
@@ -335,7 +365,7 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 				} else {
 					val = uintptr(argTyp.Rtype.Align()) //nolint:gosec
 				}
-				return constant.MakeUint64(uint64(val)), p.Symbols["uintptr"].Type, totalLen + 2, nil
+				return constant.MakeUint64(uint64(val)), p.Symbols["uintptr"].Type, totalLen + 2 /* Ident + Period */, nil
 			}
 		}
 		if len(rest) == 0 || rest[len(rest)-1].Tok != lang.Ident {
