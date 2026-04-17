@@ -297,6 +297,23 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			}
 			return constant.MakeUint64(uint64(f.Offset)), p.Symbols["uintptr"].Type, 6, nil
 		}
+		// unsafe.Sizeof / unsafe.Alignof: the argument only contributes its
+		// type, so pre-detect common forms whose arg isn't const-evaluable
+		// (Var, composite literal, selector) before the generic args loop.
+		if narg == 1 {
+			if rt, op, consumed, err := p.unsafeSizeArg(in, l); op != "" {
+				if err != nil {
+					return nil, nil, 0, err
+				}
+				var val uintptr
+				if op == "Sizeof" {
+					val = rt.Size()
+				} else {
+					val = uintptr(rt.Align()) //nolint:gosec
+				}
+				return constant.MakeUint64(uint64(val)), p.Symbols["uintptr"].Type, consumed, nil
+			}
+		}
 		// len/cap of an array or *array variable (bare or field access) is constant per Go spec.
 		if narg == 1 {
 			var fname string
@@ -398,6 +415,82 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 
 func isUnsignedKind(k reflect.Kind) bool {
 	return k >= reflect.Uint && k <= reflect.Uintptr
+}
+
+// unsafeSizeArg recognizes postfix forms of unsafe.Sizeof / unsafe.Alignof
+// whose argument isn't const-evaluable but has a compile-time type:
+//
+//	[unsafe][.Sizeof|.Alignof][x][Call]             bare ident
+//	[unsafe][.Sizeof|.Alignof][T][Composite][Call]  composite literal T{}
+//	[unsafe][.Sizeof|.Alignof][x][.f][Call]         selector x.f
+//
+// Returns the argument's reflect.Type, the op name ("Sizeof"/"Alignof"),
+// tokens-consumed-including-Call, and any lookup/resolution error. An empty
+// op means no form matched; the caller falls through to the generic path.
+func (p *Parser) unsafeSizeArg(in Tokens, l int) (reflect.Type, string, int, error) {
+	// Locate [unsafe][.Sizeof|.Alignof] ending at either l-3 or l-4.
+	var opIdx int
+	switch {
+	case l >= 4 && in[l-4].Tok == lang.Ident && in[l-4].Str == "unsafe" &&
+		in[l-3].Tok == lang.Period && (in[l-3].Str == ".Sizeof" || in[l-3].Str == ".Alignof"):
+		opIdx = l - 3
+	case l >= 3 && in[l-3].Tok == lang.Ident && in[l-3].Str == "unsafe" &&
+		in[l-2].Tok == lang.Period && (in[l-2].Str == ".Sizeof" || in[l-2].Str == ".Alignof"):
+		opIdx = l - 2
+	default:
+		return nil, "", 0, nil
+	}
+	op := in[opIdx].Str[1:] // strip leading "."
+
+	// symType resolves a symbol to its type or returns ErrUndefined.
+	symType := func(name string) (*vm.Type, error) {
+		s, _, ok := p.Symbols.Get(name, p.scope)
+		if !ok || s.Type == nil || s.Type.Rtype == nil {
+			return nil, ErrUndefined{Name: name}
+		}
+		return s.Type, nil
+	}
+
+	if opIdx == l-3 { // composite or selector shape (5 tokens total)
+		switch in[l-1].Tok {
+		case lang.Composite:
+			t, err := symType(in[l-1].Str)
+			if err != nil {
+				return nil, op, 0, err
+			}
+			return t.Rtype, op, 5, nil
+		case lang.Period:
+			if in[l-2].Tok != lang.Ident {
+				return nil, "", 0, nil
+			}
+			base, err := symType(in[l-2].Str)
+			if err != nil {
+				return nil, op, 0, err
+			}
+			rt := base.Rtype
+			if rt.Kind() == reflect.Ptr {
+				rt = rt.Elem()
+			}
+			if rt.Kind() != reflect.Struct {
+				return nil, op, 0, fmt.Errorf("unsafe.%s: %s is not a struct", op, in[l-2].Str)
+			}
+			f, ok := rt.FieldByName(in[l-1].Str[1:])
+			if !ok {
+				return nil, op, 0, fmt.Errorf("unsafe.%s: no field %s in %s", op, in[l-1].Str[1:], in[l-2].Str)
+			}
+			return f.Type, op, 5, nil
+		}
+		return nil, "", 0, nil
+	}
+	// opIdx == l-2: bare ident shape (4 tokens total)
+	if in[l-1].Tok != lang.Ident {
+		return nil, "", 0, nil
+	}
+	t, err := symType(in[l-1].Str)
+	if err != nil {
+		return nil, op, 0, err
+	}
+	return t.Rtype, op, 4, nil
 }
 
 func constValue(c constant.Value) any {
