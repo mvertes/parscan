@@ -2554,6 +2554,33 @@ func (c *Compiler) compileBuiltin(
 		}
 		c.emit(t, op, narg, int(argSym.Type.Rtype.Kind())) //nolint:gosec
 		return true, nil
+
+	case "unsafe.Sizeof", "unsafe.Alignof":
+		if narg != 1 {
+			return true, fmt.Errorf("invalid argument count for %s", s.Name)
+		}
+		argSym := (*stack)[len(*stack)-1]
+		if argSym.Type == nil || argSym.Type.Rtype == nil {
+			return true, fmt.Errorf("%s: argument has no type", s.Name)
+		}
+		var val uintptr
+		if s.Name == "unsafe.Sizeof" {
+			val = argSym.Type.Rtype.Size()
+		} else {
+			val = uintptr(argSym.Type.Rtype.Align()) //nolint:gosec
+		}
+		pop() // argument
+		pop() // fn symbol
+		push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(val), Type: c.Symbols["uintptr"].Type})
+		// Remove the GetGlobal that loaded the stub function reference.
+		c.removeGetGlobal(s.Index)
+		// The argument was evaluated onto the runtime stack; discard it and
+		// push the computed uintptr constant in its place.
+		c.emit(t, vm.Pop, 1)
+		di := len(c.Data)
+		c.Data = append(c.Data, vm.ValueOf(val))
+		c.emit(t, vm.GetGlobal, di)
+		return true, nil
 	}
 
 	return false, nil
