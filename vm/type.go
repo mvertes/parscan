@@ -41,6 +41,7 @@ type Type struct {
 	Returns      []*Type         // parscan-level return types for func types (nil for non-func or if unknown)
 	Fields       []*Type         // parscan-level field types for struct types, parallel to reflect visible fields
 	ElemType     *Type           // parscan-level element type for map/slice/array/pointer/chan types
+	KeyType      *Type           // parscan-level key type for map types; nil for non-maps or native-built maps
 }
 
 // IfaceMethod describes a method required by an interface type.
@@ -185,6 +186,9 @@ func (t *Type) Elem() *Type {
 
 // Key returns a map type's key type.
 func (t *Type) Key() *Type {
+	if t.KeyType != nil {
+		return t.KeyType
+	}
 	k := t.Rtype.Key()
 	return &Type{Name: k.Name(), Rtype: k}
 }
@@ -551,7 +555,7 @@ func SliceOf(t *Type) *Type {
 
 // MapOf returns the map type with the given key and element types.
 func MapOf(k, e *Type) *Type {
-	return &Type{Rtype: reflect.MapOf(k.Rtype, e.Rtype), ElemType: e}
+	return &Type{Rtype: reflect.MapOf(k.Rtype, e.Rtype), ElemType: e, KeyType: k}
 }
 
 // ChanOf returns the channel type with the given direction and element type.

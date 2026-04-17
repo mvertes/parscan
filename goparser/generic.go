@@ -601,6 +601,34 @@ func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, cal
 		inferred[pName] = typ
 	}
 
+	// Second pass: for type parameters that never appear directly as a
+	// parameter type (e.g. E in Equal[S ~[]E, E comparable](s1, s2 S)),
+	// unpack any sibling's composite approx-constraint (~[]E, ~map[K]V)
+	// against its inferred concrete type. Iterated to a fixed point so
+	// that chains like [A ~[]B, B ~[]C, C any] resolve.
+	for progress := len(inferred) < len(tmpl.typeParams); progress; {
+		progress = false
+		for _, tp := range tmpl.typeParams {
+			if _, done := inferred[tp.name]; done {
+				continue
+			}
+			for _, other := range tmpl.typeParams {
+				if other.name == tp.name {
+					continue
+				}
+				ot, ok := inferred[other.name]
+				if !ok {
+					continue
+				}
+				if t := unpackConstraint(other.constraint, tp.name, ot); t != nil {
+					inferred[tp.name] = t
+					progress = true
+					break
+				}
+			}
+		}
+	}
+
 	// Build ordered type args matching tmpl.typeParams.
 	typeArgs := make([]*vm.Type, len(tmpl.typeParams))
 	for i, tp := range tmpl.typeParams {
@@ -611,6 +639,73 @@ func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, cal
 		typeArgs[i] = t
 	}
 	return typeArgs, nil
+}
+
+// unpackConstraint tries to extract a concrete type for paramName by matching
+// the inferred concrete type against the shape of one of c's approx/exact
+// constraint elements. Returns nil if no element pins paramName.
+func unpackConstraint(c tpConstraint, paramName string, concrete *vm.Type) *vm.Type {
+	for _, e := range c.elems {
+		if (e.kind != elemApprox && e.kind != elemExact) || e.typ == nil {
+			continue
+		}
+		if t := extractFromShape(e.typ, concrete, paramName); t != nil {
+			return t
+		}
+	}
+	return nil
+}
+
+// extractFromShape walks `shape` in parallel with `concrete`, returning the
+// sub-type of concrete at the position where shape names paramName. E.g.
+// shape=[]E, concrete=[]int, paramName=E → int. Handles slice, array,
+// pointer, chan (via ElemType), map (via KeyType + ElemType), and func
+// (via Params + Returns). Decomposes before matching by name so that
+// composite shapes whose outer Name happens to collide with paramName
+// (e.g. PointerTo sets Name=ElemName) don't short-circuit.
+func extractFromShape(shape, concrete *vm.Type, paramName string) *vm.Type {
+	if shape.Rtype.Kind() == concrete.Rtype.Kind() {
+		switch shape.Rtype.Kind() {
+		case reflect.Map:
+			if shape.KeyType != nil {
+				if t := extractFromShape(shape.KeyType, concrete.Key(), paramName); t != nil {
+					return t
+				}
+			}
+			if shape.ElemType != nil {
+				if t := extractFromShape(shape.ElemType, concrete.Elem(), paramName); t != nil {
+					return t
+				}
+			}
+		case reflect.Func:
+			for i, p := range shape.Params {
+				if i >= len(concrete.Params) {
+					break
+				}
+				if t := extractFromShape(p, concrete.Params[i], paramName); t != nil {
+					return t
+				}
+			}
+			for i, r := range shape.Returns {
+				if i >= len(concrete.Returns) {
+					break
+				}
+				if t := extractFromShape(r, concrete.Returns[i], paramName); t != nil {
+					return t
+				}
+			}
+		default:
+			if shape.ElemType != nil {
+				if t := extractFromShape(shape.ElemType, concrete.Elem(), paramName); t != nil {
+					return t
+				}
+			}
+		}
+	}
+	if shape.Name == paramName && shape.ElemType == nil && shape.KeyType == nil && len(shape.Params) == 0 && len(shape.Returns) == 0 {
+		return concrete
+	}
+	return nil
 }
 
 // inferExprType determines the type of an infix token expression by first
