@@ -282,23 +282,40 @@ func (p *Parser) resolveConstraintElems(toks Tokens, tpIdx map[string]int) ([]co
 
 // resolveTypeArgs parses the contents of a bracket block as concrete type arguments.
 // E.g. "[int, string]" -> []*vm.Type{intType, stringType}.
-func (p *Parser) resolveTypeArgs(bt scan.Token) ([]*vm.Type, error) {
+// The second return value carries the source-level text of each segment
+// (e.g. "netip.Prefix"), preserving package qualifiers lost in *vm.Type.Name.
+func (p *Parser) resolveTypeArgs(bt scan.Token) ([]*vm.Type, []string, error) {
 	toks, err := p.ScanBlock(bt, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var types []*vm.Type
+	var sources []string
 	for _, seg := range toks.Split(lang.Comma) {
 		if len(seg) == 0 {
 			continue
 		}
 		typ, _, err := p.parseTypeExpr(seg)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		types = append(types, typ)
+		sources = append(sources, tokensSource(seg))
 	}
-	return types, nil
+	return types, sources, nil
+}
+
+// tokensSource reconstructs the original source text from tokens; used to
+// preserve package qualifiers (e.g. "netip.Prefix") that *vm.Type.Name drops.
+func tokensSource(toks Tokens) string {
+	if len(toks) == 1 {
+		return toks[0].Str
+	}
+	var sb strings.Builder
+	for _, t := range toks {
+		sb.WriteString(t.Str)
+	}
+	return sb.String()
 }
 
 // isSimpleIdent reports whether s is a plain Go identifier (letters, digits, underscore).
@@ -323,6 +340,16 @@ func typeArgName(t *vm.Type) string {
 		return "*" + name
 	}
 	return name
+}
+
+// typeArgSubst returns the text used to substitute a type parameter in the
+// template body. Prefers source (preserves package qualifiers like
+// "netip.Prefix"); falls back to typeArgName when source is empty.
+func typeArgSubst(t *vm.Type, source string) string {
+	if source != "" {
+		return source
+	}
+	return typeArgName(t)
 }
 
 // mangledName returns the mangled name for a generic instantiation.
@@ -380,7 +407,10 @@ func (p *Parser) substituteTokens(raw Tokens, sub map[string]string) Tokens {
 // instantiate creates a concrete (monomorphized) version of a generic template
 // by substituting type parameter names with concrete type names in the token stream.
 // It returns the rewritten tokens and the mangled name.
-func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens, string, error) {
+// typeArgSources, when non-nil, provides source-level text for each type
+// argument (e.g. "netip.Prefix") so package qualifiers are preserved in the
+// substituted body. If nil, the short Name from *vm.Type is used.
+func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type, typeArgSources []string) (Tokens, string, error) {
 	if len(typeArgs) != len(tmpl.typeParams) {
 		return nil, "", ErrSyntax
 	}
@@ -397,7 +427,11 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens
 	// Build substitution map: type param name -> concrete type name string.
 	sub := make(map[string]string, len(tmpl.typeParams))
 	for i, tp := range tmpl.typeParams {
-		sub[tp.name] = typeArgName(typeArgs[i])
+		var src string
+		if i < len(typeArgSources) {
+			src = typeArgSources[i]
+		}
+		sub[tp.name] = typeArgSubst(typeArgs[i], src)
 	}
 
 	out := p.substituteTokens(tmpl.rawTokens, sub)
@@ -426,11 +460,11 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type) (Tokens
 // Methods on the generic type are also instantiated; their compiled tokens
 // are stored in p.pendingMethodDefs for later emission.
 func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (string, error) {
-	typeArgs, err := p.resolveTypeArgs(bt)
+	typeArgs, typeArgSources, err := p.resolveTypeArgs(bt)
 	if err != nil {
 		return "", err
 	}
-	instToks, mname, err := p.instantiate(tmpl, typeArgs)
+	instToks, mname, err := p.instantiate(tmpl, typeArgs, typeArgSources)
 	if err != nil {
 		return "", err
 	}
@@ -444,7 +478,7 @@ func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (s
 		}
 		// Instantiate methods on this generic type.
 		for _, methTmpl := range tmpl.methods {
-			methToks, err := p.instantiateMethod(tmpl, methTmpl, typeArgs)
+			methToks, err := p.instantiateMethod(tmpl, methTmpl, typeArgs, typeArgSources)
 			if err != nil {
 				p.scope = savedScope
 				return "", err
@@ -484,7 +518,7 @@ func recvGenericBaseName(recvr Tokens) (string, bool) {
 // by substituting type parameter names with concrete types in the token stream.
 // The receiver block is rewritten from e.g. (b Box[T]) to (b Box#int).
 // Returns nil if the method is already instantiated.
-func (p *Parser) instantiateMethod(typeTmpl, methTmpl *genericTemplate, typeArgs []*vm.Type) (Tokens, error) {
+func (p *Parser) instantiateMethod(typeTmpl, methTmpl *genericTemplate, typeArgs []*vm.Type, typeArgSources []string) (Tokens, error) {
 	mTypeName := mangledName(typeTmpl.name, typeArgs)
 	methFullName := mTypeName + "." + methTmpl.name
 
@@ -495,7 +529,11 @@ func (p *Parser) instantiateMethod(typeTmpl, methTmpl *genericTemplate, typeArgs
 
 	sub := make(map[string]string, len(typeTmpl.typeParams))
 	for i, tp := range typeTmpl.typeParams {
-		sub[tp.name] = typeArgName(typeArgs[i])
+		var src string
+		if i < len(typeArgSources) {
+			src = typeArgSources[i]
+		}
+		sub[tp.name] = typeArgSubst(typeArgs[i], src)
 	}
 
 	out := p.substituteTokens(methTmpl.rawTokens, sub)
@@ -565,6 +603,12 @@ func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, cal
 		tpNames[tp.name] = true
 	}
 
+	// Generic templates whose signature failed to parse cleanly leave Type nil;
+	// surface an inference error rather than nil-deref.
+	if genSym.Type == nil {
+		return nil, fmt.Errorf("cannot infer type parameters for %s: signature unresolved", tmpl.name)
+	}
+
 	// Match each argument to the corresponding parameter type from the parsed signature.
 	// If the parameter type name is a type parameter, infer it from the argument.
 	params := genSym.Type.Params
@@ -579,26 +623,27 @@ func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, cal
 		case i < len(params)-1, !isVariadic && i < len(params):
 			pType = params[i]
 		case isVariadic:
-			pType = params[len(params)-1] // variadic slice: extra args take the element type
+			// Variadic slot: the argument is a single element, not the whole
+			// slice — descend into ElemType so unification sees `T`, not `[]T`.
+			pType = params[len(params)-1]
+			if pType.ElemType != nil {
+				pType = pType.ElemType
+			}
 		default:
 			continue
 		}
-		pName := pType.Name
-		// For the variadic slot, params[last] is SliceOf(elemType); use the element name.
-		if isVariadic && i >= len(params)-1 && pType.ElemType != nil {
-			pName = pType.ElemType.Name
-		}
-		if !tpNames[pName] {
+		// Skip when every type param in pType is already bound: avoids a
+		// redundant inferExprType (which can fail legitimately on later
+		// args — e.g. slices.Equal's second []E with a shape inferExprType
+		// can't currently type).
+		if !hasUnboundTypeParam(pType, tpNames, inferred) {
 			continue
 		}
-		if _, done := inferred[pName]; done {
-			continue
-		}
-		typ := p.inferExprType(argExpr)
-		if typ == nil {
+		argTyp := p.inferExprType(argExpr)
+		if argTyp == nil {
 			return nil, fmt.Errorf("cannot infer type for argument %d", i)
 		}
-		inferred[pName] = typ
+		unifyTypeParam(pType, argTyp, tpNames, inferred)
 	}
 
 	// Second pass: for type parameters that never appear directly as a
@@ -639,6 +684,61 @@ func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, cal
 		typeArgs[i] = t
 	}
 	return typeArgs, nil
+}
+
+// hasUnboundTypeParam reports whether t mentions any type parameter in tpNames
+// that isn't yet in inferred, at any depth (pointer/slice/array/chan/map).
+func hasUnboundTypeParam(t *vm.Type, tpNames map[string]bool, inferred map[string]*vm.Type) bool {
+	if t == nil {
+		return false
+	}
+	switch t.Rtype.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Chan:
+		return hasUnboundTypeParam(t.ElemType, tpNames, inferred)
+	case reflect.Map:
+		return hasUnboundTypeParam(t.KeyType, tpNames, inferred) || hasUnboundTypeParam(t.ElemType, tpNames, inferred)
+	}
+	if !tpNames[t.Name] {
+		return false
+	}
+	_, ok := inferred[t.Name]
+	return !ok
+}
+
+// unifyTypeParam walks pType (from a generic signature, possibly containing
+// type-param idents) and argType in parallel, binding each encountered
+// type-param ident to the corresponding sub-type of argType. Returns false
+// if the shapes don't match. First-seen binding wins (no conflict checking).
+func unifyTypeParam(pType, argType *vm.Type, tpNames map[string]bool, inferred map[string]*vm.Type) bool {
+	if pType == nil || argType == nil {
+		return false
+	}
+	// Recurse through composite constructors first: Name may be inherited from
+	// the element (PointerTo propagates Name), so we must not leaf-match on
+	// Name for a compound shape.
+	switch pType.Rtype.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Chan:
+		if argType.Rtype.Kind() != pType.Rtype.Kind() {
+			return false
+		}
+		return unifyTypeParam(pType.ElemType, argType.ElemType, tpNames, inferred)
+	case reflect.Map:
+		if argType.Rtype.Kind() != reflect.Map {
+			return false
+		}
+		if !unifyTypeParam(pType.KeyType, argType.KeyType, tpNames, inferred) {
+			return false
+		}
+		return unifyTypeParam(pType.ElemType, argType.ElemType, tpNames, inferred)
+	}
+	// Leaf: bind if this is a type-param ident; otherwise a concrete leaf
+	// with no binding to make.
+	if tpNames[pType.Name] {
+		if _, ok := inferred[pType.Name]; !ok {
+			inferred[pType.Name] = argType
+		}
+	}
+	return true
 }
 
 // unpackConstraint tries to extract a concrete type for paramName by matching

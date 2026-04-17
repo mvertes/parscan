@@ -179,7 +179,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 						if err != nil {
 							return out, err
 						}
-						instToks, mname, err := p.instantiate(tmpl, typeArgs)
+						instToks, mname, err := p.instantiate(tmpl, typeArgs, nil)
 						if err != nil {
 							return out, err
 						}
@@ -204,7 +204,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 								if err != nil {
 									return out, err
 								}
-								instToks, mname, err := p.instantiate(tmpl, typeArgs)
+								instToks, mname, err := p.instantiate(tmpl, typeArgs, nil)
 								if err != nil {
 									return out, err
 								}
@@ -301,11 +301,11 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 					tmpl := gs.Data.(*genericTemplate)
 					out = out[:len(out)-1] // remove the generic name ident
 					if tmpl.isFunc {
-						typeArgs, err := p.resolveTypeArgs(t.Token)
+						typeArgs, typeArgSources, err := p.resolveTypeArgs(t.Token)
 						if err != nil {
 							return out, err
 						}
-						instToks, mname, err := p.instantiate(tmpl, typeArgs)
+						instToks, mname, err := p.instantiate(tmpl, typeArgs, typeArgSources)
 						if err != nil {
 							return out, err
 						}
@@ -336,11 +336,11 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 							out = out[:len(out)-1] // remove the pkg ident
 							ops = ops[:len(ops)-1] // remove the Period operator
 							if tmpl.isFunc {
-								typeArgs, err := p.resolveTypeArgs(t.Token)
+								typeArgs, typeArgSources, err := p.resolveTypeArgs(t.Token)
 								if err != nil {
 									return out, err
 								}
-								instToks, mname, err := p.instantiate(tmpl, typeArgs)
+								instToks, mname, err := p.instantiate(tmpl, typeArgs, typeArgSources)
 								if err != nil {
 									return out, err
 								}

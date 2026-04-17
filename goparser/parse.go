@@ -641,7 +641,8 @@ func (p *Parser) registerFunc(toks Tokens) (bool, error) {
 		// Generic method: receiver has type params (e.g. Box[T]).
 		// Store as a method template on the generic type.
 		if baseName, ok := recvGenericBaseName(recvr); ok {
-			if gs, _, gok := p.Symbols.Get(baseName, p.scope); gok && gs.Kind == symbol.Generic {
+			gs, _, gok := p.Symbols.Get(baseName, p.scope)
+			if gok && gs.Kind == symbol.Generic {
 				tmpl := gs.Data.(*genericTemplate)
 				tmpl.methods = append(tmpl.methods, &genericTemplate{
 					name:       toks[2].Str,
@@ -651,6 +652,12 @@ func (p *Parser) registerFunc(toks Tokens) (bool, error) {
 				})
 				return true, nil
 			}
+			// Base type has a bracketed receiver but isn't registered as generic
+			// yet — likely a forward reference whose own declaration is still
+			// pending (e.g. constraint referencing a not-yet-seen generic type).
+			// Defer via ErrUndefined so the retry loop processes this after the
+			// generic type declaration completes.
+			return false, ErrUndefined{baseName}
 		}
 		typeName := recvTypeName(recvr)
 		if typeName == "" {

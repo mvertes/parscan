@@ -431,6 +431,12 @@ func TestGenericImplicit(t *testing.T) {
 		{n: "chan", src: `func Id[T any](x T) T { return x }; c := make(chan int, 1); c <- 5; Id(<-c)`, res: "5"},
 		{n: "pointer", src: `func Id[T any](x T) T { return x }; a := 42; p := Id(&a); *p`, res: "42"},
 		{n: "deref", src: `func Id[T any](x T) T { return x }; a := 42; b := &a; Id(*b)`, res: "42"},
+		// Inference unwraps compound parameter shapes to bind type params.
+		{n: "infer_ptr", src: `func F[T any](x *T) T { return *x }; a := 42; F(&a)`, res: "42"},
+		{n: "infer_slice_of", src: `func F[T any](x []T) T { return x[0] }; F([]int{7, 8})`, res: "7"},
+		{n: "infer_ptr_slice", src: `func F[T any](x *[]T) int { return len(*x) }; a := []int{1, 2}; F(&a)`, res: "2"},
+		{n: "infer_map", src: `func F[K comparable, V any](m map[K]V, k K) V { return m[k] }; F(map[string]int{"a": 1}, "a")`, res: "1"},
+		{n: "infer_slice_ptr", src: `func F[T any](x []*T) T { return *x[0] }; a := 9; F([]*int{&a})`, res: "9"},
 	})
 }
 
