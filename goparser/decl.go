@@ -302,16 +302,41 @@ func (p *Parser) evalConstExpr(in Tokens) (cval constant.Value, ctyp *vm.Type, l
 			}
 		}
 		args := make([]constant.Value, narg)
+		argTypes := make([]*vm.Type, narg)
 		rest := in[:l]
 		totalLen := 1 // Call token
 		for i := narg - 1; i >= 0; i-- {
-			av, _, al, err := p.evalConstExpr(rest)
+			av, at, al, err := p.evalConstExpr(rest)
 			if err != nil {
 				return nil, nil, 0, err
 			}
 			args[i] = av
+			argTypes[i] = at
 			totalLen += al
 			rest = rest[:len(rest)-al]
+		}
+		// unsafe.Sizeof / unsafe.Alignof: constant when the argument's type is
+		// known at compile time (Go spec).
+		if narg == 1 && len(rest) >= 2 &&
+			rest[len(rest)-1].Tok == lang.Period && rest[len(rest)-2].Tok == lang.Ident &&
+			rest[len(rest)-2].Str == "unsafe" {
+			fname := rest[len(rest)-1].Str[1:]
+			if fname == "Sizeof" || fname == "Alignof" {
+				argTyp := argTypes[0]
+				if argTyp == nil {
+					argTyp = defaultConstType(args[0], p)
+				}
+				if argTyp == nil || argTyp.Rtype == nil {
+					return nil, nil, 0, fmt.Errorf("unsafe.%s: argument has no type", fname)
+				}
+				var val uintptr
+				if fname == "Sizeof" {
+					val = argTyp.Rtype.Size()
+				} else {
+					val = uintptr(argTyp.Rtype.Align()) //nolint:gosec
+				}
+				return constant.MakeUint64(uint64(val)), p.Symbols["uintptr"].Type, totalLen + 2, nil
+			}
 		}
 		if len(rest) == 0 || rest[len(rest)-1].Tok != lang.Ident {
 			return nil, nil, 0, errors.New("unsupported constant call expression")
@@ -357,6 +382,32 @@ func constValue(c constant.Value) any {
 	case constant.Float:
 		v, _ := constant.Float64Val(c)
 		return v
+	}
+	return nil
+}
+
+// defaultConstType returns the default Go type for an untyped constant value
+// (int for Int, float64 for Float, string for String, bool for Bool). The
+// parser is consulted so canonical *vm.Type instances are returned.
+func defaultConstType(c constant.Value, p *Parser) *vm.Type {
+	if c == nil {
+		return nil
+	}
+	var name string
+	switch c.Kind() {
+	case constant.Int:
+		name = "int"
+	case constant.Float:
+		name = "float64"
+	case constant.String:
+		name = "string"
+	case constant.Bool:
+		name = "bool"
+	default:
+		return nil
+	}
+	if s, ok := p.Symbols[name]; ok {
+		return s.Type
 	}
 	return nil
 }
