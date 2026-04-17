@@ -132,6 +132,41 @@ func (p *Parser) addTempVar(name string) string {
 	return scoped
 }
 
+// inferRangeTypes populates .Type for range LHS symbols using the range
+// operand's postfix tokens. Without this, range vars stay Type=nil at parse
+// time, which breaks generic type inference for calls like cmp.Compare(v, w)
+// inside a generic body where v comes from `for _, v := range s`.
+func (p *Parser) inferRangeTypes(operand Tokens, lhs []Tokens, lhsPositions []int, out Tokens) {
+	rt, _ := p.postfixType(operand)
+	if rt == nil {
+		return
+	}
+	setType := func(i int, t *vm.Type) {
+		if t == nil || i >= len(lhs) || len(lhs[i]) != 1 || lhs[i][0].Tok != lang.Ident || lhs[i][0].Str == "_" {
+			return
+		}
+		sym := p.Symbols[out[lhsPositions[i]].Str]
+		if sym == nil || sym.Type != nil {
+			return
+		}
+		sym.Type = t
+	}
+	switch rt.Rtype.Kind() {
+	case reflect.Slice, reflect.Array, reflect.String:
+		setType(0, p.Symbols["int"].Type)
+		if rt.Rtype.Kind() == reflect.String {
+			setType(1, p.Symbols["rune"].Type)
+		} else {
+			setType(1, rt.Elem())
+		}
+	case reflect.Map:
+		setType(0, rt.Key())
+		setType(1, rt.Elem())
+	case reflect.Chan:
+		setType(0, rt.Elem())
+	}
+}
+
 func (p *Parser) inferDefineType(rhs Tokens, scopedName string) {
 	sym := p.Symbols[scopedName]
 	if sym == nil || sym.Type != nil {
@@ -872,6 +907,7 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 	lhs := in[:aindex].Split(lang.Comma)
 	define := in[aindex].Tok == lang.Define
 	if len(rhs) == 1 {
+		var isRange bool
 		// Track positions of LHS tokens for local fixup (one entry per lhs element).
 		lhsPositions := make([]int, len(lhs))
 		for j, e := range lhs {
@@ -909,7 +945,8 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 				}
 			}
 			out = append(out, toks...)
-			if out[len(out)-1].Tok == lang.Range {
+			isRange = out[len(out)-1].Tok == lang.Range
+			if isRange {
 				// Pass the number of values to set to range.
 				// When all LHS variables are blank identifiers ("_ = range x"),
 				// treat as "range x" (n=0) and remove the blank ident tokens.
@@ -948,6 +985,9 @@ func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {
 			}
 			if p.funcScope != "" && len(lhs) == 1 {
 				p.inferDefineType(toks, out[lhsPositions[0]].Str)
+			}
+			if p.funcScope != "" && isRange {
+				p.inferRangeTypes(toks[:len(toks)-1], lhs, lhsPositions, out)
 			}
 		}
 		return out, err

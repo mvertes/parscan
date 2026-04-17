@@ -63,22 +63,13 @@ func EqualFunc[S1 ~[]E1, S2 ~[]E2, E1, E2 any](s1 S1, s2 S2, eq func(E1, E2) boo
 // than the longer one. The result is 0 if s1 == s2, -1 if s1 < s2, and
 // +1 if s1 > s2.
 func Compare[S ~[]E, E cmp.Ordered](s1, s2 S) int {
-	// NOTE: upstream Go uses cmp.Compare(v1, v2) here, but the parscan
-	// interpreter cannot currently infer type arguments for a nested
-	// generic call whose value comes from range over a ~[]E slice
-	// (see project_generic_nested_inference.md). Inline comparison
-	// preserves behavior for non-NaN cases. NaN ordering for floats
-	// diverges from upstream (falls through to the default result).
 	for i, v1 := range s1 {
 		if i >= len(s2) {
 			return +1
 		}
 		v2 := s2[i]
-		if v1 < v2 {
-			return -1
-		}
-		if v1 > v2 {
-			return +1
+		if c := cmp.Compare(v1, v2); c != 0 {
+			return c
 		}
 	}
 	if len(s1) < len(s2) {

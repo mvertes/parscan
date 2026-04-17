@@ -19,10 +19,14 @@ func (p *Parser) importSrc(pkgPath string) (err error) {
 	p.pkgName = ""
 	defer func() { p.pkgName = savedPkgName }()
 
-	// Snapshot existing symbol keys so we can identify new ones.
-	existing := make(map[string]bool, len(p.Symbols))
-	for k := range p.Symbols {
-		existing[k] = true
+	// Snapshot existing symbol pointers so we can identify bindings
+	// added or replaced by this import. A later import that redefines an
+	// exported name (e.g. `Equal` in both `maps` and `slices`) swaps the
+	// pointer at p.Symbols[k]; key-only tracking would miss the rebind
+	// and fail to create the qualified alias for the second package.
+	existing := make(map[string]*symbol.Symbol, len(p.Symbols))
+	for k, s := range p.Symbols {
+		existing[k] = s
 	}
 
 	remaining, err := p.ParseAll(pkgPath, "")
@@ -43,7 +47,7 @@ func (p *Parser) importSrc(pkgPath string) (err error) {
 	}
 	var genericKeys []string
 	for k, s := range p.Symbols {
-		if existing[k] || !IsExported(k) {
+		if existing[k] == s || !IsExported(k) {
 			continue
 		}
 		if s.Kind == symbol.Generic {
