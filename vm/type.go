@@ -499,7 +499,7 @@ func (v Value) IfaceVal() Iface {
 // isNilable reports whether rv is of a nilable kind (func, ptr, map, slice, chan, interface).
 func isNilable(rv reflect.Value) bool {
 	switch rv.Kind() {
-	case reflect.Func, reflect.Ptr, reflect.Map, reflect.Slice, reflect.Chan, reflect.Interface:
+	case reflect.Func, reflect.Ptr, reflect.Map, reflect.Slice, reflect.Chan, reflect.Interface, reflect.UnsafePointer:
 		return true
 	}
 	return false

@@ -829,6 +829,32 @@ func (m *Machine) Run() (err error) {
 				// []byte -> string.
 				mem[idx] = Value{ref: reflect.ValueOf(string(v.ref.Bytes()))}
 
+			case dstKind == reflect.UnsafePointer &&
+				(srcKind == reflect.Pointer || srcKind == reflect.UnsafePointer || srcKind == reflect.Uintptr):
+				// *T, unsafe.Pointer, or uintptr -> unsafe.Pointer.
+				// reflect.Value.Convert has no convertOp for UnsafePointer, so
+				// we build the destination value manually.
+				var up unsafe.Pointer
+				switch srcKind {
+				case reflect.Pointer, reflect.UnsafePointer:
+					up = v.ref.UnsafePointer()
+				case reflect.Uintptr:
+					up = unsafe.Pointer(uintptr(v.num)) //nolint:gosec,govet
+				}
+				nv := reflect.New(dstType).Elem()
+				nv.SetPointer(up)
+				mem[idx] = Value{ref: nv}
+
+			case srcKind == reflect.UnsafePointer &&
+				(dstKind == reflect.Pointer || dstKind == reflect.Uintptr):
+				// unsafe.Pointer -> *T or uintptr.
+				up := v.ref.UnsafePointer()
+				if dstKind == reflect.Uintptr {
+					mem[idx] = Value{num: uint64(uintptr(up)), ref: reflect.Zero(dstType)} //nolint:gosec
+				} else {
+					mem[idx] = FromReflect(reflect.NewAt(dstType.Elem(), up))
+				}
+
 			default:
 				// Fallback: use reflect.
 				mem[idx] = FromReflect(v.Reflect().Convert(dstType))
