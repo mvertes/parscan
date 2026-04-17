@@ -600,9 +600,16 @@ func (p *Parser) registerFunc(toks Tokens) (bool, error) {
 			sigToks := make(Tokens, 0, sigEnd-1)
 			sigToks = append(sigToks, toks[:2]...)       // func Name
 			sigToks = append(sigToks, toks[3:sigEnd]...) // (params) rettype (skip BracketBlock)
-			genType, _, _, _ := p.parseFuncSig(sigToks)
+			genType, _, _, gerr := p.parseFuncSig(sigToks)
 			for _, tp := range params {
 				delete(p.Symbols, tp.name)
+			}
+			// Forward reference in the signature (e.g. return type names a
+			// not-yet-declared generic): defer via ErrUndefined so the retry
+			// loop re-registers this template once the referenced type exists.
+			var eu ErrUndefined
+			if errors.As(gerr, &eu) {
+				return false, gerr
 			}
 			p.SymSet(p.scopedName(fname), &symbol.Symbol{
 				Kind: symbol.Generic,
