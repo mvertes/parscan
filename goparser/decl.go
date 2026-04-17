@@ -896,6 +896,9 @@ func (p *Parser) parseVarLine(in Tokens) (out Tokens, err error) {
 		out = append(out, toks...)
 		if undefinedType {
 			out = append(out, newToken(lang.Define, "", 0, len(vars)))
+			if p.funcScope != "" && len(vars) == 1 {
+				p.inferDefineType(toks, vars[0])
+			}
 		} else {
 			out = append(out, newToken(lang.Assign, "", 0, len(vars)))
 		}
