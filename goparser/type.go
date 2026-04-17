@@ -91,6 +91,9 @@ func (p *Parser) resolvePkgType(s *symbol.Symbol, name string) (*vm.Type, error)
 }
 
 func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
+	if len(in) == 0 {
+		return nil, 0, ErrMissingType
+	}
 	switch in[0].Tok {
 	case lang.BracketBlock:
 		typ, i, err := p.parseTypeExpr(in[1:])
@@ -575,8 +578,19 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 		}
 		return true
 	}
-	if !ok || s.Kind != symbol.Type {
+	if !ok || (s.Kind != symbol.Type && s.Kind != symbol.Generic) {
+		// Forward-declared generic type: an unknown ident followed by [args]
+		// with nothing else is likely `UnknownType[args]`, not `name type`.
+		// Return false so parseTypeExpr can emit ErrUndefined for the retry loop.
+		if !ok && len(in) == 2 && in[1].Tok == lang.BracketBlock {
+			return false
+		}
 		return true
+	}
+	// A generic type followed by [args] is a type instantiation (e.g. Viewer[int]),
+	// not a "name type" pair — so the ident is the type, not a param name.
+	if s.Kind == symbol.Generic && len(in) > 1 && in[1].Tok == lang.BracketBlock {
+		return false
 	}
 	// The first ident is a known type name. If followed by tokens that start
 	// a type expression, treat the ident as a field/param name (e.g. rune [N]T).
