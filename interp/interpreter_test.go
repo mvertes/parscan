@@ -1792,6 +1792,18 @@ import "encoding/json"
 var m map[string]interface{}
 json.Unmarshal([]byte(` + "`" + `{"a":null}` + "`" + `), &m)
 switch m["a"].(type) { case nil: "ok"; default: "fail" }`, res: "ok"},
+
+		// yaegi-issue-1465: &genericParam through any(...).(type) must
+		// propagate writes back to the original local via AddrLocal aliasing.
+		{n: "generic_ptr_writeback", src: `
+func F[T int | string](x T) T {
+	switch v := any(&x).(type) {
+	case *int: *v = 999
+	case *string: *v = "Z"
+	}
+	return x
+}
+F(42)`, res: "999"},
 	})
 }
 

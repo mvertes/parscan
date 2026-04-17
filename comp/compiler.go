@@ -517,10 +517,25 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 			if err := checkTopN(1); err != nil {
 				return err
 			}
-			push(&symbol.Symbol{Kind: symbol.Value, Type: vm.PointerTo(pop().Type)})
-			if n := len(c.Code); n > 0 && c.Code[n-1].Op == vm.Index {
+			srcType := pop().Type
+			push(&symbol.Symbol{Kind: symbol.Value, Type: vm.PointerTo(srcType)})
+			// AddrLocal aliases the frame slot directly, which is only safe
+			// when the slot's reflect type matches the language type. Interface-
+			// typed locals are stored as vm.Iface internally; &r must still
+			// yield a *interface{} (handled by the Addr opcode's Iface branch).
+			concrete := srcType != nil && !srcType.IsInterface()
+			n := len(c.Code)
+			switch {
+			case n > 0 && c.Code[n-1].Op == vm.Index:
 				c.Code[n-1].Op = vm.IndexAddr
-			} else {
+			case concrete && n > 0 && c.Code[n-1].Op == vm.GetLocal:
+				c.Code[n-1].Op = vm.AddrLocal
+			case concrete && n > 0 && c.Code[n-1].Op == vm.GetLocal2:
+				idx := int(c.Code[n-1].B)
+				c.Code[n-1].Op = vm.GetLocal
+				c.Code[n-1].B = 0
+				c.emit(t, vm.AddrLocal, idx)
+			default:
 				c.emit(t, vm.Addr)
 			}
 

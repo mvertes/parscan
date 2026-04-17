@@ -46,6 +46,7 @@ const (
 	// Instruction effect on stack: values consumed -- values produced.
 	Nop          Op = iota // --
 	Addr                   // a -- &a ;
+	AddrLocal              // -- &local ; push pointer to mem[fp-1+$1]; promotes slot to addressable storage on first use so writes via the pointer propagate back
 	Append                 // slice [v0..vn-1] -- slice' ; append $0 values to slice
 	AppendSlice            // slice [v0..vn-1] -- slice' ; pack $0 values into []T, reflect.AppendSlice; elem type at mem[$1]; $0=0 means spread mode: append(a, b...)
 	Call                   // f [a1 .. ai] -- [r1 .. rj] ; r1, ... = prog[f](a1, ...); B bit 15 = spread flag
@@ -606,18 +607,43 @@ func (m *Machine) Run() (err error) {
 			elem := ptr.ref.Elem()
 			numSet(elem, val)
 			sp -= 2
-			// After writing through a pointer, update the .num cache of any
-			// frame slot whose ref shares the same underlying address, so
-			// fused GetLocal*Imm instructions see the updated value.
+			// Update the .num cache of any frame slot whose ref shares the
+			// same underlying address, so fused GetLocal*Imm instructions and
+			// num-first reads see the updated value. Scans the current frame
+			// including its params below fp (frameBase = distance from fp to
+			// the start of args).
 			if isNum(elem.Kind()) {
 				addr := elem.UnsafeAddr()
 				n := numBits(elem)
-				for i := fp; i <= sp; i++ {
+				base := 0
+				if fp >= 2 {
+					base = fp - int(mem[fp-2].num>>48)
+					if base < 0 {
+						base = 0
+					}
+				}
+				for i := base; i <= sp; i++ {
 					if mem[i].ref.CanAddr() && mem[i].ref.UnsafeAddr() == addr {
 						mem[i].num = n
 					}
 				}
 			}
+		case AddrLocal:
+			slot := &mem[int(c.A)+fp-1]
+			if !slot.ref.CanAddr() {
+				// Promote to addressable storage so the pushed pointer aliases
+				// the slot. DerefSet keeps slot.num in sync on writes.
+				rt := slot.ref.Type()
+				rv := reflect.New(rt).Elem()
+				if isNum(rt.Kind()) {
+					setNumReflect(rv, slot.num)
+				} else {
+					rv.Set(slot.ref)
+				}
+				slot.ref = rv
+			}
+			sp++
+			mem[sp] = Value{ref: slot.ref.Addr()}
 		case GetLocal:
 			sp++
 			mem[sp] = mem[int(c.A)+fp-1]
