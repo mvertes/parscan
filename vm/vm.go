@@ -1207,6 +1207,11 @@ func (m *Machine) Run() (err error) {
 			if c.A != 0 {
 				v = v.CopyArray()
 			}
+			if c.B != 0 {
+				// Range-over-func: wrap a parscan Closure into a native Go func.
+				funcType := m.globals[int(c.B)-1].ref.Type()
+				v = Value{ref: m.wrapForFunc(v, funcType)}
+			}
 			next, stop := iter.Pull(v.Seq())
 			if sp+2 >= len(mem) {
 				mem = growStack(mem, sp, 2)
@@ -1218,6 +1223,10 @@ func (m *Machine) Run() (err error) {
 			v := mem[sp]
 			if c.A != 0 {
 				v = v.CopyArray()
+			}
+			if c.B != 0 {
+				funcType := m.globals[int(c.B)-1].ref.Type()
+				v = Value{ref: m.wrapForFunc(v, funcType)}
 			}
 			next, stop := iter.Pull2(v.Seq2())
 			if sp+2 >= len(mem) {

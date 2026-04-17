@@ -1785,6 +1785,39 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					initRangeVar(stack[len(stack)-2], vt.Elem())
 					c.emit(t, vm.Pull)
 				}
+			case reflect.Func:
+				// Range-over-func: subject must be func(yield func(V) bool)
+				// or func(yield func(K, V) bool).
+				ft := vt.Rtype
+				if ft.NumIn() != 1 || ft.NumOut() != 0 {
+					return errorf("cannot range over %s (must be func(yield func(...) bool))", ft)
+				}
+				yieldType := ft.In(0)
+				if yieldType.Kind() != reflect.Func || yieldType.NumOut() != 1 ||
+					yieldType.Out(0).Kind() != reflect.Bool {
+					return errorf("cannot range over %s (yield must return bool)", ft)
+				}
+				yieldArity := yieldType.NumIn()
+				if yieldArity < 1 || yieldArity > 2 {
+					return errorf("cannot range over %s (yield must take 1 or 2 args)", ft)
+				}
+				if n > yieldArity {
+					return errorf("range-over-func: too many iteration variables (%d) for yield arity %d", n, yieldArity)
+				}
+				// c.B encodes typeSym.Index+1 so the VM can wrap a parscan Closure
+				// into a native Go func; 0 is reserved as "not a func range".
+				funcTypeIdx := c.typeSym(vt).Index + 1
+				op := vm.Pull
+				switch n {
+				case 2:
+					k, v := stack[len(stack)-3], stack[len(stack)-2]
+					initRangeVar(k, &vm.Type{Rtype: yieldType.In(0)})
+					initRangeVar(v, &vm.Type{Rtype: yieldType.In(1)})
+					op = vm.Pull2
+				case 1:
+					initRangeVar(stack[len(stack)-2], &vm.Type{Rtype: yieldType.In(0)})
+				}
+				c.emit(t, op, 0, funcTypeIdx)
 			default:
 				// Unhandled range type (e.g. struct element type from empty composite literal).
 				if n == 0 {
@@ -2580,6 +2613,39 @@ func (c *Compiler) compileBuiltin(
 		di := len(c.Data)
 		c.Data = append(c.Data, vm.ValueOf(val))
 		c.emit(t, vm.GetGlobal, di)
+		return true, nil
+
+	case "unsafe.Slice", "unsafe.SliceData":
+		// The stubs in stdlib/unsafe.go return `any` (their result type depends
+		// on the pointer/slice arg and can't be expressed in a Go signature),
+		// so after the call the value is an interface wrapper. Unwrap it with
+		// a TypeAssert to the statically-known result type.
+		var resultType *vm.Type
+		if s.Name == "unsafe.Slice" {
+			if narg != 2 {
+				return true, fmt.Errorf("invalid argument count for %s", s.Name)
+			}
+			ptrSym := (*stack)[len(*stack)-2]
+			if ptrSym.Type == nil || ptrSym.Type.Rtype == nil || ptrSym.Type.Rtype.Kind() != reflect.Pointer {
+				return true, errors.New("unsafe.Slice: first argument must be a pointer")
+			}
+			resultType = &vm.Type{Rtype: reflect.SliceOf(ptrSym.Type.Rtype.Elem())}
+		} else {
+			if narg != 1 {
+				return true, fmt.Errorf("invalid argument count for %s", s.Name)
+			}
+			argSym := (*stack)[len(*stack)-1]
+			if argSym.Type == nil || argSym.Type.Rtype == nil || argSym.Type.Rtype.Kind() != reflect.Slice {
+				return true, errors.New("unsafe.SliceData: argument must be a slice")
+			}
+			resultType = &vm.Type{Rtype: reflect.PointerTo(argSym.Type.Rtype.Elem())}
+		}
+		for range narg + 1 {
+			pop()
+		}
+		push(&symbol.Symbol{Kind: symbol.Value, Type: resultType})
+		c.emit(t, vm.Call, narg, 1)
+		c.emit(t, vm.TypeAssert, c.typeIndex(resultType), 0)
 		return true, nil
 	}
 

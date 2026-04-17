@@ -47,6 +47,7 @@ package stdlib
 //go:generate go run ../cmd/extract -gen -o debug_elf.go debug/elf $GOROOT/src/debug/elf
 //go:generate go run ../cmd/extract -gen -o debug_gosym.go debug/gosym $GOROOT/src/debug/gosym
 //go:generate go run ../cmd/extract -gen -o debug_macho.go debug/macho $GOROOT/src/debug/macho
+//go:generate go run ../cmd/extract -gen -o debug_buildinfo.go debug/buildinfo $GOROOT/src/debug/buildinfo
 //go:generate go run ../cmd/extract -gen -o debug_pe.go debug/pe $GOROOT/src/debug/pe
 //go:generate go run ../cmd/extract -gen -o debug_plan9obj.go debug/plan9obj $GOROOT/src/debug/plan9obj
 //go:generate go run ../cmd/extract -gen -o embed.go embed $GOROOT/src/embed
@@ -78,9 +79,13 @@ package stdlib
 //go:generate go run ../cmd/extract -gen -o go_scanner.go go/scanner $GOROOT/src/go/scanner
 //go:generate go run ../cmd/extract -gen -o go_token.go go/token $GOROOT/src/go/token
 //go:generate go run ../cmd/extract -gen -o go_types.go go/types $GOROOT/src/go/types
+//go:generate go run ../cmd/extract -gen -o go_importer.go go/importer $GOROOT/src/go/importer
 //go:generate go run ../cmd/extract -gen -o go_version.go go/version $GOROOT/src/go/version
+//go:generate go run ../cmd/extract -gen -o hash.go hash $GOROOT/src/hash
 //go:generate go run ../cmd/extract -gen -o hash_adler32.go hash/adler32 $GOROOT/src/hash/adler32
 //go:generate go run ../cmd/extract -gen -o hash_crc32.go hash/crc32 $GOROOT/src/hash/crc32
+//go:generate go run ../cmd/extract -gen -o hash_crc64.go hash/crc64 $GOROOT/src/hash/crc64
+//go:generate go run ../cmd/extract -gen -o hash_fnv.go hash/fnv $GOROOT/src/hash/fnv
 //go:generate go run ../cmd/extract -gen -o hash_maphash.go hash/maphash $GOROOT/src/hash/maphash
 //go:generate go run ../cmd/extract -gen -o html.go html $GOROOT/src/html
 //go:generate go run ../cmd/extract -gen -o html_template.go html/template $GOROOT/src/html/template
@@ -101,6 +106,7 @@ package stdlib
 //go:generate go run ../cmd/extract -gen -o math.go math $GOROOT/src/math
 //go:generate go run ../cmd/extract -gen -o math_big.go math/big $GOROOT/src/math/big
 //go:generate go run ../cmd/extract -gen -o math_bits.go math/bits $GOROOT/src/math/bits
+//go:generate go run ../cmd/extract -gen -o math_cmplx.go math/cmplx $GOROOT/src/math/cmplx
 //go:generate go run ../cmd/extract -gen -o math_rand.go math/rand $GOROOT/src/math/rand
 //go:generate go run ../cmd/extract -gen -o math_rand_v2.go math/rand/v2 $GOROOT/src/math/rand/v2
 //go:generate go run ../cmd/extract -gen -o mime.go mime $GOROOT/src/mime
@@ -114,14 +120,17 @@ package stdlib
 //go:generate go run ../cmd/extract -gen -o net_http_httptest.go net/http/httptest $GOROOT/src/net/http/httptest
 //go:generate go run ../cmd/extract -gen -o net_http_httptrace.go net/http/httptrace $GOROOT/src/net/http/httptrace
 //go:generate go run ../cmd/extract -gen -o net_http_httputil.go net/http/httputil $GOROOT/src/net/http/httputil
+//go:generate go run ../cmd/extract -gen -o net_http_pprof.go net/http/pprof $GOROOT/src/net/http/pprof
 //go:generate go run ../cmd/extract -gen -o net_mail.go net/mail $GOROOT/src/net/mail
 //go:generate go run ../cmd/extract -gen -o net_netip.go net/netip $GOROOT/src/net/netip
 //go:generate go run ../cmd/extract -gen -o net_rpc.go net/rpc $GOROOT/src/net/rpc
+//go:generate go run ../cmd/extract -gen -o net_rpc_jsonrpc.go net/rpc/jsonrpc $GOROOT/src/net/rpc/jsonrpc
 //go:generate go run ../cmd/extract -gen -o net_smtp.go net/smtp $GOROOT/src/net/smtp
 //go:generate go run ../cmd/extract -gen -o net_textproto.go net/textproto $GOROOT/src/net/textproto
 //go:generate go run ../cmd/extract -gen -o net_url.go net/url $GOROOT/src/net/url
 //go:generate go run ../cmd/extract -gen -o os.go os $GOROOT/src/os
 //go:generate go run ../cmd/extract -gen -o os_exec.go os/exec $GOROOT/src/os/exec
+//go:generate go run ../cmd/extract -gen -o os_signal.go os/signal $GOROOT/src/os/signal
 //go:generate go run ../cmd/extract -gen -o os_user.go os/user $GOROOT/src/os/user
 //go:generate go run ../cmd/extract -gen -o path.go path $GOROOT/src/path
 //go:generate go run ../cmd/extract -gen -o path_filepath.go path/filepath $GOROOT/src/path/filepath

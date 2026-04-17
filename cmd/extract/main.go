@@ -11,6 +11,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/constant"
 	"io"
 	"os"
 	"path"
@@ -66,11 +67,14 @@ func mainErr() error {
 	return run(out, args[0])
 }
 
-// extract parses a Go package directory and returns exported symbols grouped by kind.
-func extract(dir string) (map[symbol.Kind][]string, error) {
+// extract parses a Go package directory and returns exported symbols grouped
+// by kind, plus a map from const name to an explicit Go type wrapper needed
+// to avoid `reflect.ValueOf(untyped int constant) overflows int` errors when
+// the constant value cannot fit in the default Go type (e.g. uint64 > MaxInt64).
+func extract(dir string) (map[symbol.Kind][]string, map[string]string, error) {
 	imports, err := extractImports(dir, *targetOS, *targetArch)
 	if err != nil {
-		return nil, fmt.Errorf("scanning imports: %w", err)
+		return nil, nil, fmt.Errorf("scanning imports: %w", err)
 	}
 
 	p := goparser.NewParser(golang.GoSpec, false)
@@ -97,6 +101,7 @@ func extract(dir string) (map[symbol.Kind][]string, error) {
 		symbol.Type:  {},
 		symbol.Func:  {},
 	}
+	typedConsts := map[string]string{}
 
 	for name, sym := range p.Symbols {
 		if strings.ContainsAny(name, "/.") {
@@ -109,13 +114,36 @@ func extract(dir string) (map[symbol.Kind][]string, error) {
 			continue
 		}
 		groups[sym.Kind] = append(groups[sym.Kind], name)
+		if sym.Kind == symbol.Const {
+			if w := constWrapFor(sym); w != "" {
+				typedConsts[name] = w
+			}
+		}
 	}
 
-	return groups, nil
+	return groups, typedConsts, nil
+}
+
+// constWrapFor returns the Go type name to wrap a const value with when
+// reflect.ValueOf on the raw identifier would fail. The sole case is an
+// untyped integer constant whose value overflows int (e.g. hash/crc64.ECMA
+// = 0xC96C5795D7870F42 > math.MaxInt64). Wrapping named types is deliberately
+// avoided so that bindings preserve e.g. time.Duration rather than int64.
+func constWrapFor(sym *symbol.Symbol) string {
+	if sym.Cval == nil || sym.Cval.Kind() != constant.Int {
+		return ""
+	}
+	if _, exact := constant.Int64Val(sym.Cval); exact {
+		return ""
+	}
+	if _, ok := constant.Uint64Val(sym.Cval); !ok {
+		return ""
+	}
+	return "uint64"
 }
 
 func run(out io.Writer, dir string) error {
-	groups, err := extract(dir)
+	groups, _, err := extract(dir)
 	if err != nil {
 		return err
 	}
@@ -131,7 +159,7 @@ func run(out io.Writer, dir string) error {
 }
 
 func runGen(out io.Writer, dir, importPath string) error {
-	groups, err := extract(dir)
+	groups, typedConsts, err := extract(dir)
 	if err != nil {
 		return err
 	}
@@ -169,7 +197,11 @@ func runGen(out io.Writer, dir, importPath string) error {
 	w("\tValues[%q] = map[string]reflect.Value{\n", importPath)
 
 	for _, name := range values {
-		w("\t\t%q: reflect.ValueOf(%s.%s),\n", name, alias, name)
+		if wrap, ok := typedConsts[name]; ok {
+			w("\t\t%q: reflect.ValueOf(%s(%s.%s)),\n", name, wrap, alias, name)
+		} else {
+			w("\t\t%q: reflect.ValueOf(%s.%s),\n", name, alias, name)
+		}
 	}
 	for _, name := range vars {
 		w("\t\t%q: reflect.ValueOf(&%s.%s),\n", name, alias, name)
