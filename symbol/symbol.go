@@ -51,7 +51,12 @@ type Symbol struct {
 	OutNames   []string       // raw output param names, cached from Phase 1 for Phase 2
 	MethodExpr bool           // true if this is a method expression (Type.Method)
 	Composite  bool           // true if this symbol is a composite literal value (T{})
-	Data       any            // optional extra data (e.g. generic template)
+	// FieldOffset and HasFieldOffset are set when this symbol is produced by a
+	// struct field selector chain; FieldOffset is the accumulated byte offset
+	// from the outermost operand to this field. Used by unsafe.Offsetof.
+	HasFieldOffset bool
+	FieldOffset    uintptr
+	Data           any // optional extra data (e.g. generic template)
 }
 
 // NeedsCell reports whether this variable should be promoted to a heap cell

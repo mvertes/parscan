@@ -318,6 +318,23 @@ func (c *Compiler) emitField(t goparser.Token, path []int) {
 	c.emit(t, vm.Field, path...)
 }
 
+// fieldPathOffset returns the byte offset of the field reached from rt by the
+// given reflect StructField index path, matching Go's unsafe.Offsetof for a
+// single selector expression (summing intermediate offsets when the field is
+// promoted through embedded fields).
+func fieldPathOffset(rt reflect.Type, path []int) uintptr {
+	var off uintptr
+	for _, i := range path {
+		if rt.Kind() == reflect.Pointer {
+			rt = rt.Elem()
+		}
+		f := rt.Field(i)
+		off += f.Offset
+		rt = f.Type
+	}
+	return off
+}
+
 func (c *Compiler) emitIfaceWrap(t goparser.Token, ifaceTyp, concreteTyp *vm.Type) {
 	c.emitIfaceWrapAt(t, ifaceTyp, concreteTyp, 0)
 }
@@ -1579,7 +1596,13 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 								structType = s.Type
 							}
 						}
-						push(&symbol.Symbol{Kind: symbol.Var, Index: symbol.UnsetAddr, Type: structType.FieldType(t.Str[1:])})
+						push(&symbol.Symbol{
+							Kind:           symbol.Var,
+							Index:          symbol.UnsetAddr,
+							Type:           structType.FieldType(t.Str[1:]),
+							HasFieldOffset: true,
+							FieldOffset:    fieldPathOffset(typ, f.Index),
+						})
 						c.emitField(t, f.Index)
 						break
 					}
@@ -2609,6 +2632,25 @@ func (c *Compiler) compileBuiltin(
 		c.removeGetGlobal(s.Index)
 		// The argument was evaluated onto the runtime stack; discard it and
 		// push the computed uintptr constant in its place.
+		c.emit(t, vm.Pop, 1)
+		di := len(c.Data)
+		c.Data = append(c.Data, vm.ValueOf(val))
+		c.emit(t, vm.GetGlobal, di)
+		return true, nil
+
+	case "unsafe.Offsetof":
+		if narg != 1 {
+			return true, fmt.Errorf("invalid argument count for %s", s.Name)
+		}
+		argSym := (*stack)[len(*stack)-1]
+		if !argSym.HasFieldOffset {
+			return true, errors.New("unsafe.Offsetof: argument must be a struct field selector")
+		}
+		val := argSym.FieldOffset
+		pop() // argument
+		pop() // fn symbol
+		push(&symbol.Symbol{Kind: symbol.Const, Value: vm.ValueOf(val), Type: c.Symbols["uintptr"].Type})
+		c.removeGetGlobal(s.Index)
 		c.emit(t, vm.Pop, 1)
 		di := len(c.Data)
 		c.Data = append(c.Data, vm.ValueOf(val))

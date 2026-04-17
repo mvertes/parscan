@@ -10,9 +10,10 @@ import (
 	"unsafe"
 )
 
-// Sizeof/Alignof/Offsetof are intercepted at compile time (in
-// goparser.evalConstExpr and comp.compileBuiltin) — these stubs only provide
-// symbol-table entries and must never run.
+// Sizeof/Alignof/Offsetof are intercepted at compile time — in
+// goparser.evalConstExpr for const contexts, and in comp.compileBuiltin for
+// regular expressions. These stubs only provide symbol-table entries and
+// must never run.
 func unsafeSizeof(any) uintptr   { panic("unsafe.Sizeof: not intercepted") }
 func unsafeAlignof(any) uintptr  { panic("unsafe.Alignof: not intercepted") }
 func unsafeOffsetof(any) uintptr { panic("unsafe.Offsetof: not intercepted") }
