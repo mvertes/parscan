@@ -234,6 +234,7 @@ func init() {
 	NumKindOffset[reflect.Uint16] = 7
 	NumKindOffset[reflect.Uint32] = 8
 	NumKindOffset[reflect.Uint64] = 9
+	NumKindOffset[reflect.Uintptr] = 5 // same opcode block as Uint
 	NumKindOffset[reflect.Float32] = 10
 	NumKindOffset[reflect.Float64] = 11
 }
@@ -251,17 +252,22 @@ var (
 	zuint16  = reflect.Zero(reflect.TypeOf(uint16(0)))
 	zuint32  = reflect.Zero(reflect.TypeOf(uint32(0)))
 	zuint64  = reflect.Zero(reflect.TypeOf(uint64(0)))
+	zuintptr = reflect.Zero(reflect.TypeOf(uintptr(0)))
 	zfloat32 = reflect.Zero(reflect.TypeOf(float32(0)))
 	zfloat64 = reflect.Zero(reflect.TypeOf(float64(0)))
 )
 
-// isNum reports whether k is a numeric kind.
 func isNum(k reflect.Kind) bool { return k >= reflect.Bool && k <= reflect.Float64 }
 
-// isFloat reports whether k is a floating-point kind.
+func uintOrUintptr(ref reflect.Value) reflect.Value {
+	if ref.Kind() == reflect.Uintptr {
+		return zuintptr
+	}
+	return zuint
+}
+
 func isFloat(k reflect.Kind) bool { return k == reflect.Float32 || k == reflect.Float64 }
 
-// numBits extracts the raw bits from a numeric reflect.Value.
 func numBits(rv reflect.Value) uint64 {
 	switch rv.Kind() {
 	case reflect.Bool:
@@ -331,7 +337,6 @@ func ValueOf(v any) Value {
 	return Value{ref: rv}
 }
 
-// boolVal returns a bool Value without reflect overhead.
 func boolVal(b bool) Value {
 	v := Value{ref: zbool}
 	if b {

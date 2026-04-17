@@ -1872,7 +1872,7 @@ func (m *Machine) Run() (err error) {
 			sp--
 		case AddUint:
 			mem[sp-1].num = add[uint](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zuint
+			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case AddUint8:
 			mem[sp-1].num = add[uint8](mem[sp-1].num, mem[sp].num)
@@ -1922,7 +1922,7 @@ func (m *Machine) Run() (err error) {
 			sp--
 		case SubUint:
 			mem[sp-1].num = sub[uint](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zuint
+			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case SubUint8:
 			mem[sp-1].num = sub[uint8](mem[sp-1].num, mem[sp].num)
@@ -1972,7 +1972,7 @@ func (m *Machine) Run() (err error) {
 			sp--
 		case MulUint:
 			mem[sp-1].num = mul[uint](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zuint
+			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case MulUint8:
 			mem[sp-1].num = mul[uint8](mem[sp-1].num, mem[sp].num)
@@ -2022,7 +2022,7 @@ func (m *Machine) Run() (err error) {
 			sp--
 		case DivUint:
 			mem[sp-1].num = div[uint](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zuint
+			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case DivUint8:
 			mem[sp-1].num = div[uint8](mem[sp-1].num, mem[sp].num)
@@ -2072,7 +2072,7 @@ func (m *Machine) Run() (err error) {
 			sp--
 		case RemUint:
 			mem[sp-1].num = rem[uint](mem[sp-1].num, mem[sp].num)
-			mem[sp-1].ref = zuint
+			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case RemUint8:
 			mem[sp-1].num = rem[uint8](mem[sp-1].num, mem[sp].num)
@@ -2109,7 +2109,7 @@ func (m *Machine) Run() (err error) {
 			mem[sp].ref = zint64
 		case NegUint:
 			mem[sp].num = neg[uint](mem[sp].num)
-			mem[sp].ref = zuint
+			mem[sp].ref = uintOrUintptr(mem[sp].ref)
 		case NegUint8:
 			mem[sp].num = neg[uint8](mem[sp].num)
 			mem[sp].ref = zuint8
