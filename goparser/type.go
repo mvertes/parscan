@@ -531,37 +531,34 @@ func (p *Parser) parseEmbeddedField(lt Tokens) (fieldType, origType *vm.Type) {
 		toks = toks[1:]
 	}
 
-	// Package-qualified embedded field: pkg.TypeName
-	if len(toks) == 3 && toks[0].Tok == lang.Ident && toks[1].Tok == lang.Period && toks[2].Tok == lang.Ident {
-		s, _, ok := p.Symbols.Get(toks[0].Str, p.scope)
-		if !ok || s.Kind != symbol.Pkg {
-			return nil, nil
-		}
-		typ, err := p.resolvePkgType(s, toks[2].Str)
-		if err != nil {
-			return nil, nil
-		}
-		ft := *typ
-		ft.Name = toks[2].Str
-		if isPtr {
-			return vm.PointerTo(&ft), typ
-		}
-		return &ft, typ
+	// Determine the embedded field name: the last Ident before an optional
+	// BracketBlock (generic instantiation). Supported shapes:
+	//   T, T[Args], pkg.T, pkg.T[Args]
+	var name string
+	var typeToks Tokens
+	switch {
+	case len(toks) == 1 && toks[0].Tok == lang.Ident:
+		name, typeToks = toks[0].Str, toks
+	case len(toks) == 2 && toks[0].Tok == lang.Ident && toks[1].Tok == lang.BracketBlock:
+		name, typeToks = toks[0].Str, toks
+	case len(toks) == 3 && toks[0].Tok == lang.Ident && toks[1].Tok == lang.Period && toks[2].Tok == lang.Ident:
+		name, typeToks = toks[2].Str, toks
+	case len(toks) == 4 && toks[0].Tok == lang.Ident && toks[1].Tok == lang.Period && toks[2].Tok == lang.Ident && toks[3].Tok == lang.BracketBlock:
+		name, typeToks = toks[2].Str, toks
+	default:
+		return nil, nil
 	}
 
-	if len(toks) != 1 || toks[0].Tok != lang.Ident {
+	typ, _, err := p.parseTypeExpr(typeToks)
+	if err != nil {
 		return nil, nil
 	}
-	s, _, ok := p.Symbols.Get(toks[0].Str, p.scope)
-	if !ok || s.Kind != symbol.Type {
-		return nil, nil
-	}
-	ft := *s.Type
-	ft.Name = toks[0].Str
+	ft := *typ
+	ft.Name = name
 	if isPtr {
-		return vm.PointerTo(&ft), s.Type
+		return vm.PointerTo(&ft), typ
 	}
-	return &ft, s.Type
+	return &ft, typ
 }
 
 func (p *Parser) hasFirstParam(in Tokens) bool {

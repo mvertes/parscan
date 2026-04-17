@@ -993,7 +993,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					c.emit(t, vm.MapSet)
 				}
 
-			case symbol.Type, symbol.Unset:
+			case symbol.Type, symbol.Unset, symbol.Generic:
 				fieldName := ks.Name
 				if ks.Kind == symbol.Type {
 					// Field name matches a type name: Ident emitted a spurious Fnew for it.
@@ -1297,7 +1297,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				s = &symbol.Symbol{Name: t.Str}
 			}
 			push(s)
-			if s.Kind == symbol.Pkg || s.Kind == symbol.Unset || s.Kind == symbol.Builtin {
+			if s.Kind == symbol.Pkg || s.Kind == symbol.Unset || s.Kind == symbol.Builtin || s.Kind == symbol.Generic {
 				break
 			}
 			// Closure creation: emit code address + captured cell pointers + MkClosure.
