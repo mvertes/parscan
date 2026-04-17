@@ -1441,13 +1441,14 @@ func (m *Machine) Run() (err error) {
 				}
 				if isX == 1 {
 					// Native function: call via reflect, discard results.
+					rv := unwrapIface(funcVal.ref)
 					rin := make([]reflect.Value, narg)
 					for i := range rin {
 						rin[i] = mem[dh-narg-2+i].Reflect()
 					}
-					coerceInterfaceArgs(rin, funcVal.ref.Type())
-					m.wrapFuncArgs(rin, mem[dh-narg-2:dh-2], funcVal.ref.Type())
-					funcVal.ref.Call(rin)
+					coerceInterfaceArgs(rin, rv.Type())
+					m.wrapFuncArgs(rin, mem[dh-narg-2:dh-2], rv.Type())
+					rv.Call(rin)
 					// Move return values (at dh+1..dh+nret) down over the defer entry.
 					for i := 0; i < nret; i++ {
 						mem[retBase+i] = mem[dh+1+i]
@@ -2205,6 +2206,21 @@ func (m *Machine) restoreFP(fpVal uint64) int {
 	return int(fpVal) //nolint:gosec
 }
 
+// unwrapIface returns the element of an interface reflect.Value, or rv
+// unchanged if it isn't an interface or is nil.
+func unwrapIface(rv reflect.Value) reflect.Value {
+	if rv.Kind() == reflect.Interface && !rv.IsNil() {
+		return rv.Elem()
+	}
+	return rv
+}
+
+// isNativeFunc reports whether rv holds a native Go function, possibly
+// wrapped in an interface.
+func isNativeFunc(rv reflect.Value) bool {
+	return unwrapIface(rv).Kind() == reflect.Func
+}
+
 func (m *Machine) resolveIPAndHeap(funcVal Value) int {
 	if isNum(funcVal.ref.Kind()) {
 		m.heap = nil
@@ -2231,6 +2247,11 @@ func (m *Machine) deferPush(c Instruction, mem []Value, fp, sp int) ([]Value, in
 		funcVal := mem[sp]
 		copy(mem[sp-narg+1:sp+1], mem[sp-narg:sp])
 		mem[sp-narg] = funcVal
+	} else if isX == 0 && isNativeFunc(mem[sp-narg].ref) {
+		// Compile-time couldn't tell a variable holding a native Go func from
+		// one holding a VM func; detect native at runtime so Return dispatches
+		// via reflect.Call instead of jumping to a bogus code address.
+		isX = 1
 	}
 	for i := sp - narg + 1; i <= sp; i++ {
 		mem[i] = snapshotArg(mem[i])
@@ -2297,13 +2318,14 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 		}
 		if isX == 1 {
 			// Native defer: call via reflect, discard results.
+			rv := unwrapIface(funcVal.ref)
 			rin := make([]reflect.Value, narg)
 			for i := range rin {
 				rin[i] = (*mem)[dh-narg-2+i].Reflect()
 			}
-			coerceInterfaceArgs(rin, funcVal.ref.Type())
-			m.wrapFuncArgs(rin, (*mem)[dh-narg-2:dh-2], funcVal.ref.Type())
-			funcVal.ref.Call(rin)
+			coerceInterfaceArgs(rin, rv.Type())
+			m.wrapFuncArgs(rin, (*mem)[dh-narg-2:dh-2], rv.Type())
+			rv.Call(rin)
 			return popDefer()
 		}
 		// VM defer: store panicAddr as return address, push frame.

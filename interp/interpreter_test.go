@@ -2316,6 +2316,16 @@ func f() []int {
 }
 s := f()
 s[0]*100 + s[1]*10 + s[2]`, res: "123"},
+		{n: "defer_native_via_var", src: `
+import "context"
+r := 0
+func f() {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r = 1
+}
+f()
+r`, res: "1"},
 	})
 }
 
@@ -2430,7 +2440,7 @@ var s S
 s.F = func(n int) int { return n * 2 }
 s.F(7)`, res: "14"},
 
-		{n: "literal", skip: true, src: `
+		{n: "literal", src: `
 type S struct { F func(int) int }
 s := S{F: func(n int) int { return n + 1 }}
 s.F(10)`, res: "11"},
