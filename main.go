@@ -32,12 +32,36 @@ func (t *newlineTracker) Write(p []byte) (int, error) {
 
 func main() {
 	log.SetFlags(log.Lshortfile)
-	if err := run(os.Args[1:]); err != nil {
+	if err := dispatch(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(arg []string) error {
+func dispatch(args []string) error {
+	if len(args) == 0 {
+		return runCmd(nil)
+	}
+	switch args[0] {
+	case "-h", "--help", "help":
+		usage(os.Stdout)
+		return nil
+	case "run":
+		return runCmd(args[1:])
+	}
+	return runCmd(args)
+}
+
+func usage(w io.Writer) {
+	_, _ = fmt.Fprintln(w, "Usage: parscan <command> [arguments]")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Commands:")
+	_, _ = fmt.Fprintln(w, "  run    run a Go source file, evaluate an expression, or start the REPL")
+	_, _ = fmt.Fprintln(w, "  help   show this help")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, `Use "parscan <command> -h" for details on a command.`)
+}
+
+func runCmd(arg []string) error {
 	var str string
 	rflag := flag.NewFlagSet("run", flag.ContinueOnError)
 	rflag.Usage = func() {
