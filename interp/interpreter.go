@@ -76,31 +76,23 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 	return i.Top().Reflect(), err
 }
 
-// patchStdlibOverrides installs parscan-aware replacements for stdlib
-// bindings that cannot be satisfied by the reflection-based generated
-// wrappers alone — either because the binding needs access to the
-// machine (fmt I/O redirection) or because the package needs to
-// dispatch parscan methods through the VM (encoding/json via jsonx).
 func (i *Interp) patchStdlibOverrides() {
 	i.patchFmtBindings()
 	i.patchJSONBindings()
 }
 
-// patchJSONBindings installs jsonx as the runtime implementation of
-// encoding/json.Marshal, MarshalIndent, and friends. The native
-// stubs remain registered in stdlib.Values for compile-time type
-// matching; at runtime the VM diverts calls into jsonx via
-// Machine.RegisterParscanAware.
 func (i *Interp) patchJSONBindings() {
 	pkg, ok := i.Packages["encoding/json"]
 	if !ok {
 		return
 	}
 	jsonx.Register(i.Machine, pkg.Values)
+	pkg.Values["Encoder"] = vm.FromReflect(reflect.ValueOf((*jsonx.Encoder)(nil)))
+	pkg.Values["Decoder"] = vm.FromReflect(reflect.ValueOf((*jsonx.Decoder)(nil)))
+	pkg.Values["NewEncoder"] = vm.FromReflect(reflect.ValueOf(jsonx.NewEncoder))
+	pkg.Values["NewDecoder"] = vm.FromReflect(reflect.ValueOf(jsonx.NewDecoder))
 }
 
-// patchFmtBindings overrides fmt.Print, Printf, Println with versions
-// that write to the machine's configured output writer instead of os.Stdout.
 func (i *Interp) patchFmtBindings() {
 	pkg, ok := i.Packages["fmt"]
 	if !ok {

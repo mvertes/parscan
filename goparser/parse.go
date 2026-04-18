@@ -651,11 +651,19 @@ func (p *Parser) registerFunc(toks Tokens) (bool, error) {
 			gs, _, gok := p.Symbols.Get(baseName, p.scope)
 			if gok && gs.Kind == symbol.Generic {
 				tmpl := gs.Data.(*genericTemplate)
+				ptrRecv := false
+				for _, t := range recvr {
+					if t.Tok == lang.Mul {
+						ptrRecv = true
+						break
+					}
+				}
 				tmpl.methods = append(tmpl.methods, &genericTemplate{
 					name:       toks[2].Str,
 					typeParams: tmpl.typeParams,
 					rawTokens:  toks,
 					isFunc:     true,
+					ptrRecv:    ptrRecv,
 				})
 				return true, nil
 			}

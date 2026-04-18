@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"sort"
 	"strings"
@@ -25,6 +26,8 @@ import (
 // entry in values is a native stdlib binding (by name) that we
 // intercept. The stubs are used only for compile-time signature
 // matching - at runtime the VM diverts to the callables below.
+// patchJSONBindings additionally rewrites "NewEncoder", "NewDecoder",
+// "Encoder", "Decoder" so parscan resolves them to the jsonx types.
 func Register(m *vm.Machine, values map[string]vm.Value) {
 	if stub, ok := values["Marshal"]; ok {
 		m.RegisterParscanAware(stub, marshalCallable)
@@ -35,6 +38,8 @@ func Register(m *vm.Machine, values map[string]vm.Value) {
 	if stub, ok := values["Unmarshal"]; ok {
 		m.RegisterParscanAware(stub, unmarshalCallable)
 	}
+	m.RegisterParscanAwareMethod(reflect.TypeOf((*Encoder)(nil)), "Encode", encoderEncodeCallable)
+	m.RegisterParscanAwareMethod(reflect.TypeOf((*Decoder)(nil)), "Decode", decoderDecodeCallable)
 }
 
 // marshalCallable implements `json.Marshal(v any) ([]byte, error)`.
@@ -116,9 +121,24 @@ func decodeInto(m *vm.Machine, data []byte, dst reflect.Value, typ *vm.Type) err
 		return json.Unmarshal(data, dst.Addr().Interface())
 	}
 	// If the pointee type has UnmarshalJSON, build a pointer Iface and dispatch.
+	// When typ is already a pointer, dst IS the pointer (taking another Addr
+	// would pass **T where the receiver expects *T). Allocate if nil.
 	if method, ok := m.MethodByName(typ, "UnmarshalJSON"); ok {
-		if dst.CanAddr() {
-			ptrIfc := vm.Iface{Typ: typ, Val: vm.FromReflect(dst.Addr())}
+		var recv reflect.Value
+		switch {
+		case typ.Rtype.Kind() == reflect.Pointer:
+			if dst.IsNil() {
+				if !dst.CanSet() {
+					return errors.New("json.Unmarshal: non-settable pointer destination")
+				}
+				dst.Set(reflect.New(typ.Rtype.Elem()))
+			}
+			recv = dst
+		case dst.CanAddr():
+			recv = dst.Addr()
+		}
+		if recv.IsValid() {
+			ptrIfc := vm.Iface{Typ: typ, Val: vm.FromReflect(recv)}
 			return invokeUnmarshalJSON(m, data, ptrIfc, method)
 		}
 	}
@@ -681,4 +701,133 @@ func bytesErrResult(data []byte, err error) []vm.Value {
 		bVal = vm.FromReflect(reflect.ValueOf(data))
 	}
 	return []vm.Value{bVal, errValue(err)}
+}
+
+// Encoder is the parscan-aware replacement for *encoding/json.Encoder.
+// Parscan resolves json.Encoder to this type via patchJSONBindings, so
+// user code that spells *json.Encoder actually gets *jsonx.Encoder. Its
+// Encode method goes through a parscan-aware callable (registered via
+// Machine.RegisterParscanAwareMethod) so MarshalJSON methods on
+// parscan-defined types are honoured.
+type Encoder struct {
+	w      io.Writer
+	prefix string
+	indent string
+}
+
+// NewEncoder returns a new jsonx.Encoder that writes to w, matching the
+// signature of encoding/json.NewEncoder.
+func NewEncoder(w io.Writer) *Encoder { return &Encoder{w: w} }
+
+// SetIndent mirrors (*json.Encoder).SetIndent.
+func (e *Encoder) SetIndent(prefix, indent string) { e.prefix, e.indent = prefix, indent }
+
+// SetEscapeHTML matches the (*json.Encoder) method set for API
+// compatibility. HTML escaping follows whatever the underlying
+// json.Marshal / marshalValue produce; the flag is accepted but
+// unused (changing it would require a bespoke string encoder).
+func (e *Encoder) SetEscapeHTML(bool) {}
+
+// Encode is the native-Go fallback: parscan users go through
+// encoderEncodeCallable instead, which preserves vm.Iface info so
+// MarshalJSON can be dispatched. Native Go callers (who won't pass
+// parscan-defined types) land here.
+func (e *Encoder) Encode(v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return e.writeEncoded(data)
+}
+
+// writeEncoded applies the configured indent (if any) and writes the
+// JSON bytes to e.w, followed by a newline (to match encoding/json).
+// data must be a freshly-owned slice - callers pass the result of
+// json.Marshal / marshalValue / buf.Bytes(), so appending is safe.
+func (e *Encoder) writeEncoded(data []byte) error {
+	if e.indent != "" || e.prefix != "" {
+		var buf bytes.Buffer
+		if err := json.Indent(&buf, data, e.prefix, e.indent); err != nil {
+			return err
+		}
+		data = buf.Bytes()
+	}
+	_, err := e.w.Write(append(data, '\n'))
+	return err
+}
+
+// encoderEncodeCallable implements `(*Encoder).Encode(v any) error` for
+// parscan dispatch. args[0] is the Encoder receiver, args[1] is the
+// value to encode (with its vm.Iface metadata preserved).
+func encoderEncodeCallable(m *vm.Machine, args []vm.Value) []vm.Value {
+	enc, err := awareRecv[Encoder](args, "json.Encoder.Encode")
+	if err != nil {
+		return []vm.Value{errValue(err)}
+	}
+	data, err := marshalValue(m, args[1])
+	if err != nil {
+		return []vm.Value{errValue(err)}
+	}
+	return []vm.Value{errValue(enc.writeEncoded(data))}
+}
+
+// Decoder is the parscan-aware replacement for *encoding/json.Decoder.
+// It delegates low-level parsing (token boundaries, whitespace) to the
+// native json.Decoder but routes Decode through the jsonx unmarshal
+// pipeline so UnmarshalJSON on parscan types is honoured.
+type Decoder struct {
+	dec *json.Decoder
+}
+
+// NewDecoder returns a new jsonx.Decoder that reads from r.
+func NewDecoder(r io.Reader) *Decoder { return &Decoder{dec: json.NewDecoder(r)} }
+
+// UseNumber forwards to (*json.Decoder).UseNumber.
+func (d *Decoder) UseNumber() { d.dec.UseNumber() }
+
+// DisallowUnknownFields forwards to (*json.Decoder).DisallowUnknownFields.
+func (d *Decoder) DisallowUnknownFields() { d.dec.DisallowUnknownFields() }
+
+// More forwards to (*json.Decoder).More.
+func (d *Decoder) More() bool { return d.dec.More() }
+
+// Buffered forwards to (*json.Decoder).Buffered.
+func (d *Decoder) Buffered() io.Reader { return d.dec.Buffered() }
+
+// InputOffset forwards to (*json.Decoder).InputOffset.
+func (d *Decoder) InputOffset() int64 { return d.dec.InputOffset() }
+
+// Token forwards to (*json.Decoder).Token.
+func (d *Decoder) Token() (json.Token, error) { return d.dec.Token() }
+
+// Decode is the native-Go fallback; parscan users land in
+// decoderDecodeCallable which preserves vm.Iface info on v.
+func (d *Decoder) Decode(v any) error { return d.dec.Decode(v) }
+
+// decoderDecodeCallable implements `(*Decoder).Decode(v any) error` for
+// parscan dispatch.
+func decoderDecodeCallable(m *vm.Machine, args []vm.Value) []vm.Value {
+	dec, err := awareRecv[Decoder](args, "json.Decoder.Decode")
+	if err != nil {
+		return []vm.Value{errValue(err)}
+	}
+	var raw json.RawMessage
+	if err := dec.dec.Decode(&raw); err != nil {
+		return []vm.Value{errValue(err)}
+	}
+	return []vm.Value{errValue(unmarshalValue(m, raw, args[1]))}
+}
+
+// awareRecv extracts the (*T) receiver from a parscan-aware method
+// callable's args slot 0, validating argument count and type. Used by
+// encoderEncodeCallable / decoderDecodeCallable.
+func awareRecv[T any](args []vm.Value, label string) (*T, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("%s: expected receiver + 1 arg, got %d", label, len(args)-1)
+	}
+	r, ok := args[0].Reflect().Interface().(*T)
+	if !ok || r == nil {
+		return nil, fmt.Errorf("%s: nil or wrong receiver", label)
+	}
+	return r, nil
 }

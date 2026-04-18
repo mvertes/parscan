@@ -390,6 +390,13 @@ type Machine struct {
 	// bridge-unwrapped concrete value.
 	parscanAware map[uintptr]ParscanCallable
 
+	// parscanAwareMethods maps a receiver reflect.Type and method name to
+	// a parscan-aware callable. Bound method values returned by reflect
+	// share a single code pointer (the reflect thunk), so methods cannot
+	// be keyed via parscanAware - IfaceCall resolves the callback via this
+	// map instead.
+	parscanAwareMethods map[reflect.Type]map[string]ParscanCallable
+
 	in       io.Reader // machine standard input (nil = os.Stdin)
 	out, err io.Writer // machine standard output and error
 
@@ -435,6 +442,52 @@ func (m *Machine) parscanAwareCallable(rv reflect.Value) ParscanCallable {
 		return nil
 	}
 	return m.parscanAware[rv.Pointer()]
+}
+
+// RegisterParscanAwareMethod associates a method on recvType with a
+// parscan-aware callable. IfaceCall substitutes a ParscanAwareMethodCall
+// for the bound method value, and Call invokes cb with the receiver as
+// the first Value followed by the raw argument Values. Both recvType
+// and its pointer/elem variant are matched so callers may register with
+// either form.
+func (m *Machine) RegisterParscanAwareMethod(recvType reflect.Type, methodName string, cb ParscanCallable) {
+	if cb == nil || recvType == nil || methodName == "" {
+		return
+	}
+	if m.parscanAwareMethods == nil {
+		m.parscanAwareMethods = make(map[reflect.Type]map[string]ParscanCallable)
+	}
+	byName := m.parscanAwareMethods[recvType]
+	if byName == nil {
+		byName = make(map[string]ParscanCallable)
+		m.parscanAwareMethods[recvType] = byName
+	}
+	byName[methodName] = cb
+}
+
+// lookupParscanAwareMethod returns the callable for recvType+methodName,
+// also trying the pointer/elem variant of recvType.
+func (m *Machine) lookupParscanAwareMethod(recvType reflect.Type, methodName string) ParscanCallable {
+	if m.parscanAwareMethods == nil || recvType == nil {
+		return nil
+	}
+	if byName, ok := m.parscanAwareMethods[recvType]; ok {
+		if cb, ok := byName[methodName]; ok {
+			return cb
+		}
+	}
+	var alt reflect.Type
+	if recvType.Kind() == reflect.Pointer {
+		alt = recvType.Elem()
+	} else {
+		alt = reflect.PointerTo(recvType)
+	}
+	if byName, ok := m.parscanAwareMethods[alt]; ok {
+		if cb, ok := byName[methodName]; ok {
+			return cb
+		}
+	}
+	return nil
 }
 
 // SetIO sets the I/O streams for the machine.
@@ -540,6 +593,25 @@ func (m *Machine) Run() (err error) {
 		case Call:
 			narg := int(c.A)
 			fval := mem[sp-narg]
+			// Parscan-aware method call: the "function" slot is a sentinel
+			// struct carrying the receiver and the registered callback.
+			// Dispatch with the receiver prepended to the argument Values.
+			if fval.ref.IsValid() && fval.ref.Type() == parscanAwareMethodCallRtype {
+				pam := fval.ref.Interface().(ParscanAwareMethodCall)
+				args := make([]Value, 0, narg+1)
+				args = append(args, pam.Recv)
+				args = append(args, mem[sp-narg+1:sp+1]...)
+				out := pam.CB(m, args)
+				sp -= narg + 1
+				for _, v := range out {
+					if sp+1 >= len(mem) {
+						mem = growStack(mem, sp, 1)
+					}
+					sp++
+					mem[sp] = v
+				}
+				break
+			}
 			// Inline fast path: only call resolveFuncField for addressable Func fields.
 			if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
 				fval = m.resolveFuncField(fval)
@@ -957,7 +1029,14 @@ func (m *Machine) Run() (err error) {
 			if !mem[sp].IsIface() {
 				// Native interface value: use reflect to get the method.
 				methodName := m.MethodNames[methodID]
-				rv := nativeMethodLookup(mem[sp].Reflect(), methodName)
+				recvRV := mem[sp].Reflect()
+				if recvRV.IsValid() {
+					if cb := m.lookupParscanAwareMethod(recvRV.Type(), methodName); cb != nil {
+						mem[sp] = Value{ref: reflect.ValueOf(ParscanAwareMethodCall{Recv: mem[sp], CB: cb})}
+						break
+					}
+				}
+				rv := nativeMethodLookup(recvRV, methodName)
 				if !rv.IsValid() && c.B != 0 {
 					// Numeric value lost its named type (e.g. time.Duration stored as int64).
 					// Convert to the named type encoded in B-1 and retry the method lookup.

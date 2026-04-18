@@ -86,6 +86,17 @@ type ParscanFunc struct {
 	GF  reflect.Value // reflect.MakeFunc wrapper for native Go callbacks
 }
 
+// ParscanAwareMethodCall is the sentinel Value that IfaceCall places on
+// the stack when the receiver type+method pair has a registered
+// parscan-aware callback. The Call opcode detects this struct, prepends
+// Recv to the argument Values, and invokes CB.
+type ParscanAwareMethodCall struct {
+	Recv Value
+	CB   ParscanCallable
+}
+
+var parscanAwareMethodCallRtype = reflect.TypeOf(ParscanAwareMethodCall{})
+
 // IsInterface reports whether t represents an interface type.
 func (t *Type) IsInterface() bool {
 	return t != nil && t.Rtype.Kind() == reflect.Interface

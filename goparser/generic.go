@@ -51,6 +51,7 @@ type genericTemplate struct {
 	typeParams []typeParam        // ordered type parameter list
 	rawTokens  Tokens             // entire declaration tokens (func or type)
 	isFunc     bool               // true for generic functions, false for generic types
+	ptrRecv    bool               // method template with pointer receiver (meaningful for methods only)
 	methods    []*genericTemplate // methods defined on this generic type
 	instances  []genericInstance  // monomorphizations, kept so methods attached after instantiation can still be emitted
 }
@@ -573,6 +574,11 @@ func recvGenericBaseName(recvr Tokens) (string, bool) {
 func (p *Parser) instantiateMethod(typeTmpl, methTmpl *genericTemplate, typeArgs []*vm.Type, typeArgSources []string) (Tokens, error) {
 	mTypeName := mangledName(typeTmpl.name, typeArgs)
 	methFullName := mTypeName + "." + methTmpl.name
+	// Pointer-receiver methods are stored by registerFunc under "*T.method";
+	// align the guard key so the instance is not re-emitted forever.
+	if methTmpl.ptrRecv {
+		methFullName = "*" + methFullName
+	}
 
 	// Guard: already instantiated.
 	if _, _, ok := p.Symbols.Get(methFullName, ""); ok {
