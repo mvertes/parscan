@@ -74,7 +74,7 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 
 	if src == "" {
 		// Get content from file(s). Primary pkgfs first; stdlib fallback resolves
-		// embedded generics-first packages (cmp, slices, …) when the user pkgfs
+		// embedded generics-first packages (cmp, slices, ...) when the user pkgfs
 		// does not provide them.
 		if p.pkgfs == nil {
 			p.pkgfs = os.DirFS(".")

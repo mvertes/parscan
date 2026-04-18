@@ -10,7 +10,7 @@ import (
 	"unsafe"
 )
 
-// Sizeof/Alignof/Offsetof are intercepted at compile time — in
+// Sizeof/Alignof/Offsetof are intercepted at compile time - in
 // goparser.evalConstExpr for const contexts, and in comp.compileBuiltin for
 // regular expressions. These stubs only provide symbol-table entries and
 // must never run.

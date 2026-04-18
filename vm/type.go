@@ -42,6 +42,11 @@ type Type struct {
 	Fields       []*Type         // parscan-level field types for struct types, parallel to reflect visible fields
 	ElemType     *Type           // parscan-level element type for map/slice/array/pointer/chan types
 	KeyType      *Type           // parscan-level key type for map types; nil for non-maps or native-built maps
+	// Base points at the source *Type that struct-field shallow copies
+	// were derived from. Methods registered on the source after the copy
+	// was taken (normal for parscan, which parses struct types before
+	// method declarations) remain reachable through Base.
+	Base *Type
 }
 
 // IfaceMethod describes a method required by an interface type.

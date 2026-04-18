@@ -358,6 +358,12 @@ func (i Instruction) String() (s string) {
 // Code represents the virtual machine byte code.
 type Code []Instruction
 
+// ParscanCallable is the signature of a parscan-aware native replacement.
+// It receives the Machine and the raw parscan Value arguments (without any
+// bridge/Iface unwrapping) and returns the raw Value results. Registered
+// via Machine.RegisterParscanAware.
+type ParscanCallable func(m *Machine, args []Value) []Value
+
 // Machine is a stack-based virtual machine that executes bytecode instructions.
 type Machine struct {
 	code       Code       // code to execute
@@ -375,6 +381,15 @@ type Machine struct {
 	funcFields          map[uintptr]Value
 	funcFieldsByFuncPtr map[uintptr]Value
 
+	// parscanAware maps the code pointer of a registered native function
+	// (as returned by reflect.Value.Pointer()) to a callable that
+	// receives raw parscan Value arguments. Native-call dispatch checks
+	// this map and, on hit, bypasses bridgeArgs / reflect dispatch
+	// entirely - used by stdlib replacements (e.g. stdlib/jsonx) that
+	// need to see parscan Iface / Type metadata instead of the
+	// bridge-unwrapped concrete value.
+	parscanAware map[uintptr]ParscanCallable
+
 	in       io.Reader // machine standard input (nil = os.Stdin)
 	out, err io.Writer // machine standard output and error
 
@@ -389,6 +404,38 @@ type Machine struct {
 
 // NewMachine returns a pointer on a new Machine.
 func NewMachine() *Machine { return &Machine{in: os.Stdin, out: os.Stdout, err: os.Stderr} }
+
+// RegisterParscanAware associates fn - a function value stored in
+// stdlib.Values - with a parscan-aware callable. At runtime, when the
+// VM's native-call dispatch sees this function, it invokes cb with raw
+// Value arguments instead of going through the reflect-based bridge
+// path. The stub function registered in stdlib is used only for
+// compile-time type matching; it is never actually called.
+func (m *Machine) RegisterParscanAware(fn Value, cb ParscanCallable) {
+	if cb == nil {
+		return
+	}
+	rv := fn.ref
+	if rv.Kind() == reflect.Interface && !rv.IsNil() {
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Func {
+		return
+	}
+	if m.parscanAware == nil {
+		m.parscanAware = make(map[uintptr]ParscanCallable)
+	}
+	m.parscanAware[rv.Pointer()] = cb
+}
+
+// parscanAwareCallable returns the registered parscan-aware callable
+// for rv (a native func reflect.Value), or nil if none is registered.
+func (m *Machine) parscanAwareCallable(rv reflect.Value) ParscanCallable {
+	if m.parscanAware == nil || rv.Kind() != reflect.Func {
+		return nil
+	}
+	return m.parscanAware[rv.Pointer()]
+}
 
 // SetIO sets the I/O streams for the machine.
 func (m *Machine) SetIO(in io.Reader, out, err io.Writer) { m.in = in; m.out = out; m.err = err }
@@ -516,6 +563,20 @@ func (m *Machine) Run() (err error) {
 					rv = rv.Elem()
 				}
 				if rv.Kind() == reflect.Func {
+					if cb := m.parscanAwareCallable(rv); cb != nil {
+						// Parscan-aware override: dispatch with raw Value args,
+						// skipping bridgeArgs / reflect call entirely.
+						out := cb(m, mem[sp-narg+1:sp+1])
+						sp -= narg + 1
+						for _, v := range out {
+							if sp+1 >= len(mem) {
+								mem = growStack(mem, sp, 1)
+							}
+							sp++
+							mem[sp] = v
+						}
+						break
+					}
 					funcType := rv.Type()
 					in := make([]reflect.Value, narg)
 					for i := range in {
@@ -2600,7 +2661,7 @@ func (m *Machine) wrapForFunc(val Value, funcType reflect.Type) reflect.Value {
 		}
 		return rv // already a proper Go func
 	}
-	// Already wrapped by WrapFunc — extract the Go func wrapper.
+	// Already wrapped by WrapFunc - extract the Go func wrapper.
 	if pf, ok := val.ref.Interface().(ParscanFunc); ok {
 		return pf.GF
 	}
@@ -2730,7 +2791,7 @@ func (m *Machine) CallFunc(fval Value, funcType reflect.Type, args []reflect.Val
 			rv = m.bridgeIface(ifc, funcType.Out(i))
 		} else if outType := funcType.Out(i); rv.Type() != outType && outType.Kind() == reflect.Interface {
 			// Interface locals use interface{} internally; convert to the expected
-			// interface type (e.g. interface{} → error) for MakeFunc callers.
+			// interface type (e.g. interface{} -> error) for MakeFunc callers.
 			if rv.Kind() == reflect.Interface && rv.IsNil() {
 				rv = reflect.Zero(outType)
 			} else {
@@ -3282,21 +3343,7 @@ func (m *Machine) makeBridgeClosure(ifc Iface, method Method, fnType reflect.Typ
 // on *IntHeap). The dereference must happen at call time so mutations from
 // pointer-receiver methods (Push/Pop) are visible.
 func (m *Machine) makeBridgeClosureImpl(ifc Iface, method Method, fnType reflect.Type, deref bool) reflect.Value {
-	// Build the receiver cell (same pattern as IfaceCall).
-	codeAddr := int(m.globals[method.Index].num) //nolint:gosec
-	cell := new(Value)
-	*cell = ifc.Val
-	if path := method.Path; path != nil {
-		rv := reflect.Indirect(ifc.Val.Reflect())
-		for _, idx := range path {
-			if rv.Kind() == reflect.Pointer {
-				rv = rv.Elem()
-			}
-			rv = rv.Field(idx)
-		}
-		*cell = FromReflect(rv)
-	}
-	fval := Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Heap: []*Value{cell}})}
+	cell, fval := m.makeMethodCell(ifc, method)
 	if !deref {
 		return m.makeCallFunc(fval, fnType)
 	}
@@ -3311,4 +3358,60 @@ func (m *Machine) makeBridgeClosureImpl(ifc Iface, method Method, fnType reflect
 		}
 		return out
 	})
+}
+
+// makeMethodCell builds the receiver cell and parscan func Value for a
+// method invocation on ifc. Reused by makeBridgeClosureImpl and by the
+// public MakeMethodCallable entry point used by parscan-native stdlib
+// replacements (e.g. stdlib/jsonx).
+func (m *Machine) makeMethodCell(ifc Iface, method Method) (*Value, Value) {
+	codeAddr := int(m.globals[method.Index].num) //nolint:gosec
+	cell := new(Value)
+	*cell = ifc.Val
+	if path := method.Path; path != nil {
+		rv := reflect.Indirect(ifc.Val.Reflect())
+		for _, idx := range path {
+			if rv.Kind() == reflect.Pointer {
+				rv = rv.Elem()
+			}
+			rv = rv.Field(idx)
+		}
+		*cell = FromReflect(rv)
+	}
+	return cell, Value{ref: reflect.ValueOf(Closure{Code: codeAddr, Heap: []*Value{cell}})}
+}
+
+// MakeMethodCallable returns a parscan func Value suitable for
+// Machine.CallFunc. The receiver cell is constructed with method.Path
+// applied.
+func (m *Machine) MakeMethodCallable(ifc Iface, method Method) Value {
+	_, fval := m.makeMethodCell(ifc, method)
+	return fval
+}
+
+// MethodByName returns the first resolved method named `name` reachable
+// from t. For pointer types, methods declared on the element type are
+// also searched (parscan registers methods on the base type T, not *T).
+// Struct-field *Type shallow copies preserve a Base back-pointer to the
+// source type so methods registered after the copy was taken (typical
+// when a struct is defined before its methods) remain reachable.
+// Returns (Method, true) on hit.
+func (m *Machine) MethodByName(t *Type, name string) (Method, bool) {
+	for cur := t; cur != nil; cur = cur.Base {
+		types, n := ifaceMethodTypes(cur)
+		for _, mt := range types[:n] {
+			for id, method := range mt.Methods {
+				if method.Index < 0 || id >= len(m.MethodNames) {
+					continue
+				}
+				if m.MethodNames[id] == name {
+					return method, true
+				}
+			}
+		}
+		if cur.Base == nil {
+			break
+		}
+	}
+	return Method{}, false
 }

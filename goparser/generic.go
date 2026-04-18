@@ -31,7 +31,7 @@ type constraintElem struct {
 }
 
 // tpConstraint is a resolved generic type-parameter constraint. An argument
-// satisfies the constraint if it matches any element in elems — a flat
+// satisfies the constraint if it matches any element in elems - a flat
 // disjunction. Nested unions (including those embedded inside constraint
 // interfaces like cmp.Ordered) are flattened at resolution time.
 type tpConstraint struct {
@@ -172,8 +172,8 @@ func (p *Parser) checkConstraint(c tpConstraint, arg *vm.Type, typeArgs []*vm.Ty
 }
 
 // checkConstraintElem reports whether arg satisfies a single constraint element.
-// For Approx with composite kinds (slice, map, array, …), only Kind is checked
-// — tightening would require inter-param substitution.
+// For Approx with composite kinds (slice, map, array, ...), only Kind is checked
+// - tightening would require inter-param substitution.
 func checkConstraintElem(e constraintElem, arg *vm.Type, typeArgs []*vm.Type) bool {
 	switch e.kind {
 	case elemAny:
@@ -184,7 +184,7 @@ func checkConstraintElem(e constraintElem, arg *vm.Type, typeArgs []*vm.Type) bo
 		return e.typ == nil || arg.Rtype == e.typ.Rtype
 	case elemInterface:
 		// Parscan-parsed interfaces have Rtype=any so Implements is trivially
-		// true — acceptable because their type-element form is already flattened
+		// true - acceptable because their type-element form is already flattened
 		// into sibling elems at resolution time.
 		return e.typ == nil || arg.Rtype.Implements(e.typ.Rtype)
 	case elemApprox:
@@ -214,8 +214,8 @@ func (p *Parser) resolveConstraint(toks Tokens, tpIdx map[string]int) (tpConstra
 }
 
 // resolveConstraintElems returns the flat disjunction of leaf elements that
-// satisfy the constraint expressed by toks. Nested unions — including those
-// embedded inside constraint interfaces like cmp.Ordered — are flattened.
+// satisfy the constraint expressed by toks. Nested unions - including those
+// embedded inside constraint interfaces like cmp.Ordered - are flattened.
 func (p *Parser) resolveConstraintElems(toks Tokens, tpIdx map[string]int) ([]constraintElem, error) {
 	if len(toks) == 0 {
 		return nil, fmt.Errorf("%w: empty constraint", ErrSyntax)
@@ -518,7 +518,7 @@ func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (s
 	return mname, nil
 }
 
-// finalizeGenericMethods instantiates every recorded instance × method
+// finalizeGenericMethods instantiates every recorded instance x method
 // combination for each generic type template. It runs once after the
 // Phase 1 retry loop, when all method templates have been attached. The
 // outer progress loop handles the case where parsing a method body
@@ -605,7 +605,7 @@ func (p *Parser) instantiateMethod(typeTmpl, methTmpl *genericTemplate, typeArgs
 //	"(b Box[int])"   -> "(b Box#int)"
 //	"(b *Box[int])"  -> "(b *Box#int)"
 func (p *Parser) stripRecvTypeParams(blockStr, origName, mangledName string) string {
-	// Scan the full block string — expect a single ParenBlock.
+	// Scan the full block string - expect a single ParenBlock.
 	outerToks, err := p.Scanner.Scan(blockStr, false)
 	if err != nil || len(outerToks) != 1 || outerToks[0].Tok != lang.ParenBlock {
 		return blockStr
@@ -676,7 +676,7 @@ func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, cal
 			pType = params[i]
 		case isVariadic:
 			// Variadic slot: the argument is a single element, not the whole
-			// slice — descend into ElemType so unification sees `T`, not `[]T`.
+			// slice - descend into ElemType so unification sees `T`, not `[]T`.
 			pType = params[len(params)-1]
 			if pType.ElemType != nil {
 				pType = pType.ElemType
@@ -686,7 +686,7 @@ func (p *Parser) inferTypeArgs(tmpl *genericTemplate, genSym *symbol.Symbol, cal
 		}
 		// Skip when every type param in pType is already bound: avoids a
 		// redundant inferExprType (which can fail legitimately on later
-		// args — e.g. slices.Equal's second []E with a shape inferExprType
+		// args - e.g. slices.Equal's second []E with a shape inferExprType
 		// can't currently type).
 		if !hasUnboundTypeParam(pType, tpNames, inferred) {
 			continue
@@ -810,7 +810,7 @@ func unpackConstraint(c tpConstraint, paramName string, concrete *vm.Type) *vm.T
 
 // extractFromShape walks `shape` in parallel with `concrete`, returning the
 // sub-type of concrete at the position where shape names paramName. E.g.
-// shape=[]E, concrete=[]int, paramName=E → int. Handles slice, array,
+// shape=[]E, concrete=[]int, paramName=E -> int. Handles slice, array,
 // pointer, chan (via ElemType), map (via KeyType + ElemType), and func
 // (via Params + Returns). Decomposes before matching by name so that
 // composite shapes whose outer Name happens to collide with paramName
@@ -1075,16 +1075,16 @@ func (p *Parser) substituteStructBody(blockStr string, sub map[string]string) st
 
 // substituteStructField substitutes type params in a single struct field
 // declaration, protecting field-name idents from substitution.
-// E.g. "K K" with sub {K:string} → "K string" (first K is field name, kept).
+// E.g. "K K" with sub {K:string} -> "K string" (first K is field name, kept).
 func (p *Parser) substituteStructField(field string, sub map[string]string) string {
 	fieldToks, err := p.Scanner.Scan(field, false)
 	if err != nil || len(fieldToks) == 0 {
 		return field
 	}
 
-	// Count consecutive leading idents. In "K K", nIdent=2 → first is field name.
-	// In "*T" or "[]T", nIdent=0 → embedded type, no field names.
-	// In "K", nIdent=1 → embedded type.
+	// Count consecutive leading idents. In "K K", nIdent=2 -> first is field name.
+	// In "*T" or "[]T", nIdent=0 -> embedded type, no field names.
+	// In "K", nIdent=1 -> embedded type.
 	nIdent := 0
 	for _, ft := range fieldToks {
 		if ft.Tok != lang.Ident {
@@ -1093,7 +1093,7 @@ func (p *Parser) substituteStructField(field string, sub map[string]string) stri
 		nIdent++
 	}
 
-	// If 2+ leading idents, the first N-1 are field names → protect them.
+	// If 2+ leading idents, the first N-1 are field names -> protect them.
 	protectCount := 0
 	if nIdent >= 2 {
 		protectCount = nIdent - 1
@@ -1141,7 +1141,7 @@ func (p *Parser) substituteBlock(s string, sub map[string]string) string {
 	for i, t := range toks {
 		switch {
 		case t.Tok == lang.Ident:
-			// Skip idents after a Period — they are field/member names, not type params.
+			// Skip idents after a Period - they are field/member names, not type params.
 			if i > 0 && toks[i-1].Tok == lang.Period {
 				break
 			}

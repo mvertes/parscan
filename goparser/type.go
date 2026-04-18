@@ -585,7 +585,7 @@ func (p *Parser) hasFirstParam(in Tokens) bool {
 		return true
 	}
 	// A generic type followed by [args] is a type instantiation (e.g. Viewer[int]),
-	// not a "name type" pair — so the ident is the type, not a param name.
+	// not a "name type" pair - so the ident is the type, not a param name.
 	if s.Kind == symbol.Generic && len(in) > 1 && in[1].Tok == lang.BracketBlock {
 		return false
 	}
@@ -659,6 +659,14 @@ func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
 			ft := *types[i]
 			ft.Name = name
 			ft.PkgPath = pkgPath
+			// Back-link to the source type so late-bound info (Methods,
+			// registered after this copy was taken when a struct is defined
+			// before its methods) remains reachable via ft.Base.
+			if types[i].Base != nil {
+				ft.Base = types[i].Base
+			} else {
+				ft.Base = types[i]
+			}
 			fields = append(fields, &ft)
 			tags = append(tags, tag)
 		}

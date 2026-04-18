@@ -83,7 +83,7 @@ func (p *Parser) SetPkgfs(pkgPath string) {
 
 // SetStdlibFS installs a fallback filesystem for resolving imported source
 // packages that are not present in the primary pkgfs. This is used to
-// resolve generics-first stdlib packages (cmp, slices, maps, …) whose
+// resolve generics-first stdlib packages (cmp, slices, maps, ...) whose
 // sources are embedded in the interpreter binary.
 func (p *Parser) SetStdlibFS(fsys fs.FS) {
 	p.stdlibfs = fsys
@@ -549,7 +549,7 @@ func (p *Parser) ParseDecl(toks Tokens) (handled bool, err error) {
 			return false, err
 		}
 		if isTemplate {
-			return true, nil // Generic template — instantiated on use.
+			return true, nil // Generic template - instantiated on use.
 		}
 		if toks.LastIndex(lang.BraceBlock) < 0 {
 			return true, nil // Body-less function (e.g. runtime-linked): signature only.
@@ -660,7 +660,7 @@ func (p *Parser) registerFunc(toks Tokens) (bool, error) {
 				return true, nil
 			}
 			// Base type has a bracketed receiver but isn't registered as generic
-			// yet — likely a forward reference whose own declaration is still
+			// yet - likely a forward reference whose own declaration is still
 			// pending (e.g. constraint referencing a not-yet-seen generic type).
 			// Defer via ErrUndefined so the retry loop processes this after the
 			// generic type declaration completes.
@@ -1419,7 +1419,7 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 
 	switch in[1].Tok {
 	case lang.Ident:
-		// Skip generic function templates — they are instantiated on use.
+		// Skip generic function templates - they are instantiated on use.
 		if s, _, ok := p.Symbols.Get(in[1].Str, p.scope); ok && s.Kind == symbol.Generic {
 			return nil, nil
 		}

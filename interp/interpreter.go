@@ -9,6 +9,7 @@ import (
 	"github.com/mvertes/parscan/comp"
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/stdlib"
+	"github.com/mvertes/parscan/stdlib/jsonx"
 	"github.com/mvertes/parscan/vm"
 )
 
@@ -18,7 +19,7 @@ var debug = os.Getenv("PARSCAN_DEBUG") != ""
 type Interp struct {
 	*comp.Compiler
 	*vm.Machine
-	fmtPatched bool
+	stdlibPatched bool
 }
 
 // NewInterpreter returns a new interpreter.
@@ -40,9 +41,9 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 	i.PopExit() // Remove last exit from previous run (re-entrance).
 	initsBefore := len(i.InitFuncs)
 
-	if !i.fmtPatched {
-		i.patchFmtBindings()
-		i.fmtPatched = true
+	if !i.stdlibPatched {
+		i.patchStdlibOverrides()
+		i.stdlibPatched = true
 	}
 
 	if err = i.Compile(name, src); err != nil {
@@ -73,6 +74,29 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 	}
 	err = i.Run()
 	return i.Top().Reflect(), err
+}
+
+// patchStdlibOverrides installs parscan-aware replacements for stdlib
+// bindings that cannot be satisfied by the reflection-based generated
+// wrappers alone — either because the binding needs access to the
+// machine (fmt I/O redirection) or because the package needs to
+// dispatch parscan methods through the VM (encoding/json via jsonx).
+func (i *Interp) patchStdlibOverrides() {
+	i.patchFmtBindings()
+	i.patchJSONBindings()
+}
+
+// patchJSONBindings installs jsonx as the runtime implementation of
+// encoding/json.Marshal, MarshalIndent, and friends. The native
+// stubs remain registered in stdlib.Values for compile-time type
+// matching; at runtime the VM diverts calls into jsonx via
+// Machine.RegisterParscanAware.
+func (i *Interp) patchJSONBindings() {
+	pkg, ok := i.Packages["encoding/json"]
+	if !ok {
+		return
+	}
+	jsonx.Register(i.Machine, pkg.Values)
 }
 
 // patchFmtBindings overrides fmt.Print, Printf, Println with versions

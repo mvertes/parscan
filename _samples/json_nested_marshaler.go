@@ -20,4 +20,6 @@ func main() {
 	fmt.Println("nested:   ", string(nested))
 }
 
-// skip: parscan MarshalJSON on a struct field is invisible to native json.Marshal via reflect. Top-level json.Marshal(x) bridges via Iface → BridgeMarshalJSON, but when x is nested, json iterates fields by reflect and the field's StructOf-built type has no methods attached. Fundamental reflect.StructOf limitation; would require substituting bridge types for struct fields at serialization time. Expected output with fix: top-level: "!x!" / nested: {"Inner":"!x!"}.
+// Output:
+// top-level: "!x!"
+// nested:    {"Inner":"!x!"}
