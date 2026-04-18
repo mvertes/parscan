@@ -11,6 +11,7 @@ import (
 
 	"github.com/mvertes/parscan/lang/golang"
 	"github.com/mvertes/parscan/stdlib"
+	_ "github.com/mvertes/parscan/stdlib/jsonx"
 )
 
 func TestFile(t *testing.T) {

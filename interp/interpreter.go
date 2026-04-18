@@ -9,7 +9,6 @@ import (
 	"github.com/mvertes/parscan/comp"
 	"github.com/mvertes/parscan/lang"
 	"github.com/mvertes/parscan/stdlib"
-	"github.com/mvertes/parscan/stdlib/jsonx"
 	"github.com/mvertes/parscan/vm"
 )
 
@@ -78,19 +77,15 @@ func (i *Interp) Eval(name, src string) (res reflect.Value, err error) {
 
 func (i *Interp) patchStdlibOverrides() {
 	i.patchFmtBindings()
-	i.patchJSONBindings()
-}
-
-func (i *Interp) patchJSONBindings() {
-	pkg, ok := i.Packages["encoding/json"]
-	if !ok {
-		return
+	for importPath, fns := range stdlib.PackagePatchers() {
+		pkg, ok := i.Packages[importPath]
+		if !ok {
+			continue
+		}
+		for _, fn := range fns {
+			fn(i.Machine, pkg.Values)
+		}
 	}
-	jsonx.Register(i.Machine, pkg.Values)
-	pkg.Values["Encoder"] = vm.FromReflect(reflect.ValueOf((*jsonx.Encoder)(nil)))
-	pkg.Values["Decoder"] = vm.FromReflect(reflect.ValueOf((*jsonx.Decoder)(nil)))
-	pkg.Values["NewEncoder"] = vm.FromReflect(reflect.ValueOf(jsonx.NewEncoder))
-	pkg.Values["NewDecoder"] = vm.FromReflect(reflect.ValueOf(jsonx.NewDecoder))
 }
 
 func (i *Interp) patchFmtBindings() {

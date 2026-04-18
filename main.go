@@ -12,6 +12,7 @@ import (
 	"github.com/mvertes/parscan/interp"
 	"github.com/mvertes/parscan/lang/golang"
 	"github.com/mvertes/parscan/stdlib"
+	_ "github.com/mvertes/parscan/stdlib/jsonx"
 )
 
 // newlineTracker wraps a writer and tracks whether the last byte written was a newline.

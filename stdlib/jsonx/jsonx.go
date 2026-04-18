@@ -19,16 +19,22 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mvertes/parscan/stdlib"
 	"github.com/mvertes/parscan/vm"
 )
 
-// Register installs the parscan-aware json replacements onto m. Each
-// entry in values is a native stdlib binding (by name) that we
-// intercept. The stubs are used only for compile-time signature
-// matching - at runtime the VM diverts to the callables below.
-// patchJSONBindings additionally rewrites "NewEncoder", "NewDecoder",
-// "Encoder", "Decoder" so parscan resolves them to the jsonx types.
-func Register(m *vm.Machine, values map[string]vm.Value) {
+func init() {
+	stdlib.RegisterPackagePatcher("encoding/json", patchEncodingJSON)
+}
+
+// patchEncodingJSON is the stdlib PackagePatcher for encoding/json.
+// It wires the parscan-aware Marshal/Unmarshal/Encoder/Decoder
+// callables onto m and overlays the jsonx Encoder/Decoder types
+// into the package's symbol map so interpreted code resolves them
+// to the jsonx implementations. The stubs intercepted here are used
+// only for compile-time signature matching - at runtime the VM
+// diverts to the callables below.
+func patchEncodingJSON(m *vm.Machine, values map[string]vm.Value) {
 	if stub, ok := values["Marshal"]; ok {
 		m.RegisterParscanAware(stub, marshalCallable)
 	}
@@ -40,6 +46,10 @@ func Register(m *vm.Machine, values map[string]vm.Value) {
 	}
 	m.RegisterParscanAwareMethod(reflect.TypeOf((*Encoder)(nil)), "Encode", encoderEncodeCallable)
 	m.RegisterParscanAwareMethod(reflect.TypeOf((*Decoder)(nil)), "Decode", decoderDecodeCallable)
+	values["Encoder"] = encoderTypeV
+	values["Decoder"] = decoderTypeV
+	values["NewEncoder"] = newEncoderFuncV
+	values["NewDecoder"] = newDecoderFuncV
 }
 
 // marshalCallable implements `json.Marshal(v any) ([]byte, error)`.
@@ -683,6 +693,11 @@ var (
 	ifaceRtype   = reflect.TypeOf(vm.Iface{})
 	zeroBytesV   = vm.FromReflect(reflect.Zero(bytesType))
 	zeroErrorV   = vm.FromReflect(reflect.Zero(errIfaceType))
+
+	encoderTypeV    = vm.FromReflect(reflect.ValueOf((*Encoder)(nil)))
+	decoderTypeV    = vm.FromReflect(reflect.ValueOf((*Decoder)(nil)))
+	newEncoderFuncV = vm.FromReflect(reflect.ValueOf(NewEncoder))
+	newDecoderFuncV = vm.FromReflect(reflect.ValueOf(NewDecoder))
 )
 
 // errValue returns a vm.Value representing an error return slot.
