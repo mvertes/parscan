@@ -52,6 +52,12 @@ type genericTemplate struct {
 	rawTokens  Tokens             // entire declaration tokens (func or type)
 	isFunc     bool               // true for generic functions, false for generic types
 	methods    []*genericTemplate // methods defined on this generic type
+	instances  []genericInstance  // monomorphizations, kept so methods attached after instantiation can still be emitted
+}
+
+type genericInstance struct {
+	typeArgs       []*vm.Type
+	typeArgSources []string
 }
 
 func (p *Parser) parseTypeParamList(bt scan.Token) ([]typeParam, error) {
@@ -455,10 +461,31 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*vm.Type, typeArg
 	return out, mname, nil
 }
 
+// emitInstantiatedMethod instantiates methTmpl for the given type args
+// and, if it produced fresh tokens, registers and parses the method,
+// pushing the resulting tokens into p.pendingMethodDefs. Returns true if
+// a new method was emitted. The caller must have cleared p.scope.
+func (p *Parser) emitInstantiatedMethod(tmpl, methTmpl *genericTemplate, typeArgs []*vm.Type, typeArgSources []string) (bool, error) {
+	methToks, err := p.instantiateMethod(tmpl, methTmpl, typeArgs, typeArgSources)
+	if err != nil || methToks == nil {
+		return false, err
+	}
+	if _, err := p.registerFunc(methToks); err != nil {
+		return false, err
+	}
+	fout, err := p.parseFunc(methToks)
+	if err != nil {
+		return false, err
+	}
+	p.pendingMethodDefs = append(p.pendingMethodDefs, fout...)
+	return true, nil
+}
+
 // ensureTypeInstantiated resolves type arguments from a bracket block and
 // instantiates the generic type template, registering the concrete type.
-// Methods on the generic type are also instantiated; their compiled tokens
-// are stored in p.pendingMethodDefs for later emission.
+// Methods known at this point are instantiated inline; methods attached
+// to the template after this call are picked up later by
+// finalizeGenericMethods.
 func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (string, error) {
 	typeArgs, typeArgSources, err := p.resolveTypeArgs(bt)
 	if err != nil {
@@ -476,30 +503,55 @@ func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (s
 			p.scope = savedScope
 			return "", err
 		}
-		// Instantiate methods on this generic type.
+		tmpl.instances = append(tmpl.instances, genericInstance{
+			typeArgs:       typeArgs,
+			typeArgSources: typeArgSources,
+		})
 		for _, methTmpl := range tmpl.methods {
-			methToks, err := p.instantiateMethod(tmpl, methTmpl, typeArgs, typeArgSources)
-			if err != nil {
+			if _, err := p.emitInstantiatedMethod(tmpl, methTmpl, typeArgs, typeArgSources); err != nil {
 				p.scope = savedScope
 				return "", err
 			}
-			if methToks == nil {
-				continue // Already instantiated.
-			}
-			if _, err := p.registerFunc(methToks); err != nil {
-				p.scope = savedScope
-				return "", err
-			}
-			fout, err := p.parseFunc(methToks)
-			if err != nil {
-				p.scope = savedScope
-				return "", err
-			}
-			p.pendingMethodDefs = append(p.pendingMethodDefs, fout...)
 		}
 		p.scope = savedScope
 	}
 	return mname, nil
+}
+
+// finalizeGenericMethods instantiates every recorded instance × method
+// combination for each generic type template. It runs once after the
+// Phase 1 retry loop, when all method templates have been attached. The
+// outer progress loop handles the case where parsing a method body
+// triggers further generic instantiations whose methods must also be
+// emitted.
+func (p *Parser) finalizeGenericMethods() error {
+	savedScope := p.scope
+	p.scope = ""
+	defer func() { p.scope = savedScope }()
+	for progress := true; progress; {
+		progress = false
+		for _, sym := range p.Symbols {
+			if sym.Kind != symbol.Generic {
+				continue
+			}
+			tmpl, ok := sym.Data.(*genericTemplate)
+			if !ok || tmpl.isFunc {
+				continue
+			}
+			for _, inst := range tmpl.instances {
+				for _, methTmpl := range tmpl.methods {
+					emitted, err := p.emitInstantiatedMethod(tmpl, methTmpl, inst.typeArgs, inst.typeArgSources)
+					if err != nil {
+						return err
+					}
+					if emitted {
+						progress = true
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // recvGenericBaseName checks whether the receiver tokens contain type

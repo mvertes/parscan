@@ -178,6 +178,12 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 		pending = retry
 	}
 
+	// Emit methods whose templates were attached after an instance was
+	// already created during Phase 1.
+	if ferr := p.finalizeGenericMethods(); ferr != nil {
+		return out, ferr
+	}
+
 	// Include code-gen declarations from imported source packages.
 	if len(p.importRemaining) > 0 {
 		remaining = append(p.importRemaining, remaining...)
