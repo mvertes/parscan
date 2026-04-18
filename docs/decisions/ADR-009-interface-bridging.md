@@ -47,6 +47,39 @@ Separately, `fmt.Print`/`Printf`/`Println` are overridden in the interpreter
 with closures that write to the machine's configured output writer instead of
 `os.Stdout`.
 
+### Bridge families
+
+As the bridge catalogue grew, four registries emerged, each chosen by
+`bridgeArgs` based on the target parameter type:
+
+- **`Bridges`** -- single-method bridges keyed by method name. The default
+  family used when the target is a single-method interface.
+- **`DisplayBridges`** -- the subset eligible when the target is
+  `any`/`interface{}`. Display methods only (`String`, `Error`, `GoString`).
+  Behavioural methods (`Write`, `Read`, `Close`) are excluded because
+  wrapping a value as `io.Writer` where `any` was requested would change
+  its identity pointlessly.
+- **`CompositeBridges`** -- keyed by sorted `[2]string` pair of method
+  names. Preserves two capabilities at once so internal type assertions in
+  `io.Copy` etc. still succeed through the bridge.
+- **`InterfaceBridges`** -- keyed by the native `reflect.Type` of a
+  multi-method interface (`sort.Interface`, `heap.Interface`, `flag.Value`).
+  One bridge struct implements all methods of the interface.
+
+Display bridges also carry a `Val any` field holding the original concrete
+value. `vm.ValBridgeTypes` is the set of bridge types that do so;
+`unbridgeValue` unwraps `.Val` during type assertions so `x.(MyNamedInt)`
+still matches after the value has round-tripped through a display bridge.
+
+### Separate path: argument proxies
+
+For reflect-walking stdlib packages (e.g. `encoding/json`), a single-method
+bridge on the top-level argument is insufficient because the native code
+walks struct fields and expects interpreted methods to dispatch on each.
+See [ADR-012](ADR-012-package-patchers-arg-proxies.md) for the
+`RegisterArgProxy` / `RegisterArgProxyMethod` complement, which installs
+full-`Iface` wrappers that re-enter a parscan-aware shadow walker.
+
 ## Consequences
 
 **Easier:**

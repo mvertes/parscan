@@ -445,29 +445,48 @@ Go function as an `interface{}` parameter, Go's interface dispatcher cannot
 find the method. The VM bridges this gap at the native function call site
 (`rv.Call(in)` path inside the `Call` handler).
 
-**Bridge registry.** `vm.Bridges` (`map[string]reflect.Type`) maps method
-names to pointer-to-bridge types. Bridge types live in `stdlib/` and are
-registered at init time. Each bridge is a struct with a `Fn` field and one
-pointer-receiver method that delegates to `Fn`:
+Bridge types live in `stdlib/`. See [stdlib](stdlib.md#interface-bridges-bridgesgo)
+for the full catalogue. The VM only holds the registries.
 
-```go
-type BridgeString struct{ Fn func() string }
-func (b *BridgeString) String() string { return b.Fn() }
-```
+**Registries** (`vm/bridge.go`, all populated at init by `stdlib`):
 
-**`bridgeArgs(in []reflect.Value)`** scans the native-call argument list for
-`Iface` values (boxed by `IfaceWrap` during compilation). For each match:
+| Registry | Key | Value | Purpose |
+|----------|-----|-------|---------|
+| `Bridges` | method name | pointer-to-bridge `reflect.Type` | single-method bridges |
+| `DisplayBridges` | method name | bool | subset eligible when target is `any`/`interface{}` |
+| `CompositeBridges` | sorted `[2]string` | pointer-to-bridge `reflect.Type` | preserves two capabilities (e.g. Read+WriteTo for io.Copy) |
+| `InterfaceBridges` | `reflect.Type` of target interface | pointer-to-bridge `reflect.Type` | multi-method interfaces (sort, heap, flag) |
+| `ValBridgeTypes` | pointer-to-bridge `reflect.Type` | bool | bridges whose `Val any` field carries the original value for unwrapping on type assertion |
 
-- If the concrete type has a method with a registered bridge, `wrapIface`
-  allocates a bridge instance, sets its `Fn` to a closure built by
-  `makeBridgeClosure`, and replaces the argument with the bridge pointer.
-- Otherwise, the `Iface` is unwrapped to its concrete value so native code
-  sees the original type instead of `vm.Iface`.
+**`bridgeArgs(in, funcType, fnPtr, recvType, methodName)`** scans
+native-call arguments for `Iface` values (boxed by `IfaceWrap` during
+compilation). Dispatch order per argument:
+
+1. **Arg proxies first.** If a `ProxyFactory` is registered for this
+   argument slot (via `RegisterArgProxy` for functions or
+   `RegisterArgProxyMethod` for methods), the factory builds a wrapper that
+   re-enters the interpreter on method call. See
+   [Argument proxies](#argument-proxies) below.
+2. **Bridge lookup.** Otherwise, the target parameter type is inspected:
+   - Target is a concrete interface with a match in `InterfaceBridges`:
+     allocate that bridge.
+   - Target is `any`/`interface{}`: look for a concrete-type method that
+     exists in `DisplayBridges`; if a `CompositeBridges` entry matches two
+     methods, prefer it to preserve both capabilities.
+   - Target is a single-method interface: look up by method name in
+     `Bridges`.
+3. **Unwrap.** If no bridge matches, unwrap the `Iface` to its concrete
+   value so native code sees the original type instead of `vm.Iface`.
 
 **`makeBridgeClosure`** builds a `Closure{Code, Heap}` with the receiver in
-`Heap[0]` (same pattern as the `IfaceCall` handler) and wraps it via
-`reflect.MakeFunc`. The closure creates a fresh `Machine` with captured state
-and calls `CallFunc` for re-entrant execution.
+`Heap[0]` (same pattern as `IfaceCall`) and wraps it via `reflect.MakeFunc`.
+The closure creates a fresh `Machine` and calls `CallFunc` for re-entrant
+execution.
+
+**`unbridgeValue`** inspects an interface argument during type assertion and
+type switch. If the runtime value is a known `ValBridgeTypes` pointer, it
+returns the `Val` field's reflect value so `x.(MyNamedInt)` still matches
+after the value has passed through a display bridge.
 
 **`MethodNames []string`** on `Machine` provides the reverse mapping from
 global method IDs to names, populated from the compiler after each `Compile`.
@@ -480,12 +499,35 @@ sequenceDiagram
     participant Native as Native Go func
     Compiler->>VM: IfaceWrap (carries *Type)
     VM->>VM: bridgeArgs detects Iface
-    VM->>Bridge: allocate *BridgeString, set Fn
+    VM->>Bridge: allocate *BridgeString, set Fn, set Val
     VM->>Native: rv.Call(bridged args)
     Native->>Bridge: calls String()
     Bridge->>VM: Fn closure -> CallFunc
     VM-->>Native: returns result
 ```
+
+### Argument proxies
+
+A complementary dispatch path for parscan-native shadow packages. Where
+bridges patch a single method on a single argument, arg proxies wrap an
+entire `Iface` so that a shadow's walker (e.g. `stdlib/jsonx`) sees the
+original parscan type metadata.
+
+- **`ProxyFactory`** (`func(*Machine, Iface) reflect.Value`) -- builds a
+  pointer-to-struct wrapper whose methods re-enter the interpreter.
+- **`RegisterArgProxy(fn, arg, factory)`** -- install a factory for a plain
+  native function, keyed by `(reflect.ValueOf(fn).Pointer(), arg)`.
+- **`RegisterArgProxyMethod(recvInstance, methodName, arg, factory)`** --
+  install for a native method, keyed by
+  `(reflect.TypeOf(recvInstance), methodName, arg)`. The receiver instance
+  may be a typed-nil pointer such as `(*json.Encoder)(nil)`; only its type
+  is used.
+
+Methods must be keyed by `(type, name)` rather than by pointer because
+reflect's bound-method dispatch shares a single `methodValueCall`
+trampoline across all methods and types -- a pointer key would collide.
+
+See [ADR-012](../decisions/ADR-012-package-patchers-arg-proxies.md).
 
 ## Dependencies
 

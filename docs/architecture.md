@@ -156,21 +156,30 @@ Methods are identified by integer IDs (`methodIDs` in the compiler).
 Go's `reflect.StructOf` cannot register methods on dynamically-created types.
 When an interpreted value with methods (e.g. `String() string`) is passed to a
 native Go function like `fmt.Println`, Go's interface dispatcher cannot find the
-method. Parscan solves this with a bridge mechanism:
+method. Parscan solves this with two complementary dispatch paths at the
+native-call boundary:
 
-1. The compiler emits `IfaceWrap` for arguments to native function calls whose
-   parameters are interface types. This carries the parscan `*Type` identity
-   across the boundary (essential for non-struct types like `type T int` where
-   the `reflect.Type` is shared with the underlying type).
-2. At the native call boundary in `vm.Run`, `bridgeArgs` scans arguments for
-   `Iface` values. For each value whose type has a method matching a registered
-   bridge (e.g. `String`), it allocates a bridge instance (e.g. `*BridgeString`)
-   with a closure that calls back into the VM via `CallFunc`.
-3. Bridge types are defined in `stdlib/` (not `vm/`) and registered in
-   `vm.Bridges` at init time. Adding a new bridge requires no changes to
-   `vm/` or `comp/`.
+1. **Interface bridges** -- single-method (and composite / multi-method)
+   wrappers that let interpreted values satisfy a Go interface in place.
+   Four families live in `vm/bridge.go`: `Bridges`, `DisplayBridges`,
+   `CompositeBridges`, `InterfaceBridges`. Bridge type definitions live in
+   `stdlib/` and register themselves at init. Adding a new bridge requires
+   no changes to `vm/` or `comp/`. See
+   [ADR-009](decisions/ADR-009-interface-bridging.md).
 
-See [ADR-009](decisions/ADR-009-interface-bridging.md).
+2. **Argument proxies** -- full-`Iface` wrappers that hand a parscan-native
+   shadow package (e.g. `stdlib/jsonx`) the original parscan type metadata.
+   Used when the native code walks struct fields via reflection and a
+   single-method bridge on the top argument is not enough. Registered via
+   `vm.RegisterArgProxy` / `RegisterArgProxyMethod`; shadows also overlay
+   their replacement types via `stdlib.RegisterPackagePatcher`. See
+   [ADR-012](decisions/ADR-012-package-patchers-arg-proxies.md).
+
+The compiler emits `IfaceWrap` for arguments to native function calls with
+interface parameters, carrying the parscan `*Type` identity across the
+boundary (essential for non-struct named types where the `reflect.Type` is
+shared with the underlying type). `bridgeArgs` in `vm.Run` checks arg
+proxies first, then the bridge families, then unwraps.
 
 ## Variadic functions
 

@@ -232,12 +232,39 @@ the symbol table at package scope.
 are internal symbol table keys; user code always references the generic name
 with explicit type arguments.
 
-**Limitations.** Constraints are stored but not enforced at instantiation
-time. Generic methods on generic receiver types are not yet supported.
+**Generic methods.** Methods on generic receivers
+(`func (b Box[T]) Get() T`) are supported. `registerFunc` attaches the
+method template to the generic type's `genericTemplate`. `ensureTypeInstantiated`
+records every instantiation as a `genericInstance{typeArgs, typeArgSources}`.
+When a method is declared after the type has already been instantiated,
+`finalizeGenericMethods` (run at the end of `ParseAll`'s Phase 1 retry loop)
+walks templates x instances x methods and monomorphizes the missing
+combinations. Output goes to `pendingMethodDefs`, drained by the first
+Phase 2 statement.
+
+**Inference.** `inferTypeArgs` in `generic.go` unifies call-site arguments
+against declared parameter shapes. `unifyTypeParam` walks compound types
+(`*T`, `[]T`, `*[]T`, `map[K]V`, `chan T`, `func(...)...`) in parallel
+through the `Pointer`/`Slice`/`Array`/`Chan`/`Map`/`Func` constructors and
+binds type-param identifiers. A second fixed-point pass
+(`unpackConstraint` + `extractFromShape`) derives missing type parameters
+by matching already-bound siblings against approximation-constraint shapes
+(`~[]E`, `~map[K]V`). Range-loop LHS variables have their types populated
+at parse time via `inferRangeTypes`, unblocking nested generic calls in
+`for _, v := range s { cmp.Compare(v, ...) }`-style loops.
+
+**Limitations.** Constraints are structurally matched for shape but not
+enforced as a hard type check. Non-range local-var inference from
+non-composite RHS (`ptr := &x; F(ptr)`) still fails because
+`inferDefineType` only handles composite-literal RHS; explicit type args
+are a workaround.
+
 See [ADR-011](../decisions/ADR-011-generics-monomorphization.md).
 
 ## Open questions / TODOs
 
 - Constraint enforcement at instantiation time.
-- Generic methods: `func (b Box[T]) Get() T`.
-- Nested generics: a generic type used as a field of another generic type.
+- Non-range local-var inference from non-composite RHS.
+- Transitive-import alias leak: when `slices` imports `cmp`, importing
+  `slices` creates incidental `slices.Ordered`, `slices.Less` aliases
+  pointing to cmp's originals. Harmless but leaky.

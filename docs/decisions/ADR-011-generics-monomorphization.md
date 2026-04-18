@@ -50,10 +50,29 @@ The compiler and VM see only concrete, non-generic code.
 
 - Code size grows with the number of distinct instantiations (same trade-off
   as C++ templates). Not a concern for an interpreter.
-- Constraints are syntactically accepted but not enforced. Adding constraint
-  checking would require a type-level predicate system in the parser.
-- Generic methods on generic receiver types (`func (b Box[T]) Get() T`)
-  require tracking the type parameter binding across the receiver, which is
-  not yet implemented.
+- Constraints are syntactically accepted. Approximation constraints
+  (`~[]E`, `~map[K]V`) are structurally matched during inference but not
+  enforced as a hard check at instantiation time; `cmp.Ordered`-style unions
+  are not type-checked either.
 - Error messages from instantiated code reference the mangled name, not the
   original generic name.
+- Methods declared after a generic type's first instantiation must be
+  picked up retroactively. `finalizeGenericMethods` runs a post-Phase-1
+  catch-up pass that iterates the recorded instances against newly
+  registered method templates.
+
+### Status of initial limitations (2026-04-18)
+
+When this ADR was drafted, three items were called out as not yet
+implemented. All three now work and ship with regression tests:
+
+- Generic methods on generic receivers: `func (b Box[T]) Get() T` -- fixed.
+- Package-qualified type args in explicit instantiation: `Slice[netip.Prefix]`
+  -- fixed.
+- Compound-shape inference in implicit calls: `F(ptr)`, `F(slice)`,
+  `F(map)` -- fixed.
+
+See the `_samples/generic_*.go` suite and `TestGenericImplicit` in
+`interp/interpreter_test.go`. A few minor edge cases remain (non-range
+local-var inference from non-composite RHS; transitive-import alias leak)
+that are tracked in project memory but not release-blocking.
