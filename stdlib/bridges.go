@@ -195,11 +195,12 @@ func init() {
 	vm.CompositeBridges[[2]string{"ReadFrom", "Write"}] = reflect.TypeOf((*BridgeWriterReaderFrom)(nil))
 
 	// Display bridges are used when the target is interface{}/any.
+	// MarshalJSON/UnmarshalJSON are deliberately omitted: they are not
+	// display methods, and fmt never calls them. JSON encoding of
+	// interpreted values is routed through stdlib/jsonx arg proxies.
 	vm.DisplayBridges["Error"] = true
 	vm.DisplayBridges["GoString"] = true
-	vm.DisplayBridges["MarshalJSON"] = true
 	vm.DisplayBridges["String"] = true
-	vm.DisplayBridges["UnmarshalJSON"] = true
 
 	vm.ValBridgeTypes[reflect.TypeOf((*BridgeError)(nil))] = true
 	vm.ValBridgeTypes[reflect.TypeOf((*BridgeGoString)(nil))] = true

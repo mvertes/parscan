@@ -358,12 +358,6 @@ func (i Instruction) String() (s string) {
 // Code represents the virtual machine byte code.
 type Code []Instruction
 
-// ParscanCallable is the signature of a parscan-aware native replacement.
-// It receives the Machine and the raw parscan Value arguments (without any
-// bridge/Iface unwrapping) and returns the raw Value results. Registered
-// via Machine.RegisterParscanAware.
-type ParscanCallable func(m *Machine, args []Value) []Value
-
 // Machine is a stack-based virtual machine that executes bytecode instructions.
 type Machine struct {
 	code       Code       // code to execute
@@ -381,22 +375,6 @@ type Machine struct {
 	funcFields          map[uintptr]Value
 	funcFieldsByFuncPtr map[uintptr]Value
 
-	// parscanAware maps the code pointer of a registered native function
-	// (as returned by reflect.Value.Pointer()) to a callable that
-	// receives raw parscan Value arguments. Native-call dispatch checks
-	// this map and, on hit, bypasses bridgeArgs / reflect dispatch
-	// entirely - used by stdlib replacements (e.g. stdlib/jsonx) that
-	// need to see parscan Iface / Type metadata instead of the
-	// bridge-unwrapped concrete value.
-	parscanAware map[uintptr]ParscanCallable
-
-	// parscanAwareMethods maps a receiver reflect.Type and method name to
-	// a parscan-aware callable. Bound method values returned by reflect
-	// share a single code pointer (the reflect thunk), so methods cannot
-	// be keyed via parscanAware - IfaceCall resolves the callback via this
-	// map instead.
-	parscanAwareMethods map[reflect.Type]map[string]ParscanCallable
-
 	in       io.Reader // machine standard input (nil = os.Stdin)
 	out, err io.Writer // machine standard output and error
 
@@ -411,84 +389,6 @@ type Machine struct {
 
 // NewMachine returns a pointer on a new Machine.
 func NewMachine() *Machine { return &Machine{in: os.Stdin, out: os.Stdout, err: os.Stderr} }
-
-// RegisterParscanAware associates fn - a function value stored in
-// stdlib.Values - with a parscan-aware callable. At runtime, when the
-// VM's native-call dispatch sees this function, it invokes cb with raw
-// Value arguments instead of going through the reflect-based bridge
-// path. The stub function registered in stdlib is used only for
-// compile-time type matching; it is never actually called.
-func (m *Machine) RegisterParscanAware(fn Value, cb ParscanCallable) {
-	if cb == nil {
-		return
-	}
-	rv := fn.ref
-	if rv.Kind() == reflect.Interface && !rv.IsNil() {
-		rv = rv.Elem()
-	}
-	if rv.Kind() != reflect.Func {
-		return
-	}
-	if m.parscanAware == nil {
-		m.parscanAware = make(map[uintptr]ParscanCallable)
-	}
-	m.parscanAware[rv.Pointer()] = cb
-}
-
-// parscanAwareCallable returns the registered parscan-aware callable
-// for rv (a native func reflect.Value), or nil if none is registered.
-func (m *Machine) parscanAwareCallable(rv reflect.Value) ParscanCallable {
-	if m.parscanAware == nil || rv.Kind() != reflect.Func {
-		return nil
-	}
-	return m.parscanAware[rv.Pointer()]
-}
-
-// RegisterParscanAwareMethod associates a method on recvType with a
-// parscan-aware callable. IfaceCall substitutes a ParscanAwareMethodCall
-// for the bound method value, and Call invokes cb with the receiver as
-// the first Value followed by the raw argument Values. Both recvType
-// and its pointer/elem variant are matched so callers may register with
-// either form.
-func (m *Machine) RegisterParscanAwareMethod(recvType reflect.Type, methodName string, cb ParscanCallable) {
-	if cb == nil || recvType == nil || methodName == "" {
-		return
-	}
-	if m.parscanAwareMethods == nil {
-		m.parscanAwareMethods = make(map[reflect.Type]map[string]ParscanCallable)
-	}
-	byName := m.parscanAwareMethods[recvType]
-	if byName == nil {
-		byName = make(map[string]ParscanCallable)
-		m.parscanAwareMethods[recvType] = byName
-	}
-	byName[methodName] = cb
-}
-
-// lookupParscanAwareMethod returns the callable for recvType+methodName,
-// also trying the pointer/elem variant of recvType.
-func (m *Machine) lookupParscanAwareMethod(recvType reflect.Type, methodName string) ParscanCallable {
-	if m.parscanAwareMethods == nil || recvType == nil {
-		return nil
-	}
-	if byName, ok := m.parscanAwareMethods[recvType]; ok {
-		if cb, ok := byName[methodName]; ok {
-			return cb
-		}
-	}
-	var alt reflect.Type
-	if recvType.Kind() == reflect.Pointer {
-		alt = recvType.Elem()
-	} else {
-		alt = reflect.PointerTo(recvType)
-	}
-	if byName, ok := m.parscanAwareMethods[alt]; ok {
-		if cb, ok := byName[methodName]; ok {
-			return cb
-		}
-	}
-	return nil
-}
 
 // SetIO sets the I/O streams for the machine.
 func (m *Machine) SetIO(in io.Reader, out, err io.Writer) { m.in = in; m.out = out; m.err = err }
@@ -593,25 +493,6 @@ func (m *Machine) Run() (err error) {
 		case Call:
 			narg := int(c.A)
 			fval := mem[sp-narg]
-			// Parscan-aware method call: the "function" slot is a sentinel
-			// struct carrying the receiver and the registered callback.
-			// Dispatch with the receiver prepended to the argument Values.
-			if fval.ref.IsValid() && fval.ref.Type() == parscanAwareMethodCallRtype {
-				pam := fval.ref.Interface().(ParscanAwareMethodCall)
-				args := make([]Value, 0, narg+1)
-				args = append(args, pam.Recv)
-				args = append(args, mem[sp-narg+1:sp+1]...)
-				out := pam.CB(m, args)
-				sp -= narg + 1
-				for _, v := range out {
-					if sp+1 >= len(mem) {
-						mem = growStack(mem, sp, 1)
-					}
-					sp++
-					mem[sp] = v
-				}
-				break
-			}
 			// Inline fast path: only call resolveFuncField for addressable Func fields.
 			if fval.ref.Kind() == reflect.Func && fval.ref.CanAddr() {
 				fval = m.resolveFuncField(fval)
@@ -631,30 +512,28 @@ func (m *Machine) Run() (err error) {
 				m.heap = nil
 			} else {
 				rv := fval.ref
+				// Method-call sentinel: IfaceCall placed a boundProxyCall on
+				// the stack because the target method has registered arg
+				// proxies. Unwrap it and thread the method identity to
+				// bridgeArgs so RegisterArgProxyMethod factories can fire.
+				var proxyRecvType reflect.Type
+				var proxyMethod string
+				if rv.IsValid() && rv.Type() == boundProxyCallRtype {
+					bpc := rv.Interface().(boundProxyCall)
+					rv = bpc.Fn
+					proxyRecvType = bpc.RecvType
+					proxyMethod = bpc.Method
+				}
 				if rv.Kind() == reflect.Interface && !rv.IsNil() {
 					rv = rv.Elem()
 				}
 				if rv.Kind() == reflect.Func {
-					if cb := m.parscanAwareCallable(rv); cb != nil {
-						// Parscan-aware override: dispatch with raw Value args,
-						// skipping bridgeArgs / reflect call entirely.
-						out := cb(m, mem[sp-narg+1:sp+1])
-						sp -= narg + 1
-						for _, v := range out {
-							if sp+1 >= len(mem) {
-								mem = growStack(mem, sp, 1)
-							}
-							sp++
-							mem[sp] = v
-						}
-						break
-					}
 					funcType := rv.Type()
 					in := make([]reflect.Value, narg)
 					for i := range in {
 						in[i] = mem[sp-narg+1+i].Reflect()
 					}
-					m.bridgeArgs(in, funcType)
+					m.bridgeArgs(in, funcType, rv.Pointer(), proxyRecvType, proxyMethod)
 					coerceInterfaceArgs(in, funcType)
 					m.wrapFuncArgs(in, mem[sp-narg+1:sp+1], funcType)
 					sp -= narg + 1
@@ -1030,18 +909,16 @@ func (m *Machine) Run() (err error) {
 				// Native interface value: use reflect to get the method.
 				methodName := m.MethodNames[methodID]
 				recvRV := mem[sp].Reflect()
-				if recvRV.IsValid() {
-					if cb := m.lookupParscanAwareMethod(recvRV.Type(), methodName); cb != nil {
-						mem[sp] = Value{ref: reflect.ValueOf(ParscanAwareMethodCall{Recv: mem[sp], CB: cb})}
-						break
-					}
-				}
 				rv := nativeMethodLookup(recvRV, methodName)
 				if !rv.IsValid() && c.B != 0 {
 					// Numeric value lost its named type (e.g. time.Duration stored as int64).
 					// Convert to the named type encoded in B-1 and retry the method lookup.
 					namedType := m.globals[int(c.B)-1].ref.Type()
 					rv = mem[sp].Reflect().Convert(namedType).MethodByName(methodName)
+				}
+				if rv.IsValid() && recvRV.IsValid() && hasMethodArgProxies(recvRV.Type(), methodName) {
+					mem[sp] = Value{ref: reflect.ValueOf(boundProxyCall{Fn: rv, RecvType: recvRV.Type(), Method: methodName})}
+					break
 				}
 				mem[sp] = Value{ref: rv}
 				break
@@ -3189,7 +3066,13 @@ func numReflect(t reflect.Type, src Value) reflect.Value {
 // bridgeArgs scans native-call arguments for Iface values and replaces them
 // with wrapper instances that implement Go interfaces via registered bridges.
 // Non-bridged Iface values are unwrapped to their concrete value.
-func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
+//
+// fnPtr (non-zero) is the code pointer of the native function, used to
+// look up per-argument proxies registered via RegisterArgProxy. recvType
+// and methodName (non-nil and non-empty) identify a method call and are
+// used to look up proxies registered via RegisterArgProxyMethod. Proxies
+// take precedence over the standard bridgeIface dispatch when matched.
+func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type, fnPtr uintptr, recvType reflect.Type, methodName string) {
 	for i, rv := range in {
 		if !rv.IsValid() || rv.Type() != ifaceRtype {
 			// Also check inside interface{} wrapping.
@@ -3201,6 +3084,17 @@ func (m *Machine) bridgeArgs(in []reflect.Value, funcType reflect.Type) {
 			}
 		}
 		ifc := rv.Interface().(Iface)
+		var factory ProxyFactory
+		if fnPtr != 0 {
+			factory = lookupFuncArgProxy(fnPtr, i)
+		}
+		if factory == nil && recvType != nil && methodName != "" {
+			factory = lookupMethodArgProxy(recvType, methodName, i)
+		}
+		if factory != nil {
+			in[i] = factory(m, ifc)
+			continue
+		}
 		targetType := paramTypeFor(funcType, i)
 		if targetType == nil {
 			targetType = AnyRtype
