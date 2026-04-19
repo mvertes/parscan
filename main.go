@@ -89,8 +89,10 @@ func runCmd(arg []string) error {
 	var err error
 	switch {
 	case str != "":
+		i.AutoImportPackages()
 		_, err = i.Eval("m:"+str, str)
 	case len(args) == 0:
+		i.AutoImportPackages()
 		return i.Repl(os.Stdin)
 	default:
 		fpath := filepath.Clean(args[0])

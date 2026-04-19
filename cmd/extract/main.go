@@ -14,7 +14,6 @@ import (
 	"go/constant"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -180,7 +179,7 @@ func runGen(out io.Writer, dir, importPath string) error {
 	}
 
 	// Determine the Go package name (last non-version path element).
-	alias := pkgAlias(importPath)
+	alias := goparser.PackageName(importPath)
 
 	w := func(format string, args ...any) { _, _ = fmt.Fprintf(out, format, args...) }
 	if *targetOS != "" && *targetArch != "" {
@@ -212,16 +211,6 @@ func runGen(out io.Writer, dir, importPath string) error {
 
 	w("\t}\n}\n")
 	return nil
-}
-
-// pkgAlias returns the Go package name for an import path.
-// For versioned paths like "math/rand/v2", it returns "rand".
-func pkgAlias(importPath string) string {
-	base := path.Base(importPath)
-	if len(base) > 1 && base[0] == 'v' && base[1] >= '0' && base[1] <= '9' {
-		return path.Base(path.Dir(importPath))
-	}
-	return base
 }
 
 // extractImports reads all .go files in dir (excluding _test.go) and returns

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"go/constant"
 	"go/token"
-	"path"
 	"reflect"
 
 	"github.com/mvertes/parscan/lang"
@@ -671,12 +670,7 @@ func (p *Parser) parseImportLine(in Tokens) (out Tokens, err error) {
 	}
 	n := in[0].Str
 	if l == 1 {
-		// Derive package name from package path.
-		d, f := path.Split(pp)
-		n = f
-		if ok, _ := path.Match(f, "v[0-9]*"); d != "" && ok {
-			n = path.Base(d)
-		}
+		n = PackageName(pp)
 	}
 	if n == "." {
 		// Import package symbols in the current scope.
