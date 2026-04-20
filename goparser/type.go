@@ -44,7 +44,7 @@ func (p *Parser) resolveEllipsisArray(elemTyp *vm.Type, toks Tokens, braceIdx in
 	if braceIdx >= len(toks) || toks[braceIdx].Tok != lang.BraceBlock {
 		return nil, errors.New("[...] requires a composite literal")
 	}
-	tokens, err := p.ScanBlock(toks[braceIdx].Token, false)
+	tokens, err := p.scanBlock(toks[braceIdx].Token, false)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			return nil, 0, err
 		}
 		if b := in[0].Block(); len(b) > 0 {
-			x, err := p.ScanBlock(in[0].Token, false)
+			x, err := p.scanBlock(in[0].Token, false)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -154,7 +154,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		// For methods, parse the receiver separately as Heap[0] (not a stack param),
 		// so explicit params get the correct frame indices (-2, -3, ...).
 		if recvr != "" {
-			recvrToks, err := p.ScanBlock(in[1].Token, false)
+			recvrToks, err := p.scanBlock(in[1].Token, false)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -266,7 +266,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 		if len(in) < 3 || in[1].Tok != lang.BracketBlock {
 			return nil, 0, fmt.Errorf("%w: %s", ErrInvalidType, in[0].Str)
 		}
-		kin, err := p.ScanBlock(in[1].Token, false)
+		kin, err := p.scanBlock(in[1].Token, false)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -288,7 +288,7 @@ func (p *Parser) parseTypeExpr(in Tokens) (typ *vm.Type, n int, err error) {
 			// Empty interface (equivalent to any).
 			return &vm.Type{Rtype: vm.AnyRtype}, 2, nil
 		}
-		toks, err := p.ScanBlock(in[1].Token, false)
+		toks, err := p.scanBlock(in[1].Token, false)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -462,7 +462,7 @@ func (p *Parser) addSymVar(index, nparams int, name string, typ *vm.Type, flag t
 }
 
 func (p *Parser) parseFuncParams(argBlock Token, out Tokens) (typ *vm.Type, inNames, outNames []string, err error) {
-	iargs, err := p.ScanBlock(argBlock.Token, false)
+	iargs, err := p.scanBlock(argBlock.Token, false)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -474,7 +474,7 @@ func (p *Parser) parseFuncParams(argBlock Token, out Tokens) (typ *vm.Type, inNa
 		// BraceBlock at start of out is a function body or composite literal, not a return type.
 		out = nil
 	} else if len(out) == 1 && out[0].Tok == lang.ParenBlock {
-		if out, err = p.ScanBlock(out[0].Token, false); err != nil {
+		if out, err = p.scanBlock(out[0].Token, false); err != nil {
 			return nil, nil, nil, err
 		}
 	}
@@ -604,7 +604,7 @@ func (p *Parser) parseStructType(in Tokens) (*vm.Type, error) {
 	if len(in) < 2 || in[1].Tok != lang.BraceBlock {
 		return nil, fmt.Errorf("%w: %v", ErrSyntax, in)
 	}
-	fieldToks, err := p.ScanBlock(in[1].Token, false)
+	fieldToks, err := p.scanBlock(in[1].Token, false)
 	if err != nil {
 		return nil, err
 	}

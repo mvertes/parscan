@@ -21,7 +21,7 @@ func (p *Parser) parseConst(in Tokens) (out Tokens, err error) {
 	if in[1].Tok != lang.ParenBlock {
 		return p.parseConstLine(in[1:])
 	}
-	if in, err = p.ScanBlock(in[1].Token, false); err != nil {
+	if in, err = p.scanBlock(in[1].Token, false); err != nil {
 		return out, err
 	}
 
@@ -633,7 +633,7 @@ func (p *Parser) parseImports(in Tokens) (out Tokens, err error) {
 	if in[1].Tok != lang.ParenBlock {
 		return p.parseImportLine(in[1:])
 	}
-	if in, err = p.ScanBlock(in[1].Token, false); err != nil {
+	if in, err = p.scanBlock(in[1].Token, false); err != nil {
 		return out, err
 	}
 	for _, li := range in.Split(lang.Semicolon) {
@@ -709,7 +709,7 @@ func (p *Parser) parseType(in Tokens) (out Tokens, err error) {
 	if in[1].Tok != lang.ParenBlock {
 		return p.parseTypeLine(in[1:])
 	}
-	if in, err = p.ScanBlock(in[1].Token, false); err != nil {
+	if in, err = p.scanBlock(in[1].Token, false); err != nil {
 		return out, err
 	}
 	for _, lt := range in.Split(lang.Semicolon) {

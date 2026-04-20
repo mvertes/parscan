@@ -144,7 +144,7 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 		var retry []Tokens
 		var firstErr error
 		for _, decl := range pending {
-			p.SymTracker = nil
+			p.symTracker = nil
 			handled, parseErr := p.ParseDecl(decl)
 			if parseErr != nil {
 				var eu ErrUndefined
@@ -197,7 +197,7 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 	// Pass 1 compiles var initializers so that all var types are resolved.
 	// Pass 2 compiles func bodies and expression statements; by then every
 	// global var has a concrete type, eliminating forward-reference retries.
-	remaining = p.SplitAndSortVarDecls(remaining)
+	remaining = p.splitAndSortVarDecls(remaining)
 	return remaining, err
 }
 
@@ -208,7 +208,7 @@ func (p *Parser) preRegisterTypes(decls []Tokens) {
 		}
 		if decl[1].Tok == lang.ParenBlock {
 			// Grouped: type ( A struct{...}; B struct{...} )
-			inner, err := p.ScanBlock(decl[1].Token, false)
+			inner, err := p.scanBlock(decl[1].Token, false)
 			if err != nil {
 				continue
 			}
@@ -255,13 +255,6 @@ func (p *Parser) registerInterfacePlaceholder(key, short string) *vm.Type {
 	ph := &vm.Type{Rtype: vm.AnyRtype, Name: short}
 	p.SymAdd(symbol.UnsetAddr, key, vm.NewValue(ph.Rtype), symbol.Type, ph)
 	return ph
-}
-
-func (p *Parser) rollbackSymTracker() {
-	for _, k := range p.SymTracker {
-		delete(p.Symbols, k)
-	}
-	p.SymTracker = nil
 }
 
 // IsExported reports whether the given name starts with an upper-case letter.
