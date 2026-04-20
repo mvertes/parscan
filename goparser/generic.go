@@ -433,40 +433,35 @@ func (p *Parser) ensureTypeInstantiated(tmpl *genericTemplate, bt scan.Token) (s
 	return mname, nil
 }
 
-// finalizeGenericMethods instantiates every recorded instance x method
-// combination for each generic type template. It runs once after the
-// Phase 1 retry loop, when all method templates have been attached. The
-// outer progress loop handles the case where parsing a method body
-// triggers further generic instantiations whose methods must also be
-// emitted.
-func (p *Parser) finalizeGenericMethods() error {
+// instantiatePendingMethods walks the generic type templates once and
+// emits any (instance x method) pair that has not been instantiated yet.
+// Returns progress=true if at least one new method was emitted. The
+// symbol guard in instantiateMethod makes it safe to call repeatedly.
+func (p *Parser) instantiatePendingMethods() (progress bool, err error) {
 	savedScope := p.scope
 	p.scope = ""
 	defer func() { p.scope = savedScope }()
-	for progress := true; progress; {
-		progress = false
-		for _, sym := range p.Symbols {
-			if sym.Kind != symbol.Generic {
-				continue
-			}
-			tmpl, ok := sym.Data.(*genericTemplate)
-			if !ok || tmpl.isFunc {
-				continue
-			}
-			for _, inst := range tmpl.instances {
-				for _, methTmpl := range tmpl.methods {
-					emitted, err := p.emitInstantiatedMethod(tmpl, methTmpl, inst.typeArgs, inst.typeArgSources)
-					if err != nil {
-						return err
-					}
-					if emitted {
-						progress = true
-					}
+	for _, sym := range p.Symbols {
+		if sym.Kind != symbol.Generic {
+			continue
+		}
+		tmpl, ok := sym.Data.(*genericTemplate)
+		if !ok || tmpl.isFunc {
+			continue
+		}
+		for _, inst := range tmpl.instances {
+			for _, methTmpl := range tmpl.methods {
+				emitted, err := p.emitInstantiatedMethod(tmpl, methTmpl, inst.typeArgs, inst.typeArgSources)
+				if err != nil {
+					return progress, err
+				}
+				if emitted {
+					progress = true
 				}
 			}
 		}
 	}
-	return nil
+	return progress, nil
 }
 
 // instantiateMethod creates a concrete version of a generic method template

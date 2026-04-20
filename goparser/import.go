@@ -136,11 +136,15 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 	// Placeholders are untracked: they survive the retry loop cleanup.
 	p.preRegisterTypes(decls)
 
-	// Phase 1: resolve all declarations (no code generation).
-	// Retry until no undefined declaration remains, or no progress is made.
+	// Phase 1: resolve all declarations and expand generic methods in a
+	// single fixed-point loop. Each pass (a) retries decls that failed with
+	// ErrUndefined, then (b) emits any pending (instance x method) pair for
+	// registered generic types. The loop terminates when neither pass makes
+	// progress; interleaving the two lets a deferred decl be resolved by a
+	// symbol produced by method emission (and vice versa).
 	var remaining []Tokens // decls needing full parse + generate
 	pending := decls
-	for len(pending) > 0 {
+	for {
 		var retry []Tokens
 		var firstErr error
 		for _, decl := range pending {
@@ -172,16 +176,20 @@ func (p *Parser) ParseAll(name, src string) (out []Tokens, err error) {
 				remaining = append(remaining, decl)
 			}
 		}
-		if len(retry) == len(pending) {
+		declProgress := len(retry) < len(pending)
+		pending = retry
+
+		methodProgress, mErr := p.instantiatePendingMethods()
+		if mErr != nil {
+			return out, mErr
+		}
+
+		if len(pending) == 0 && !methodProgress {
+			break
+		}
+		if !declProgress && !methodProgress {
 			return out, firstErr
 		}
-		pending = retry
-	}
-
-	// Emit methods whose templates were attached after an instance was
-	// already created during Phase 1.
-	if ferr := p.finalizeGenericMethods(); ferr != nil {
-		return out, ferr
 	}
 
 	// Include code-gen declarations from imported source packages.
